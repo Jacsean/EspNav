@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>ESP32‑S3 LCD 320×240 导航模拟器｜道路方向修正版</title>
+<style>
+*{box-sizing:border-box;font-family:system-ui,-apple-system}
+body{background:#121212;color:#eee;padding:16px;margin:0}
+.wrap{display:flex;gap:24px;flex-wrap:wrap}
+#tftCanvas{border:2px solid #444;background:#000;image-rendering:pixelated}
+.ctrl{min-width:380px}
+button{padding:8px 14px;margin:4px;border:none;border-radius:4px;background:#2563eb;color:#fff;cursor:pointer}
+textarea{width:100%;height:240px;background:#222;color:#cfc;font-size:12px;padding:8px;border:1px solid #444}
+.info{font-size:12px;color:#aaa;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <h3>LCD 320×240 模拟器</h3>
+    <canvas id="tftCanvas" width="320" height="240"></canvas>
+    <div class="info">修正：道路底部加宽1/3；边界虚线改为向下滚动；罗盘红色箭头改为向上</div>
+  </div>
+  <div class="ctrl">
+    <h4>控制</h4>
+    <div>
+      <button onclick="loadSample('straight')">样例‑直行</button>
+      <button onclick="loadSample('turnRight')">样例‑右转</button>
+      <button onclick="loadSample('curveRoad')">样例‑弯道</button>
+      <button onclick="toggleAnimation()">暂停/播放动画</button>
+      <button onclick="simMessagePopup()">模拟消息弹窗</button>
+      <button onclick="clearMessagePopup()">关闭弹窗</button>
+    </div>
+    <br/>
+    <div>
+      <button onclick="renderCurrentJson()">渲染下方JSON帧</button>
+      <button onclick="exportJson()">导出当前帧JSON</button>
+    </div>
+    <br/>
+    <h5>导航帧JSON</h5>
+    <textarea id="jsonInput"></textarea>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('tftCanvas');
+const ctx = canvas.getContext('2d');
+const LCD_W = 320;
+const LCD_H = 240;
+
+let navFrame = null;
+let popupMsg = null;
+
+let animOffset = 0;
+let animRunning = true;
+let lastTime = 0;
+
+//==================== UI配置 ====================
+const CONFIG = {
+  areaMain:      { x:0, y:0, w:320, h:150 },
+  areaBottomLeft:{ x:0, y:160, w:220, h:80 },
+  areaBottomRight:{x:220,y:160,w:100,h:80},
+
+  colorBg:        "#000000",
+  colorRoad:      "#777777",
+  colorLaneDash:  "#ffffff",
+  colorRoadEdge:  "#ffffff",
+  colorPastRoute: "#0f0",
+  colorFutureRoute:"#0f0",
+  colorHintText:  "#0f0",
+  colorStatText:  "#0f0",
+  colorCompassText:"#0f0",
+  colorCompassArrow:"#f33",
+  colorCarFill: "#ff0",
+  colorBorder:    "#444444",
+  colorPopupBg:   "rgba(0,0,0,0.85)",
+  colorPopupBorder:"#48f",
+  colorOverviewGrid:"#222222",
+
+  compassBaseX:260,
+  compassTextY:20,
+  compassArrowY:34,
+  compassSpread:95,
+
+  roadNearWidth:150,   // 道路底部宽度增加约1/3
+  roadFarWidth:36,
+  roadEdgeLineWidth:2,
+  roadEdgeDash:[8,4],
+  roadEdgeSpeed:60,
+
+  popupRect:{x:20,y:60,w:280,h:100},
+  overviewGridStep:10
+};
+
+//样例帧
+const sample_frames_json = {
+  straight:{
+    type:"NAV_FRAME",
+    heading:0,
+    turn_dist:500,
+    hint:"前方500米直行",
+    total_dist:8200,
+    progress_pct:34,
+    elapsed_min:28,
+    eta_time:"14:27",
+    centerLine:[[160,130],[160,110],[160,80],[160,50],[160,20]],
+    pastCenter:[[160,130],[160,110]],
+    routeCenter:[[160,110],[160,80],[160,50],[160,20]],
+    pos:[160,110],
+    overview:[[8,6],[22,19],[46,14],[62,26]],
+    overview_dot:[22,19]
+  },
+  turnRight:{
+    type:"NAV_FRAME",
+    heading:340,
+    turn_dist:220,
+    hint:"前方220米向右行驶",
+    total_dist:11400,
+    progress_pct:26,
+    elapsed_min:19,
+    eta_time:"15:11",
+    centerLine:[[110,130],[130,110],[160,85],[190,55],[220,25]],
+    pastCenter:[[110,130],[130,110]],
+    routeCenter:[[130,110],[160,85],[190,55],[220,25]],
+    pos:[130,110],
+    overview:[[10,5],[26,14],[40,22],[56,16]],
+    overview_dot:[26,14]
+  },
+  curveRoad:{
+    type:"NAV_FRAME",
+    heading:20,
+    turn_dist:350,
+    hint:"前方350米弯道继续行驶",
+    total_dist:15600,
+    progress_pct:18,
+    elapsed_min:14,
+    eta_time:"16:33",
+    centerLine:[[120,130],[140,110],[165,85],[188,55],[210,25]],
+    pastCenter:[[120,130],[140,110]],
+    routeCenter:[[140,110],[165,85],[188,55],[210,25]],
+    pos:[140,110],
+    overview:[[9,7],[21,18],[38,24]],
+    overview_dot:[21,18]
+  }
+};
+
+// ==========绘图原语==========
+function drawDashedLine(x1,y1,x2,y2,color,dashLen=4,gap=4){
+  ctx.strokeStyle = color;
+  ctx.lineWidth =1;
+  ctx.beginPath();
+  const dx = x2-x1;
+  const dy = y2-y1;
+  const dist = Math.hypot(dx,dy);
+  if(dist<1) return;
+  const steps = dist/(dashLen+gap);
+  for(let i=0;i<steps;i++){
+    const t0 = i*(dashLen+gap)/dist;
+    const t1 = (i*(dashLen+gap)+dashLen)/dist;
+    if(t1>1) t1=1;
+    const sx = x1 + dx*t0;
+    const sy = y1 + dy*t0;
+    const ex = x1 + dx*t1;
+    const ey = y1 + dy*t1;
+    ctx.moveTo(sx,sy);
+    ctx.lineTo(ex,ey);
+  }
+  ctx.stroke();
+}
+
+/**
+ * 绘制流动虚线
+ * 方向修正：offset 增加时，dash 从远处向近处移动，即向下滚动
+ */
+function drawFlowingDashLine(x1,y1,x2,y2,color,lineWidth,dashPattern,offset,flowSpeed,dt){
+  ctx.save();
+
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.hypot(dx, dy);
+  if(len < 0.1){
+    ctx.restore();
+    return offset;
+  }
+
+  const dashLen = dashPattern[0] || 8;
+  const gapLen = dashPattern[1] || 4;
+  const cycle = dashLen + gapLen;
+
+  // 虚线改为向下滚动：远处 → 近处
+  offset = (offset + flowSpeed * dt) % cycle;
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = 'butt';
+
+  ctx.beginPath();
+
+  // 从近处开始绘制，让 dash 看起来向下移动
+  let t = 1 - offset / len;
+
+  while(t > 0){
+    const segStart = t;
+    const segEnd = Math.max(t - dashLen / len, 0);
+
+    const sx = x1 + dx * segStart;
+    const sy = y1 + dy * segStart;
+    const ex = x1 + dx * segEnd;
+    const ey = y1 + dy * segEnd;
+
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(ex, ey);
+
+    t -= cycle / len;
+  }
+
+  ctx.stroke();
+  ctx.restore();
+
+  return offset;
+}
+
+function drawSolidLine(x1,y1,x2,y2,color,width=3){
+  ctx.strokeStyle=color;
+  ctx.lineWidth=width;
+  ctx.beginPath();
+  ctx.moveTo(x1,y1);
+  ctx.lineTo(x2,y2);
+  ctx.stroke();
+}
+
+function fillPolygon(points, fillColor){
+  if(!points || points.length<3) return;
+  ctx.fillStyle = fillColor;
+  ctx.beginPath();
+  points.forEach((p,idx)=>{
+    if(idx===0) ctx.moveTo(p[0],p[1]);
+    else ctx.lineTo(p[0],p[1]);
+  });
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawCarTriangle(cx,cy,size=14){
+  ctx.save();
+  ctx.fillStyle = CONFIG.colorCarFill;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy-size);
+  ctx.lineTo(cx-size*0.7, cy+size*0.6);
+  ctx.lineTo(cx+size*0.7, cy+size*0.6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawDot(x,y,r,color){
+  ctx.fillStyle=color;
+  ctx.beginPath();
+  ctx.arc(x,y,r,0,Math.PI*2);
+  ctx.fill();
+}
+
+function drawOverviewGrid(area, step){
+  ctx.save();
+  ctx.strokeStyle = CONFIG.colorOverviewGrid;
+  ctx.lineWidth =1;
+  for(let x=area.x;x<=area.x+area.w;x+=step){
+    ctx.beginPath();
+    ctx.moveTo(x, area.y);
+    ctx.lineTo(x, area.y+area.h);
+    ctx.stroke();
+  }
+  for(let y=area.y;y<=area.y+area.h;y+=step){
+    ctx.beginPath();
+    ctx.moveTo(area.x, y);
+    ctx.lineTo(area.x+area.w, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/**
+ * 罗盘红色箭头修正：箭头尖向上
+ */
+function drawCompassBar(baseX, textY, arrowY, headingDeg, spread){
+  const labels = ["N","NE","E","SE","S","SW","W","NW"];
+  ctx.fillStyle=CONFIG.colorCompassText;
+  ctx.font="9px monospace";
+  for(let i=0;i<labels.length;i++){
+    const deg = i*45;
+    let off = (((deg-headingDeg +360)%360)-180)/180 * spread;
+    const tx = baseX + off;
+    if(tx>baseX-spread && tx<baseX+spread){
+      ctx.fillText(labels[i], tx, textY);
+    }
+  }
+
+  // 红色箭头：尖头朝上
+  ctx.fillStyle=CONFIG.colorCompassArrow;
+  ctx.beginPath();
+  ctx.moveTo(baseX, arrowY - 4);
+  ctx.lineTo(baseX - 4, arrowY + 4);
+  ctx.lineTo(baseX + 4, arrowY + 4);
+  ctx.closePath();
+  ctx.fill();
+}
+
+/**
+ * 生成透视梯形道路
+ */
+function genPerspectiveRoadTrapezoid(centerPolyline, nearTotalW, farTotalW){
+  const nearPt = centerPolyline[0];
+  const farPt = centerPolyline[centerPolyline.length-1];
+  const [x0,y0] = nearPt;
+  const [x1,y1] = farPt;
+
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const len = Math.hypot(dx, dy);
+  if(len < 0.1){
+    return {trapezoid:[], nearPt, farPt};
+  }
+
+  const nx = -dy / len;
+  const ny = dx / len;
+
+  const halfNear = nearTotalW / 2;
+  const halfFar  = farTotalW / 2;
+
+  const nearLeft  = [x0 + nx*halfNear, y0 + ny*halfNear];
+  const nearRight = [x0 - nx*halfNear, y0 - ny*halfNear];
+  const farLeft   = [x1 + nx*halfFar,  y1 + ny*halfFar];
+  const farRight  = [x1 - nx*halfFar,  y1 - ny*halfFar];
+
+  const trapezoid = [nearLeft, nearRight, farRight, farLeft];
+  return {trapezoid, nearPt, farPt, nearLeft, nearRight, farLeft, farRight};
+}
+
+function renderNavFrame(frame, dt=0){
+  ctx.fillStyle=CONFIG.colorBg;
+  ctx.fillRect(0,0,LCD_W,LCD_H);
+  if(!frame) return;
+
+  ctx.strokeStyle=CONFIG.colorBorder;
+  ctx.lineWidth=1;
+  ctx.strokeRect(CONFIG.areaMain.x, CONFIG.areaMain.y, CONFIG.areaMain.w, CONFIG.areaMain.h);
+  ctx.strokeRect(CONFIG.areaBottomLeft.x, CONFIG.areaBottomLeft.y, CONFIG.areaBottomLeft.w, CONFIG.areaBottomLeft.h);
+  ctx.strokeRect(CONFIG.areaBottomRight.x, CONFIG.areaBottomRight.y, CONFIG.areaBottomRight.w, CONFIG.areaBottomRight.h);
+
+  drawOverviewGrid(CONFIG.areaBottomRight, CONFIG.overviewGridStep);
+
+  ctx.fillStyle=CONFIG.colorHintText;
+  ctx.font="12px monospace";
+  ctx.fillText(frame.hint, 8, 22);
+  ctx.fillText(`距离：${frame.turn_dist} m`, 8, 40);
+  drawCompassBar(CONFIG.compassBaseX, CONFIG.compassTextY, CONFIG.compassArrowY, frame.heading, CONFIG.compassSpread);
+
+  ctx.fillStyle=CONFIG.colorStatText;
+  ctx.font="11px monospace";
+  const ty = CONFIG.areaBottomLeft.y +16;
+  ctx.fillText(`全程 ${(frame.total_dist/1000).toFixed(1)} km 已完成 ${frame.progress_pct}%`, 8, ty);
+  ctx.fillText(`耗时 ${frame.elapsed_min} min`, 8, ty+18);
+  ctx.fillText(`预计到达：${frame.eta_time}`,8, ty+36);
+
+  ctx.fillStyle="#8f8";
+  ctx.font="10px monospace";
+  ctx.fillText("↑北", CONFIG.areaBottomRight.x+8, CONFIG.areaBottomRight.y+16);
+  ctx.strokeStyle="#0f0";
+  ctx.lineWidth=1;
+  ctx.beginPath();
+  frame.overview.forEach((p,idx)=>{
+    const sx = CONFIG.areaBottomRight.x + 8 + p[0];
+    const sy = CONFIG.areaBottomRight.y + 8 + (40-p[1]);
+    idx===0 ? ctx.moveTo(sx,sy):ctx.lineTo(sx,sy);
+  });
+  ctx.stroke();
+  const dotX = CONFIG.areaBottomRight.x + 8 + frame.overview_dot[0];
+  const dotY = CONFIG.areaBottomRight.y + 8 + (40-frame.overview_dot[1]);
+  drawDot(dotX,dotY,3,"#ff0");
+
+  //==== clip主视图 ====
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(CONFIG.areaMain.x, CONFIG.areaMain.y, CONFIG.areaMain.w, CONFIG.areaMain.h);
+  ctx.clip();
+
+  const roadCenter = frame.centerLine;
+  const roadTra = genPerspectiveRoadTrapezoid(roadCenter, CONFIG.roadNearWidth, CONFIG.roadFarWidth);
+
+  // 1. 梯形路面
+  fillPolygon(roadTra.trapezoid, CONFIG.colorRoad);
+
+  // 2. 两侧流动白色边界虚线
+  if(roadTra.nearLeft.length && roadTra.farLeft.length){
+    animOffset = drawFlowingDashLine(
+      roadTra.nearLeft[0], roadTra.nearLeft[1],
+      roadTra.farLeft[0], roadTra.farLeft[1],
+      CONFIG.colorRoadEdge,
+      CONFIG.roadEdgeLineWidth,
+      CONFIG.roadEdgeDash,
+      animOffset,
+      CONFIG.roadEdgeSpeed,
+      dt
+    );
+
+    drawFlowingDashLine(
+      roadTra.nearRight[0], roadTra.nearRight[1],
+      roadTra.farRight[0], roadTra.farRight[1],
+      CONFIG.colorRoadEdge,
+      CONFIG.roadEdgeLineWidth,
+      CONFIG.roadEdgeDash,
+      animOffset,
+      CONFIG.roadEdgeSpeed,
+      dt
+    );
+  }
+
+  // 3. 车道中线虚线
+  for(let i=0;i<roadCenter.length-1;i++){
+    drawDashedLine(roadCenter[i][0],roadCenter[i][1],roadCenter[i+1][0],roadCenter[i+1][1],CONFIG.colorLaneDash,5,6);
+  }
+
+  // 4. 绿色导航路径
+  for(let i=0;i<frame.pastCenter.length-1;i++){
+    drawSolidLine(frame.pastCenter[i][0],frame.pastCenter[i][1],frame.pastCenter[i+1][0],frame.pastCenter[i+1][1],CONFIG.colorPastRoute,3);
+  }
+  for(let i=0;i<frame.routeCenter.length-1;i++){
+    drawSolidLine(frame.routeCenter[i][0],frame.routeCenter[i][1],frame.routeCenter[i+1][0],frame.routeCenter[i+1][1],CONFIG.colorFutureRoute,3);
+  }
+
+  // 5. 黄色车头三角
+  drawCarTriangle(frame.pos[0], frame.pos[1],14);
+
+  ctx.restore();
+
+  // 弹窗
+  if(popupMsg){
+    const pr = CONFIG.popupRect;
+    ctx.fillStyle=CONFIG.colorPopupBg;
+    ctx.fillRect(pr.x,pr.y,pr.w,pr.h);
+    ctx.strokeStyle=CONFIG.colorPopupBorder;
+    ctx.lineWidth=1;
+    ctx.strokeRect(pr.x,pr.y,pr.w,pr.h);
+    ctx.fillStyle="#fff";
+    ctx.font="12px monospace";
+    ctx.fillText(popupMsg.title, pr.x+10, pr.y+22);
+    ctx.fillText(popupMsg.content.substring(0,32), pr.x+10, pr.y+44);
+    ctx.fillText(popupMsg.content.substring(32,64), pr.x+10, pr.y+64);
+  }
+}
+
+function toggleAnimation(){
+  animRunning = !animRunning;
+}
+
+function animate(timestamp){
+  if(!lastTime) lastTime = timestamp;
+  const dt = (timestamp - lastTime) / 1000;
+  lastTime = timestamp;
+
+  if(animRunning && navFrame){
+    renderNavFrame(navFrame, dt);
+  }
+
+  requestAnimationFrame(animate);
+}
+
+function loadSample(name){
+  navFrame = JSON.parse(JSON.stringify(sample_frames_json[name]));
+  document.getElementById("jsonInput").value = JSON.stringify(navFrame,null,2);
+  animOffset = 0;
+  renderNavFrame(navFrame, 0);
+}
+
+function renderCurrentJson(){
+  try{
+    const txt = document.getElementById("jsonInput").value;
+    navFrame = JSON.parse(txt);
+    animOffset = 0;
+    renderNavFrame(navFrame, 0);
+  }catch(e){
+    alert("JSON解析错误："+e.message);
+  }
+}
+
+function exportJson(){
+  if(!navFrame){alert("没有导航帧");return;}
+  document.getElementById("jsonInput").value = JSON.stringify(navFrame,null,2);
+}
+
+function simMessagePopup(){
+  popupMsg = {title:"微信｜张三", content:"今晚7点聚餐，地点老地方，记得准时过来。"};
+  renderNavFrame(navFrame, 0);
+}
+
+function clearMessagePopup(){
+  popupMsg=null;
+  renderNavFrame(navFrame, 0);
+}
+
+// 启动动画循环
+requestAnimationFrame(animate);
+loadSample("straight");
+</script>
+</body>
+</html>

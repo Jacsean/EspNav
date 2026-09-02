@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>ESP32‑S3 LCD 320×240 导航仿真 V2｜点阵文字·UI 效果确认基准</title>
+<style>
+  *{box-sizing:border-box;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+  body{background:#121212;color:#eee;padding:16px;margin:0}
+  .wrap{display:flex;gap:24px;flex-wrap:wrap}
+  #tftCanvas{border:2px solid #444;background:#000;image-rendering:pixelated;width:640px;height:480px;image-rendering:crisp-edges}
+  .ctrl{min-width:400px;max-width:560px}
+  .row{margin:6px 0}
+  button{padding:6px 12px;margin:3px;border:none;border-radius:4px;background:#2563eb;color:#fff;cursor:pointer}
+  button.warn{background:#b91c1c}
+  textarea{width:100%;height:200px;background:#1c1c1c;color:#cfc;font-size:11px;padding:8px;border:1px solid #444;font-family:monospace}
+  .info{font-size:12px;color:#aaa;margin-top:8px;line-height:1.6}
+  .info b{color:#8f8}
+  .note{font-size:11px;color:#888}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <h3>LCD 320×240 仿真 V2（UI 效果确认基准）</h3>
+    <canvas id="tftCanvas" width="320" height="240"></canvas>
+    <div class="info">
+      V2 变更：① 文字改为 <b>16×16 点阵模拟</b>（全角）/ 8×16（半角），接近真机 16×16 字库观感；
+      ② <b>弹窗独立层</b>：无导航帧时也能弹出，5s 自动关闭；
+      ③ <b>信号中断态</b>：导航帧停止 3s → 顶部提示"信号中断"并冻结虚线流动，恢复后自动刷新；
+      ④ 布局按 16px 点阵重排（hint≤9 全角 / 弹窗 3 行×17 全角 / 统计 3 行）。
+    </div>
+  </div>
+  <div class="ctrl">
+    <h4>控制</h4>
+    <div class="row">
+      <button onclick="loadSample('straight')">样例‑直行</button>
+      <button onclick="loadSample('turnRight')">样例‑右转</button>
+      <button onclick="loadSample('curveRoad')">样例‑弯道</button>
+      <button onclick="toggleAnimation()">暂停/播放流动动画</button>
+    </div>
+    <div class="row">
+      <button onclick="simMessagePopup()">模拟消息弹窗(5s 自动关)</button>
+      <button onclick="clearMessagePopup()">立即关闭弹窗</button>
+      <button class="warn" onclick="simSignalLoss()">模拟信号中断 3s</button>
+      <button onclick="clearScreen()">清屏(模拟 CLEAR_SCREEN)</button>
+    </div>
+    <div class="row">
+      <button onclick="renderCurrentJson()">渲染下方 JSON</button>
+      <button onclick="exportJson()">导出当前帧 JSON</button>
+    </div>
+    <h5>导航帧 JSON（内部演示结构，非 BLE 报文格式）</h5>
+    <textarea id="jsonInput" spellcheck="false"></textarea>
+    <div class="note">提示：点阵字形由浏览器按 16px 系统字体栅格化采样生成，用于确认<u>文字大小/排布/容量</u>；真机字形为独立 16×16 点阵字库（GB2312），观感略有差异。canvas 为 1:1 像素，建议按 2 倍查看。</div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ================= 基础 =================
+const canvas = document.getElementById('tftCanvas');
+const ctx = canvas.getContext('2d');
+const LCD_W = 320, LCD_H = 240;
+
+let navFrame = null;
+let popupMsg = null;
+let popupTimer = null;
+
+// 流动虚线动画状态
+let animOffset = 0;
+let animRunning = true;
+let lastTime = 0;
+let lost = false;        // 信号中断态
+let lostAt = 0;
+const LOST_MS = 3000;    // 3s 无帧判中断（仿真演示时长）
+const POPUP_MS = 5000;   // 弹窗 5s 自动关闭
+
+// ================= UI 配置 =================
+const CONFIG = {
+  areaMain:{x:0,y:0,w:320,h:150},
+  areaBottomLeft:{x:0,y:160,w:220,h:80},
+  areaBottomRight:{x:220,y:160,w:100,h:80},
+  colorBg:"#000000",
+  colorRoad:"#777777",
+  colorLaneDash:"#ffffff",
+  colorRoadEdge:"#ffffff",
+  colorPath:"#0f0",
+  colorHintText:"#0f0",
+  colorStatText:"#0f0",
+  colorCompassText:"#0f0",
+  colorCompassArrow:"#f33",
+  colorCarFill:"#ff0",
+  colorBorder:"#444444",
+  colorPopupBg:"rgba(0,0,0,0.88)",
+  colorPopupBorder:"#48f",
+  colorOverviewGrid:"#222222",
+  colorLostText:"#ff3b30",
+  // 点阵行/列基准
+  fontH:16,               // 16×16 全角点阵
+  halfW:8,                // 8×16 半角
+  compassBaseX:235,
+  compassSpread:75,
+  roadNearWidth:150,
+  roadFarWidth:36,
+  roadEdgeLineWidth:2,
+  roadEdgeDash:[8,4],
+  roadEdgeSpeed:60,
+  popupRect:{x:20,y:60,w:280,h:100},
+  overviewGridStep:10
+};
+
+// 顶部信息带(文字)与道路区域关系见 paintAllText 注释
+const HINT_MAX_CHAR = 9;    // hint 单行上限(全角字符数)，避免侵入右侧罗盘区
+
+// 样例帧
+const sample_frames_json = {
+  straight:{
+    heading:0, turn_dist:500, hint:"前方500米直行", total_dist:8200, progress_pct:34,
+    elapsed_min:28, eta_time:"14:27",
+    centerLine:[[160,130],[160,110],[160,80],[160,50],[160,20]],
+    pastCenter:[[160,130],[160,110]],
+    routeCenter:[[160,110],[160,80],[160,50],[160,20]],
+    pos:[160,110],
+    overview:[[8,6],[22,19],[46,14],[62,26]], overview_dot:[22,19]
+  },
+  turnRight:{
+    heading:340, turn_dist:220, hint:"前方220米向右行驶", total_dist:11400, progress_pct:26,
+    elapsed_min:19, eta_time:"15:11",
+    centerLine:[[110,130],[130,110],[160,85],[190,55],[220,25]],
+    pastCenter:[[110,130],[130,110]],
+    routeCenter:[[130,110],[160,85],[190,55],[220,25]],
+    pos:[130,110],
+    overview:[[10,5],[26,14],[40,22],[56,16]], overview_dot:[26,14]
+  },
+  curveRoad:{
+    heading:20, turn_dist:350, hint:"前方350米弯道继续行驶", total_dist:15600, progress_pct:18,
+    elapsed_min:14, eta_time:"16:33",
+    centerLine:[[120,130],[140,110],[165,85],[188,55],[210,25]],
+    pastCenter:[[120,130],[140,110]],
+    routeCenter:[[140,110],[165,85],[188,55],[210,25]],
+    pos:[140,110],
+    overview:[[9,7],[21,18],[38,24]], overview_dot:[21,18]
+  }
+};
+
+// ================= 点阵文字引擎 =================
+// 字形由系统字体栅格化采样为 16×16(全角)/8×16(半角) 位图，用于"点阵文字模拟"
+const glyphCache = new Map();
+const GLYPH_W = 16, GLYPH_H = 16, GLYPH_SCALE = 2; // 采样离屏放大 2x 提高抗锯齿后二值化质量
+
+function getGlyph(ch){
+  if(glyphCache.has(ch)) return glyphCache.get(ch);
+  const half = ch.charCodeAt(0) <= 255;   // ASCII 半角按 8×16
+  const gw = half ? 8 : 16;
+  const g = {half, w:gw, h:16, rows:null};
+  try{
+    const off = document.createElement('canvas');
+    off.width = gw*GLYPH_SCALE; off.height = GLYPH_H*GLYPH_SCALE;
+    const oc = off.getContext('2d');
+    oc.fillStyle = '#fff';
+    oc.font = (GLYPH_H*GLYPH_SCALE)+'px "Noto Sans SC","Microsoft YaHei","PingFang SC",sans-serif';
+    oc.textBaseline = 'alphabetic';
+    oc.fillText(ch, 0, (GLYPH_H-1)*GLYPH_SCALE); // 底部对齐采样格
+    const img = oc.getImageData(0,0,off.width,off.height).data;
+    const rows = new Array(GLYPH_H);
+    for(let y=0;y<GLYPH_H;y++){
+      let bits = 0;
+      for(let x=0;x<gw;x++){
+        let lit = false;
+        for(let sy=0;sy<GLYPH_SCALE;sy++){
+          for(let sx=0;sx<GLYPH_SCALE;sx++){
+            const a = img[((y*GLYPH_SCALE+sy)*off.width + (x*GLYPH_SCALE+sx))*4 + 3];
+            if(a > 110){ lit = true; break; }
+          }
+          if(lit) break;
+        }
+        if(lit) bits |= (1 << (gw-1-x));
+      }
+      rows[y] = bits;
+    }
+    g.rows = rows;
+  }catch(e){ g.rows = null; }
+  glyphCache.set(ch, g);
+  return g;
+}
+
+// 在 320×240 文本离屏层上绘制一段点阵文字。x,y 为左上角；返回实际占宽
+const textLayer = document.createElement('canvas');
+textLayer.width = LCD_W; textLayer.height = LCD_H;
+const tctx = textLayer.getContext('2d');
+
+function textWidth(str){
+  let w = 0;
+  for(const ch of str) w += (ch.charCodeAt(0) <= 255 ? CONFIG.halfW : CONFIG.fontH);
+  return w;
+}
+
+function paintDotText(layer, x, y, str, color){
+  let cx = x;
+  for(const ch of str){
+    const g = getGlyph(ch);
+    if(!g.rows){ cx += (g.half ? CONFIG.halfW : CONFIG.fontH); continue; }
+    layer.fillStyle = color;
+    for(let yy=0; yy<16; yy++){
+      const bits = g.rows[yy];
+      if(!bits) continue;
+      for(let xx=0; xx<g.w; xx++){
+        if(bits & (1 << (g.w-1-xx))) layer.fillRect(cx+xx, y+yy, 1, 1);
+      }
+    }
+    cx += g.w;
+  }
+  return cx;
+}
+
+// ================= 图形绘制原语 =================
+function drawDashedLine(x1,y1,x2,y2,color,dashLen=5,gap=6){
+  ctx.strokeStyle = color; ctx.lineWidth = 1;
+  ctx.beginPath();
+  const dx=x2-x1, dy=y2-y1, dist=Math.hypot(dx,dy);
+  if(dist<1) return;
+  const steps = dist/(dashLen+gap);
+  for(let i=0;i<steps;i++){
+    const t0=i*(dashLen+gap)/dist, t1=(i*(dashLen+gap)+dashLen)/dist;
+    const sx=x1+dx*t0, sy=y1+dy*t0, ex=x1+dx*Math.min(t1,1), ey=y1+dy*Math.min(t1,1);
+    ctx.moveTo(sx,sy); ctx.lineTo(ex,ey);
+  }
+  ctx.stroke();
+}
+
+function drawFlowingDashLine(x1,y1,x2,y2,color,lineWidth,dashPattern,offset,flowSpeed,dt){
+  ctx.save();
+  const dx=x2-x1, dy=y2-y1, len=Math.hypot(dx,dy);
+  if(len<0.1){ ctx.restore(); return offset; }
+  const dashLen=dashPattern[0]||8, gapLen=dashPattern[1]||4, cycle=dashLen+gapLen;
+  offset = (offset + flowSpeed*dt) % cycle;
+  ctx.strokeStyle=color; ctx.lineWidth=lineWidth; ctx.lineCap='butt';
+  ctx.beginPath();
+  let t = 1 - offset/len;
+  while(t>0){
+    const segStart=t, segEnd=Math.max(t-dashLen/len,0);
+    const sx=x1+dx*segStart, sy=y1+dy*segStart, ex=x1+dx*segEnd, ey=y1+dy*segEnd;
+    ctx.moveTo(sx,sy); ctx.lineTo(ex,ey);
+    t -= cycle/len;
+  }
+  ctx.stroke();
+  ctx.restore();
+  return offset;
+}
+
+function fillPolygon(points, fillColor){
+  if(!points || points.length<3) return;
+  ctx.fillStyle = fillColor;
+  ctx.beginPath();
+  points.forEach((p,i)=>{ i===0 ? ctx.moveTo(p[0],p[1]) : ctx.lineTo(p[0],p[1]); });
+  ctx.closePath(); ctx.fill();
+}
+
+function genPerspectiveRoadTrapezoid(centerPolyline, nearTotalW, farTotalW){
+  const p0=centerPolyline[0], p1=centerPolyline[centerPolyline.length-1];
+  const dx=p1[0]-p0[0], dy=p1[1]-p0[1], len=Math.hypot(dx,dy);
+  if(len<0.1) return null;
+  const nx=-dy/len, ny=dx/len, hn=nearTotalW/2, hf=farTotalW/2;
+  return {
+    trapezoid:[[p0[0]+nx*hn,p0[1]+ny*hn],[p0[0]-nx*hn,p0[1]-ny*hn],
+               [p1[0]-nx*hf,p1[1]-ny*hf],[p1[0]+nx*hf,p1[1]+ny*hf]],
+    nearLeft:[p0[0]+nx*hn,p0[1]+ny*hn], nearRight:[p0[0]-nx*hn,p0[1]-ny*hn],
+    farLeft:[p1[0]+nx*hf,p1[1]+ny*hf], farRight:[p1[0]-nx*hf,p1[1]-ny*hf]
+  };
+}
+
+function drawCarTriangle(cx,cy,size=14){
+  ctx.fillStyle = CONFIG.colorCarFill;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy-size); ctx.lineTo(cx-size*0.7, cy+size*0.6); ctx.lineTo(cx+size*0.7, cy+size*0.6);
+  ctx.closePath(); ctx.fill();
+}
+
+function drawDot(x,y,r,color){
+  ctx.fillStyle=color; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+}
+
+function drawNorthArrow(x,y,color){
+  // 真机由绘图程序画 ↑；HTML 同样画三角（配合文字层"北"），保持两端一致
+  ctx.fillStyle=color;
+  ctx.beginPath();
+  ctx.moveTo(x, y-5); ctx.lineTo(x-4, y+3); ctx.lineTo(x+4, y+3);
+  ctx.closePath(); ctx.fill();
+}
+
+// ================= 文字层组装 =================
+// 布局(16px 点阵行高)：顶部信息带 y0..40（道路梯形远窄端在其后）
+// hint 左上 (4,2)；距离 (4,22)；罗盘半角标签区右 x160..316 顶 y4..20、箭头 y24..36
+function paintAllText(){
+  tctx.clearRect(0,0,LCD_W,LCD_H);
+  if(!navFrame){
+    if(popupMsg) paintPopupText();
+    return;
+  }
+  const f = navFrame;
+  // 1) hint（绿，≤9 全角，避免侵入右侧罗盘区）
+  let hint = f.hint || '';
+  if(textWidth(hint) > 9*CONFIG.fontH){
+    while(hint.length>0 && textWidth(hint) > 9*CONFIG.fontH-CONFIG.fontH) hint = hint.slice(0,-1);
+    hint += '…';
+  }
+  paintDotText(tctx, 4, 2, hint, CONFIG.colorHintText);
+  // 2) 距离
+  paintDotText(tctx, 4, 22, '距离：'+f.turn_dist+' m', CONFIG.colorHintText);
+  // 3) 罗盘（半角 8×16 标签 + 顶部红箭头；标签随 heading 平移，同车头朝上语义）
+  const labels=['N','NE','E','SE','S','SW','W','NW'];
+  const spread=CONFIG.compassSpread, bx=CONFIG.compassBaseX;
+  for(let i=0;i<labels.length;i++){
+    const off=((((i*45)-f.heading+360)%360)-180)/180*spread;
+    const tx=bx+off-textWidth(labels[i])/2;
+    if(tx>bx-spread && tx<bx+spread && tx>-40 && tx<320){
+      paintDotText(tctx, Math.round(tx), 4, labels[i], CONFIG.colorCompassText);
+    }
+  }
+  // 罗盘红色车头箭头（固定中央朝上）
+  tctx.fillStyle = CONFIG.colorCompassArrow;
+  tctx.beginPath();
+  tctx.moveTo(bx, 20); tctx.lineTo(bx-4, 30); tctx.lineTo(bx+4, 30);
+  tctx.closePath(); tctx.fill();
+  // 4) 左下统计（3 行，16px，行距 22）
+  const ty = CONFIG.areaBottomLeft.y + 8; // 160+8
+  paintDotText(tctx, 6, ty, '全程 '+(f.total_dist/1000).toFixed(1)+' km  已完 '+f.progress_pct+'%', CONFIG.colorStatText);
+  paintDotText(tctx, 6, ty+22, '耗时 '+f.elapsed_min+' min', CONFIG.colorStatText);
+  paintDotText(tctx, 6, ty+44, '预计到达：'+f.eta_time, CONFIG.colorStatText);
+  // 5) overview 区角标"北"（真机 16px 全角一格；右上角放三角+北）
+  const ar = CONFIG.areaBottomRight;
+  drawNorthArrowOnText(ar.x+80, ar.y+10, '#8f8');
+  paintDotText(tctx, ar.x+80, ar.y+14, '北', '#8f8');
+  // 6) 弹窗
+  if(popupMsg) paintPopupText();
+  // 7) 信号中断提示
+  if(lost) paintLostText();
+}
+
+function drawNorthArrowOnText(x,y,color){
+  tctx.fillStyle=color;
+  tctx.beginPath();
+  tctx.moveTo(x, y-4); tctx.lineTo(x-3, y+2); tctx.lineTo(x+3, y+2);
+  tctx.closePath(); tctx.fill();
+}
+
+function paintPopupText(){
+  const pr = CONFIG.popupRect;
+  let title = popupMsg.title || '';
+  while(textWidth(title) > (pr.w-20)) title = title.slice(0,-1);
+  paintDotText(tctx, pr.x+10, pr.y+8, title, '#ffffff');
+  // 内容：3 行 × 17 全角（每行 17 全角宽 = 272px ≤ 280-20）
+  let content = popupMsg.content || '';
+  const linePx = pr.w - 20;
+  const maxChars = Math.floor(linePx / CONFIG.fontH); // 17
+  let remaining = content, y = pr.y + 32;
+  let lines = 0;
+  while(remaining.length>0 && lines<3){
+    let take = remaining.length;
+    while(take>0 && textWidth(remaining.slice(0,take)) > linePx) take--;
+    if(take<=0) take=1;
+    let seg = remaining.slice(0,take);
+    remaining = remaining.slice(take);
+    if(lines===2 && remaining.length>0){ // 最后一行截断加省略号
+      while(seg.length>0 && textWidth(seg+'…') > linePx) seg = seg.slice(0,-1);
+      seg += '…';
+    }
+    paintDotText(tctx, pr.x+10, y, seg, '#eee');
+    y += 22; lines++;
+    if(remaining.length>0 && lines>=3) break;
+  }
+}
+
+function paintLostText(){
+  // 中断提示条：主视图中部，红字黑底条
+  const msg = '信号中断';
+  const w = textWidth(msg), x = Math.round((LCD_W-w)/2), y = 56;
+  tctx.fillStyle = 'rgba(0,0,0,0.72)';
+  tctx.fillRect(x-8, y-2, w+16, 24);
+  paintDotText(tctx, x, y, msg, CONFIG.colorLostText);
+}
+
+// ================= 主场景图形 =================
+function drawScene(dt){
+  ctx.fillStyle = CONFIG.colorBg;
+  ctx.fillRect(0,0,LCD_W,LCD_H);
+  // 分区边框
+  ctx.strokeStyle = CONFIG.colorBorder; ctx.lineWidth = 1;
+  ctx.strokeRect(CONFIG.areaMain.x,CONFIG.areaMain.y,CONFIG.areaMain.w,CONFIG.areaMain.h);
+  ctx.strokeRect(CONFIG.areaBottomLeft.x,CONFIG.areaBottomLeft.y,CONFIG.areaBottomLeft.w,CONFIG.areaBottomLeft.h);
+  ctx.strokeRect(CONFIG.areaBottomRight.x,CONFIG.areaBottomRight.y,CONFIG.areaBottomRight.w,CONFIG.areaBottomRight.h);
+  if(!navFrame) return;
+  const f = navFrame;
+  // overview 网格
+  drawOverviewGrid();
+  // 主视图裁剪
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(CONFIG.areaMain.x,CONFIG.areaMain.y,CONFIG.areaMain.w,CONFIG.areaMain.h);
+  ctx.clip();
+  // 透视梯形道路
+  const tra = genPerspectiveRoadTrapezoid(f.centerLine, CONFIG.roadNearWidth, CONFIG.roadFarWidth);
+  if(tra){
+    fillPolygon(tra.trapezoid, CONFIG.colorRoad);
+    if(!lost && animRunning){
+      animOffset = drawFlowingDashLine(tra.nearLeft[0],tra.nearLeft[1],tra.farLeft[0],tra.farLeft[1],
+        CONFIG.colorRoadEdge,CONFIG.roadEdgeLineWidth,CONFIG.roadEdgeDash,animOffset,CONFIG.roadEdgeSpeed,dt);
+      drawFlowingDashLine(tra.nearRight[0],tra.nearRight[1],tra.farRight[0],tra.farRight[1],
+        CONFIG.colorRoadEdge,CONFIG.roadEdgeLineWidth,CONFIG.roadEdgeDash,animOffset,CONFIG.roadEdgeSpeed,dt);
+    }
+    // 车道中线虚线
+    for(let i=0;i<f.centerLine.length-1;i++){
+      drawDashedLine(f.centerLine[i][0],f.centerLine[i][1],f.centerLine[i+1][0],f.centerLine[i+1][1],CONFIG.colorLaneDash,5,6);
+    }
+  }
+  // 已走/未走路径
+  for(let i=0;i<f.pastCenter.length-1;i++){
+    drawSolidLine(f.pastCenter[i][0],f.pastCenter[i][1],f.pastCenter[i+1][0],f.pastCenter[i+1][1],CONFIG.colorPath,3);
+  }
+  for(let i=0;i<f.routeCenter.length-1;i++){
+    drawSolidLine(f.routeCenter[i][0],f.routeCenter[i][1],f.routeCenter[i+1][0],f.routeCenter[i+1][1],CONFIG.colorPath,3);
+  }
+  // 车辆三角
+  drawCarTriangle(f.pos[0], f.pos[1], 14);
+  ctx.restore();
+}
+
+function drawPopupBg(){
+  const pr = CONFIG.popupRect;
+  ctx.fillStyle = CONFIG.colorPopupBg;
+  ctx.fillRect(pr.x,pr.y,pr.w,pr.h);
+  ctx.strokeStyle = CONFIG.colorPopupBorder; ctx.lineWidth=1;
+  ctx.strokeRect(pr.x,pr.y,pr.w,pr.h);
+}
+
+function drawSolidLine(x1,y1,x2,y2,color,width){
+  ctx.strokeStyle=color; ctx.lineWidth=width;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+}
+
+function drawOverviewGrid(){
+  const ar = CONFIG.areaBottomRight;
+  ctx.strokeStyle = CONFIG.colorOverviewGrid; ctx.lineWidth = 1;
+  for(let x=ar.x; x<=ar.x+ar.w; x+=CONFIG.overviewGridStep){
+    ctx.beginPath(); ctx.moveTo(x,ar.y); ctx.lineTo(x,ar.y+ar.h); ctx.stroke();
+  }
+  for(let y=ar.y; y<=ar.y+ar.h; y+=CONFIG.overviewGridStep){
+    ctx.beginPath(); ctx.moveTo(ar.x,y); ctx.lineTo(ar.x+ar.w,y); ctx.stroke();
+  }
+}
+
+function drawOverviewPath(){
+  if(!navFrame) return;
+  const f = navFrame, ar = CONFIG.areaBottomRight;
+  ctx.strokeStyle = CONFIG.colorPath; ctx.lineWidth = 1;
+  ctx.beginPath();
+  f.overview.forEach((p,i)=>{
+    const sx = ar.x + 8 + p[0];
+    const sy = ar.y + 8 + (40 - p[1]);
+    i===0 ? ctx.moveTo(sx,sy) : ctx.lineTo(sx,sy);
+  });
+  ctx.stroke();
+  if(f.overview_dot){
+    drawDot(ar.x + 8 + f.overview_dot[0], ar.y + 8 + (40 - f.overview_dot[1]), 3, CONFIG.colorCarFill);
+  }
+}
+
+// 帧级重绘（图形 + overview + 文字层贴图）
+let textDirty = true;
+function renderFrame(dt){
+  drawScene(dt);
+  drawOverviewPath();
+  if(popupMsg) drawPopupBg();   // 弹窗底盖在道路之上、文字层之下；无导航帧同样可弹
+  if(textDirty){
+    paintAllText();
+    textDirty = false;
+  }
+  ctx.drawImage(textLayer, 0, 0);
+}
+
+// ================= 动画循环 =================
+function animate(timestamp){
+  if(!lastTime) lastTime = timestamp;
+  const dt = Math.min((timestamp-lastTime)/1000, 0.1);
+  lastTime = timestamp;
+  if(lost && (timestamp - lostAt) > LOST_MS){
+    lost = false;          // 信号恢复
+    textDirty = true;
+  }
+  if(animRunning){
+    renderFrame(dt);
+  }
+  requestAnimationFrame(animate);
+}
+
+// ================= 交互 =================
+function invalidate(){ textDirty = true; }
+
+function loadSample(name){
+  navFrame = JSON.parse(JSON.stringify(sample_frames_json[name]));
+  document.getElementById('jsonInput').value = JSON.stringify(navFrame,null,2);
+  animOffset = 0;
+  invalidate();
+}
+
+function toggleAnimation(){ animRunning = !animRunning; }
+
+function simMessagePopup(){
+  popupMsg = {title:'微信｜张三', content:'今晚7点聚餐，地点老地方，记得准时过来。会议材料明天早上再发你一份。'};
+  invalidate();
+  if(popupTimer) clearTimeout(popupTimer);
+  popupTimer = setTimeout(function(){ popupMsg = null; invalidate(); }, POPUP_MS);
+}
+
+function clearMessagePopup(){
+  if(popupTimer) clearTimeout(popupTimer);
+  popupMsg = null;
+  invalidate();
+}
+
+function simSignalLoss(){
+  lost = true; lostAt = performance.now();
+  invalidate();
+}
+
+function clearScreen(){
+  navFrame = null; popupMsg = null;
+  if(popupTimer) clearTimeout(popupTimer);
+  invalidate();
+}
+
+function renderCurrentJson(){
+  try{
+    const txt = document.getElementById('jsonInput').value;
+    const obj = JSON.parse(txt);
+    navFrame = obj.payload && obj.msg_type ? obj.payload : obj; // 兼容协议包装(仅取 payload)
+    animOffset = 0;
+    invalidate();
+  }catch(e){
+    alert('JSON 解析错误：'+e.message);
+  }
+}
+
+function exportJson(){
+  if(!navFrame){ alert('没有导航帧'); return; }
+  document.getElementById('jsonInput').value = JSON.stringify(navFrame,null,2);
+}
+
+// ================= 启动 =================
+requestAnimationFrame(animate);
+loadSample('straight');
+</script>
+</body>
+</html>
