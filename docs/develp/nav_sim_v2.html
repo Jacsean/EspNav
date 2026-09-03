@@ -79,8 +79,10 @@ const LCD_W = 320, LCD_H = 240;
 let navFrame = null;
 let popupMsg = null;
 let popupTimer = null;
+let popupScrollTimer = null;   // 超长内容逐行滚动定时器
+const POPUP_LINE_MS = 1400;    // 逐行滚动间隔
 let roadCase = null;           // 当前路况模板（null = 行驶透视条带）
-const TP_CAR = [160,134];      // 模板模式车辆位置（车头朝上，主视图底部）
+const TP_CAR = [160,113];      // 模板模式车辆位置（车头朝上，主视图底部）；较绿路径起点(≈134)上移约一个身位，路径尾段在车后可见
 
 // 流动虚线动画状态
 let animOffset = 0;
@@ -310,7 +312,6 @@ function drawNorthArrow(x,y,color){
 function paintAllText(){
   tctx.clearRect(0,0,LCD_W,LCD_H);
   if(!navFrame){
-    if(popupMsg) paintPopupText();
     return;
   }
   const f = navFrame;
@@ -347,8 +348,7 @@ function paintAllText(){
   const ar = CONFIG.areaBottomRight;
   drawNorthArrowOnText(ar.x+80, ar.y+10, '#8f8');
   paintDotText(tctx, ar.x+80, ar.y+14, '北', '#8f8');
-  // 6) 弹窗
-  if(popupMsg) paintPopupText();
+  // 6) 弹窗内容在 renderFrame 末尾单独绘制（弹窗期间其余元素置灰、消息绿字）
   // 7) 信号中断提示
   if(lost) paintLostText();
 }
@@ -360,30 +360,33 @@ function drawNorthArrowOnText(x,y,color){
   tctx.closePath(); tctx.fill();
 }
 
-function paintPopupText(){
-  const pr = CONFIG.popupRect;
-  let title = popupMsg.title || '';
-  while(textWidth(title) > (pr.w-20)) title = title.slice(0,-1);
-  paintDotText(tctx, pr.x+10, pr.y+8, title, '#ffffff');
-  // 内容：3 行 × 17 全角（每行 17 全角宽 = 272px ≤ 280-20）
-  let content = popupMsg.content || '';
-  const linePx = pr.w - 20;
-  const maxChars = Math.floor(linePx / CONFIG.fontH); // 17
-  let remaining = content, y = pr.y + 32;
-  let lines = 0;
-  while(remaining.length>0 && lines<3){
+// 弹窗内容折行：按可视宽拆成多行（全角 16 / 半角 8）
+function wrapPopupLines(content, linePx){
+  const lines=[];
+  let remaining = content || '';
+  while(remaining.length>0){
     let take = remaining.length;
     while(take>0 && textWidth(remaining.slice(0,take)) > linePx) take--;
     if(take<=0) take=1;
-    let seg = remaining.slice(0,take);
+    lines.push(remaining.slice(0,take));
     remaining = remaining.slice(take);
-    if(lines===2 && remaining.length>0){ // 最后一行截断加省略号
-      while(seg.length>0 && textWidth(seg+'…') > linePx) seg = seg.slice(0,-1);
-      seg += '…';
-    }
-    paintDotText(tctx, pr.x+10, y, seg, '#eee');
-    y += 22; lines++;
-    if(remaining.length>0 && lines>=3) break;
+    if(lines.length>30) break; // 防御
+  }
+  return lines;
+}
+function paintPopupText(){
+  const pr = CONFIG.popupRect;
+  const lines = (popupMsg.lines && popupMsg.lines.length) ? popupMsg.lines : [''];
+  // 标题（1 行，绿）
+  let title = popupMsg.title || '';
+  while(textWidth(title) > (pr.w-20)) title = title.slice(0,-1);
+  paintDotText(ctx, pr.x+10, pr.y+8, title, '#0f0');
+  // 内容：可视 3 行窗口，超长时逐行上滚（popupMsg.top）
+  const top = popupMsg.top || 0;
+  for(let i=0;i<3;i++){
+    const li = top+i;
+    if(li>=lines.length) break;
+    paintDotText(ctx, pr.x+10, pr.y+32+i*22, lines[li], '#0f0');
   }
 }
 
@@ -416,6 +419,10 @@ function drawScene(dt){
   ctx.clip();
   // 主视图内容：路况模板（路网+绿路径） or 行驶透视条带
   if(roadCase && ROAD_CASES[roadCase]){
+    // 路缘流动虚线：按 dt 统一推进相位（同行驶条带的速度/节奏；暂停或信号中断时静止）
+    if(!lost && animRunning){
+      animOffset = (animOffset + CONFIG.roadEdgeSpeed*dt) % (CONFIG.roadEdgeDash[0]+CONFIG.roadEdgeDash[1]);
+    }
     ROAD_CASES[roadCase]();
     drawCarTriangle(TP_CAR[0], TP_CAR[1], 13);
   }else{
@@ -453,7 +460,8 @@ function drawScene(dt){
 // —— 主视图"近大远小"透视投影：模板以平面坐标定义（车头朝上、车在近端底部），
 //    绘制前按深度(y)对 x 做收缩：近端(yNear)全宽、远端(yFar)收窄；路面半宽随深度同步缩放，
 //    与原有"透视梯形道路"保持同一视觉语言（消失点 cx=160）。
-const PROJ = {cx:160, yNear:134, yFar:4, sNear:1.0, sFar:0.2};
+// 透视比例与"样例-直行"严格一致：样例梯形 近宽150(≈y130) → 远宽36(y20)，sFar=36/150=0.24
+const PROJ = {cx:160, yNear:130, yFar:20, sNear:1.0, sFar:0.24};
 function scaleAt(y){
   const t=(y-PROJ.yFar)/(PROJ.yNear-PROJ.yFar);
   return PROJ.sFar + (PROJ.sNear-PROJ.sFar)*Math.max(0,Math.min(1,t));
@@ -485,7 +493,30 @@ function polyline(pts){
   pts.forEach((p,i)=>{ i===0 ? ctx.moveTo(p[0],p[1]) : ctx.lineTo(p[0],p[1]); });
   ctx.stroke();
 }
+// 道路两侧"流动白色虚线"——与行驶条带（样例-直行）同款：CONFIG.roadEdgeDash/roadEdgeSpeed/roadEdgeLineWidth
+// 沿中心线逐段绘制；相位用全局 animOffset（drawScene 模板分支按 dt 统一推进；暂停/信号中断时静止）
 function edgeLines(center, halfW0){
+  ctx.lineCap = 'butt';
+  for(let i=0;i<center.length-1;i++){
+    const a=projP(center[i]), b=projP(center[i+1]);
+    const dx=b[0]-a[0], dy=b[1]-a[1], len=Math.hypot(dx,dy);
+    if(len<0.1) continue;
+    const nx=-dy/len, ny=dx/len;
+    const hwA=halfW0*scaleAt(center[i][1]), hwB=halfW0*scaleAt(center[i+1][1]);
+    const L1=[a[0]+nx*hwA,a[1]+ny*hwA], L2=[b[0]+nx*hwB,b[1]+ny*hwB];
+    const R1=[a[0]-nx*hwA,a[1]-ny*hwA], R2=[b[0]-nx*hwB,b[1]-ny*hwB];
+    drawFlowingDashLine(L1[0],L1[1],L2[0],L2[1],CONFIG.colorRoadEdge,CONFIG.roadEdgeLineWidth,CONFIG.roadEdgeDash,animOffset,0,0);
+    drawFlowingDashLine(R1[0],R1[1],R2[0],R2[1],CONFIG.colorRoadEdge,CONFIG.roadEdgeLineWidth,CONFIG.roadEdgeDash,animOffset,0,0);
+  }
+  ctx.lineCap='butt';
+}
+function centerDash(center){
+  ctx.strokeStyle = CONFIG.colorLaneDash; ctx.lineWidth = 1;
+  ctx.setLineDash([5,7]); polyline(proj(center)); ctx.setLineDash([]);
+}
+function branch(center, halfW){ roadPoly(fatten(center, halfW)); edgeLines(center, halfW); }
+// 非导航支路（其它路口/分叉）：静态白边线，无流动虚线
+function staticEdges(center, halfW0){
   const L=[],R=[];
   for(let i=0;i<center.length;i++){
     const a=center[Math.max(0,i-1)], b=center[i], c=center[Math.min(center.length-1,i+1)];
@@ -495,14 +526,10 @@ function edgeLines(center, halfW0){
     L.push([pb[0]+Math.cos(ang)*hw, pb[1]+Math.sin(ang)*hw]);
     R.push([pb[0]-Math.cos(ang)*hw, pb[1]-Math.sin(ang)*hw]);
   }
-  ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1;
+  ctx.strokeStyle = '#bbb'; ctx.lineWidth = 1;
   polyline(L); polyline(R);
 }
-function centerDash(center){
-  ctx.strokeStyle = CONFIG.colorLaneDash; ctx.lineWidth = 1;
-  ctx.setLineDash([5,7]); polyline(proj(center)); ctx.setLineDash([]);
-}
-function branch(center, halfW){ roadPoly(fatten(center, halfW)); edgeLines(center, halfW); }
+function branchStatic(center, halfW){ roadPoly(fatten(center, halfW)); staticEdges(center, halfW); }
 function navPath(pts){
   const pp = proj(pts);
   ctx.lineCap = 'round';
@@ -526,11 +553,11 @@ function roundedRing(cx,cy,rIn,rOut){
   ctx.beginPath(); ctx.ellipse(cx,cy,rOut*sx,rOut,0,0,Math.PI*2); ctx.fill();
   ctx.fillStyle = '#0d0d0d';
   ctx.beginPath(); ctx.ellipse(cx,cy,rIn*sx,rIn,0,0,Math.PI*2); ctx.fill();
-  ctx.strokeStyle = '#9a9a9a'; ctx.lineWidth = 2;
+  ctx.strokeStyle = '#ddd'; ctx.lineWidth = CONFIG.roadEdgeLineWidth;
   ctx.beginPath(); ctx.ellipse(cx,cy,rOut*sx,rOut,0,0,Math.PI*2); ctx.stroke();
 }
-function roadStraight(c){
-  branch(c, 24); centerDash(c);
+function roadStraight(c, halfW){
+  branch(c, halfW); centerDash(c);
 }
 const ROAD_HINTS = {
   straight:'前方800米直行', curveL:'前方弯道200米向左', curveR:'前方弯道200米向右',
@@ -542,52 +569,66 @@ const ROAD_LABEL = {
   straight:'直道', curveL:'弯道-左', curveR:'弯道-右', tLeft:'T口-左转', crossRight:'十字-右转',
   rbt2:'环岛-4出口-第2出口', rbt3:'环岛-4出口-第3出口', multi:'多岔路口', forkRight:'匝道-右出'
 };
+const TPL = {main:62, side:35, ring:27};   // 模板路面基准半宽(平面px)；近处宽度较初版增加1/3(主通行近宽≈124px)
 const ROAD_CASES = {
-  straight(){ roadStraight([[160,132],[160,8]]); navPath([[160,132],[160,8]]); },
-  curveL(){ const c=[[160,132],[160,64],[114,24]]; branch(c,22); centerDash(c); navPath(c); },
-  curveR(){ const c=[[160,132],[160,64],[206,24]]; branch(c,22); centerDash(c); navPath(c); },
+  straight(){ const c=[[160,134],[160,22]]; roadStraight(c, TPL.main); navPath(c); },
+  curveL(){ const c=[[160,134],[160,102],[150,72],[118,42],[96,22]]; branch(c,TPL.main); centerDash(c); navPath(c); },
+  curveR(){ const c=[[160,134],[160,102],[172,72],[204,42],[226,22]]; branch(c,TPL.main); centerDash(c); navPath(c); },
   tLeft(){
-    branch([[160,132],[160,58]],20); branch([[30,58],[160,58]],20);
-    centerDash([[160,132],[160,58]]);
-    navPath([[160,132],[160,58],[30,58]]);
+    branch([[160,134],[160,60]],TPL.main); branch([[24,60],[160,60]],TPL.side);
+    centerDash([[160,134],[160,60]]);
+    navPath([[160,134],[160,60],[24,60]]);
   },
   crossRight(){
-    branch([[160,132],[160,58]],18); branch([[160,58],[160,6]],18);
-    branch([[24,58],[160,58]],18); branch([[160,58],[296,58]],18);
-    centerDash([[160,132],[160,6]]);
-    navPath([[160,132],[160,58],[296,58]]);
+    // 导航道路(南→东)流动虚线；北/西支路静态（不走）
+    branch([[160,134],[160,60]],TPL.main);
+    branchStatic([[160,60],[160,22]],TPL.side);
+    branchStatic([[24,60],[160,60]],TPL.side);
+    branch([[160,60],[296,60]],TPL.side);
+    centerDash([[160,134],[160,60]]);
+    navPath([[160,134],[160,60],[296,60]]);
   },
   rbt2(){ rbtCase('E'); },
   rbt3(){ rbtCase('N'); },
   multi(){
     const cx=160, cy=58;
-    branch([[cx,132],[cx,cy]],13); branch([[cx,cy],[cx,8]],13);
-    branch([[18,cy],[cx,cy]],13); branch([[cx,cy],[302,cy]],13);
-    branch([[cx,cy],[96,8]],12);  branch([[cx,cy],[230,104]],12);
+    branch([[cx,134],[cx,cy]],TPL.main);          // 南主路(导航)
+    branchStatic([[cx,cy],[cx,22]],TPL.side);     // 北(不走)
+    branchStatic([[20,cy],[cx,cy]],TPL.side);     // 西(不走)
+    branchStatic([[cx,cy],[300,cy]],TPL.side);    // 东(不走)
+    branch([[cx,cy],[110,22]],TPL.side);          // 左前斜(导航)
+    branchStatic([[cx,cy],[236,100]],TPL.side);   // 右后(不走)
     ctx.fillStyle=CONFIG.colorRoad;
-    ctx.beginPath(); ctx.ellipse(cx,cy,15*scaleAt(cy),15,0,0,Math.PI*2); ctx.fill();
-    navPath([[cx,132],[cx,cy],[96,8]]);
+    ctx.beginPath(); ctx.ellipse(cx,cy,21*scaleAt(cy),21,0,0,Math.PI*2); ctx.fill();
+    navPath([[cx,134],[cx,cy],[110,22]]);
   },
   forkRight(){
-    branch([[160,130],[160,8]],16);
-    centerDash([[160,130],[160,8]]);
-    const f=[[160,90],[192,60],[236,28],[286,8]];
-    branch(f,10); navPath(f);
+    // 主路直行为非导航(静态)；匝道为导航路径(流动)
+    branchStatic([[160,132],[160,22]],TPL.main);
+    centerDash([[160,132],[160,22]]);
+    const f=[[160,96],[180,74],[214,46],[252,24]];
+    branch(f,TPL.side-6); navPath(f);
   }
 };
 function rbtCase(outDir){
-  const cx=160, cy=66, rOut=34, rIn=15, hw=13, rMid=26;
-  branch([[160,132],[160,100]],hw);
-  branch([[160,32],[160,8]],hw);
-  branch([[194,66],[302,66]],hw);
-  branch([[126,66],[18,66]],hw);
+  // 南引路为必经(流动)；outDir 目标出口(流动)；其它出口静态
+  const cx=160, cy=74, rOut=52, rIn=24, rMid=40, hw=24;
+  branch([[160,134],[160,126]],40);   // 南入口引路(流动)
+  if(outDir==='E'){
+    branch([[212,74],[300,74]],hw);       // 东出口(导航,流动)
+    branchStatic([[108,74],[20,74]],hw);  // 西出口(不走,静态)
+  }else{
+    branchStatic([[212,74],[300,74]],hw); // 东出口(不走,静态)
+    branchStatic([[108,74],[20,74]],hw);  // 西出口(不走,静态)
+  }
   roundedRing(cx,cy,rIn,rOut);
+  // 北向出口：环北缘(y22)朝顶边延伸出视野（透视自然），无需额外支路
   const angMap = {N:-Math.PI/2, E:0, S:Math.PI/2, W:Math.PI};
-  const aStart = Math.PI/2, aEnd = angMap[outDir];
-  let diff = aEnd - aStart;
-  const path = [[160,132],[160,100]];
+  const aStart=Math.PI/2, aEnd=angMap[outDir];
+  let diff=aEnd-aStart;
+  const path=[[160,134],[160,126]];
   path.push(...arcPts(cx,cy,rMid,aStart,aStart+diff,14));
-  path.push(outDir==='E' ? [302,66] : [160,8]);
+  path.push(outDir==='E'?[300,74]:[160,22]);
   navPath(path);
 }
 function setRoad(name){
@@ -651,12 +692,21 @@ let textDirty = true;
 function renderFrame(dt){
   drawScene(dt);
   drawOverviewPath();
-  if(popupMsg) drawPopupBg();   // 弹窗底盖在道路之上、文字层之下；无导航帧同样可弹
   if(textDirty){
     paintAllText();
     textDirty = false;
   }
   ctx.drawImage(textLayer, 0, 0);
+  // 弹窗置顶：其余元素置灰 → 弹窗底框 → 弹窗内容(绿字)；关闭后恢复
+  if(popupMsg){
+    dimScreen();
+    drawPopupBg();
+    paintPopupText();
+  }
+}
+function dimScreen(){
+  ctx.fillStyle = 'rgba(110,110,110,0.62)';
+  ctx.fillRect(0,0,LCD_W,LCD_H);
 }
 
 // ================= 动画循环 =================
@@ -686,17 +736,51 @@ function loadSample(name){
 
 function toggleAnimation(){ animRunning = !animRunning; }
 
-function simMessagePopup(){
-  popupMsg = {title:'微信｜张三', content:'今晚7点聚餐，地点老地方，记得准时过来。会议材料明天早上再发你一份。'};
+function openPopup(title, content){
+  clearPopupTimers();
+  const pr = CONFIG.popupRect;
+  const linePx = pr.w - 20;
+  const lines = wrapPopupLines(content, linePx);
+  popupMsg = {title:title, content:content, lines:lines, top:0};
   invalidate();
-  if(popupTimer) clearTimeout(popupTimer);
-  popupTimer = setTimeout(function(){ popupMsg = null; invalidate(); }, POPUP_MS);
+  const overflow = Math.max(0, lines.length - 3);   // 可视 3 行窗口之外的行数
+  if(overflow>0){
+    // 超长内容：首屏停留多 3s，之后每 1.4s 逐行上滚；滚完末屏停留后自动关闭
+    let tick = 0;
+    const step = function(){
+      tick++;
+      if(tick <= overflow){ popupMsg.top = tick; invalidate(); }
+      if(tick >= overflow){
+        popupScrollTimer = null;
+        popupTimer = setTimeout(closePopup, 2400);
+      }else{
+        popupScrollTimer = setTimeout(step, POPUP_LINE_MS);
+      }
+    };
+    popupScrollTimer = setTimeout(step, POPUP_LINE_MS + 3000);
+  }else{
+    // ≤3 行：按原 5s 静态显示后自动关闭
+    popupTimer = setTimeout(closePopup, POPUP_MS);
+  }
+}
+function closePopup(){
+  clearPopupTimers();
+  popupMsg = null;
+  invalidate();
+}
+function clearPopupTimers(){
+  if(popupTimer){ clearTimeout(popupTimer); popupTimer = null; }
+  if(popupScrollTimer){ clearInterval(popupScrollTimer); popupScrollTimer = null; }
+}
+
+function simMessagePopup(){
+  // 演示用超长消息（触发逐行滚动）
+  openPopup('微信｜张三',
+    '今晚7点聚餐，地点老地方，记得准时过来。会议材料明天早上再发你一份。另外顺路帮我取个快递，取件码稍后短信发你，谢谢。这是一条超长演示消息，用来验证弹窗逐行滚动显示的效果。');
 }
 
 function clearMessagePopup(){
-  if(popupTimer) clearTimeout(popupTimer);
-  popupMsg = null;
-  invalidate();
+  closePopup();
 }
 
 function simSignalLoss(){
@@ -705,8 +789,8 @@ function simSignalLoss(){
 }
 
 function clearScreen(){
-  navFrame = null; popupMsg = null;
-  if(popupTimer) clearTimeout(popupTimer);
+  navFrame = null;
+  closePopup();
   invalidate();
 }
 
