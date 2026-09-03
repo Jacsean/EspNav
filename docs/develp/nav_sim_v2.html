@@ -61,6 +61,7 @@
     </div>
     <div class="row">
       <button onclick="simBadge()">模拟 +1 未读/来电（右下角标）</button>
+      <button onclick="turnDemo()">模拟通过路口(右转)</button>
     </div>
     <div class="row">
       <button onclick="renderCurrentJson()">渲染下方 JSON</button>
@@ -470,6 +471,83 @@ function simBadge(){
   invalidate();
 }
 
+// ============ "模拟通过路口(右转)"演示 ============
+// 流程：行驶条带(预告) → 放大图淡入(crossRight) → 车标沿绿路径推进至出口 → 新 heading 条带
+let demoFade = -1;          // ≥0：放大图淡入透明度
+let demoCar = null;         // {pts,t}：车标沿路径推进
+let demoHandle = null;      // 演示定时器集合
+function clearDemoTimers(){
+  if(demoHandle){
+    demoHandle.forEach(function(id){ clearTimeout(id); clearInterval(id); });
+    demoHandle = null;
+  }
+  demoFade = -1; demoCar = null;
+}
+function pointOnPath(pts,t){
+  if(!pts || pts.length<2) return pts ? pts[0] : null;
+  let L=0; const segs=[];
+  for(let i=0;i<pts.length-1;i++){ const d=Math.hypot(pts[i+1][0]-pts[i][0],pts[i+1][1]-pts[i][1]); segs.push(d); L+=d; }
+  if(L<=0) return pts[0];
+  let target=t*L;
+  for(let i=0;i<segs.length;i++){
+    if(target<=segs[i]){ const r=segs[i]?target/segs[i]:0;
+      return [pts[i][0]+(pts[i+1][0]-pts[i][0])*r, pts[i][1]+(pts[i+1][1]-pts[i][1])*r]; }
+    target-=segs[i];
+  }
+  return pts[pts.length-1];
+}
+function turnDemo(){
+  clearDemoTimers();
+  const ids=[];
+  // 1) 直行接近：行驶条带 + 预告
+  navFrame = JSON.parse(JSON.stringify(sample_frames_json.straight));
+  navFrame.hint = '前方200米路口右转';
+  roadCase = null; animOffset = 0; invalidate();
+  const d = document.getElementById('modeDesc');
+  if(d) d.textContent = '演示：接近路口(右转)…';
+  // 2) 进入放大图 + 200ms 淡入
+  ids.push(setTimeout(function(){
+    roadCase = 'crossRight';
+    navFrame.hint = '前方路口右转 120米';
+    demoFade = 0.25; invalidate();
+    let steps = 0;
+    const iv = setInterval(function(){
+      steps++;
+      demoFade = Math.min(1, 0.25 + steps*0.15);
+      invalidate();
+      if(demoFade>=1) clearInterval(iv);
+    }, 40);
+    ids.push(iv);
+  }, 1200));
+  // 3) 淡入完成后车标沿绿路径推进(南→路口→东出口, 约1.5s)
+  ids.push(setTimeout(function(){
+    const pathPts = [[160,134],[160,60],[296,60]].map(projP);   // 与 crossRight navPath 同路径(投影后)
+    demoCar = {pts:pathPts, t:0};
+    const iv = setInterval(function(){
+      demoCar.t = Math.min(1, demoCar.t + 0.02);
+      invalidate();
+      if(demoCar.t>=1){ clearInterval(iv); demoCar=null; finishTurn(ids); }
+    }, 30);
+    ids.push(iv);
+  }, 1200 + 300));
+  demoHandle = ids;
+}
+function finishTurn(ids){
+  demoFade = -1;
+  // 4) 转向后新直行条带(heading=90，向东)；3s 后复位
+  navFrame = JSON.parse(JSON.stringify(sample_frames_json.straight));
+  navFrame.heading = 90;
+  navFrame.hint = '右转完成 沿路直行';
+  roadCase = null; animOffset = 0; invalidate();
+  const d = document.getElementById('modeDesc');
+  if(d) d.textContent = '演示：右转完成，沿新方向直行…(3s 后复位)';
+  ids.push(setTimeout(function(){
+    loadSample('straight');
+    if(d) d.textContent = '当前模式：行驶条带（透视梯形道路）。点下方模板按钮可在主视图切换为路况模板。';
+  }, 3200));
+  demoHandle = ids;
+}
+
 // ================= 主场景图形 =================
 function drawScene(dt){
   ctx.fillStyle = CONFIG.colorBg;
@@ -498,8 +576,14 @@ function drawScene(dt){
     if(!lost && animRunning){
       animOffset = (animOffset + CONFIG.roadEdgeSpeed*dt) % (CONFIG.roadEdgeDash[0]+CONFIG.roadEdgeDash[1]);
     }
+    // 放大图淡入（demoFade≥0 时模板以 alpha 渐显，模拟"通过路口"演示）
+    if(demoFade>=0){ ctx.save(); ctx.globalAlpha = Math.max(0.2, demoFade); }
     ROAD_CASES[roadCase]();
-    drawCarTriangle(TP_CAR[0], TP_CAR[1], 13);
+    if(demoFade>=0){ ctx.restore(); }
+    // 车标：演示推进模式沿绿路径插值移动；否则在模板引路起点
+    let carPos = TP_CAR;
+    if(demoCar){ carPos = pointOnPath(demoCar.pts, demoCar.t); }
+    drawCarTriangle(carPos[0], carPos[1], 13);
   }else{
     // 透视梯形道路
     const tra = genPerspectiveRoadTrapezoid(f.centerLine, CONFIG.roadNearWidth, CONFIG.roadFarWidth);
@@ -719,6 +803,7 @@ function rbtCase(outDir){
   navPath(path);
 }
 function setRoad(name){
+  clearDemoTimers();
   if(!navFrame){ navFrame = JSON.parse(JSON.stringify(sample_frames_json.straight)); }
   navFrame.hint = ROAD_HINTS[name] || navFrame.hint;
   roadCase = name;
@@ -815,6 +900,7 @@ function animate(timestamp){
 function invalidate(){ textDirty = true; }
 
 function loadSample(name){
+  clearDemoTimers();
   navFrame = JSON.parse(JSON.stringify(sample_frames_json[name]));
   document.getElementById('jsonInput').value = JSON.stringify(navFrame,null,2);
   animOffset = 0;
@@ -876,6 +962,7 @@ function simSignalLoss(){
 }
 
 function clearScreen(){
+  clearDemoTimers();
   navFrame = null;
   closePopup();
   invalidate();
