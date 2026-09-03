@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>ESP32 路况模板样例预览 V3｜直道·弯道·路口·环岛·匝道（B+D 方案视觉确认）</title>
+<style>
+  *{box-sizing:border-box;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+  body{background:#121212;color:#eee;padding:16px;margin:0}
+  .wrap{display:flex;gap:24px;flex-wrap:wrap}
+  canvas{border:2px solid #444;background:#000;image-rendering:pixelated}
+  .ctrl{max-width:430px}
+  h4{margin:10px 0 4px}
+  .row{margin:4px 0}
+  button{padding:6px 10px;margin:2px;border:none;border-radius:4px;background:#2563eb;color:#fff;cursor:pointer}
+  button.on{background:#16a34a;outline:2px solid #fff}
+  #desc{font-size:12px;color:#8f8;background:#111;border:1px solid #333;padding:8px;margin-top:8px;min-height:40px;white-space:pre-wrap}
+  .note{font-size:11px;color:#888;margin-top:10px;line-height:1.7}
+  .note b{color:#f88}
+</style>
+</head>
+<body>
+<h3>路况模板样例预览（B+D 方案）</h3>
+<div class="wrap">
+  <div>
+    <canvas id="cv" width="320" height="240"></canvas>
+    <div id="desc">选择右侧模板查看观感：灰色=路网，粗绿线=本车导航路径（真实走向），黄三角=本车。车头朝上。</div>
+  </div>
+  <div class="ctrl">
+    <div class="row">
+      <button onclick="show('straight')" id="b_straight">直道</button>
+      <button onclick="show('curveL')">弯道‑左</button>
+      <button onclick="show('curveR')">弯道‑右</button>
+    </div>
+    <div class="row">
+      <button onclick="show('tLeft')">T口‑左转</button>
+      <button onclick="show('tRight')">T口‑右转</button>
+      <button onclick="show('crossStraight')">十字‑直行</button>
+      <button onclick="show('crossRight')">十字‑右转</button>
+      <button onclick="show('crossLeft')">十字‑左转</button>
+    </div>
+    <div class="row">
+      <button onclick="show('rbt2')">环岛‑第2出口</button>
+      <button onclick="show('rbt3')">环岛‑第3出口</button>
+      <button onclick="show('rbt5')">环岛‑5岔‑第3出口</button>
+      <button onclick="show('multi')">多岔路口</button>
+    </div>
+    <div class="row">
+      <button onclick="show('forkRight')">匝道‑右出</button>
+      <button onclick="show('forkLeft')">匝道‑左出</button>
+    </div>
+    <div class="note">
+      本页仅确认<b>路况造型与路径叠加观感</b>（灰度路网/亮绿路径/环岛弧度/路口宽度）。<br>
+      文字渲染仍按 V2 的 16×16 点阵口径；坐标均为车头朝上屏幕像素，最终由手机端换算下发、ESP32 以同算法本地绘制。<br>
+      确认后：模板参数 schema 入协议（V1.5）、模板绘制算法 JS/C 1:1、HTML 并入主仿真。
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const W = 320, H = 240;
+const CAR = [160, 218];          // 车辆位置（车头朝上）
+const VIEW_TOP = 34;             // 信息条以下为路况视图区
+
+// ------- 绘图 helpers -------
+function clearView(){
+  ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0,VIEW_TOP,W,H-VIEW_TOP); // 视图区底色略提
+}
+function infoBar(title, sub){
+  ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,VIEW_TOP);
+  ctx.fillStyle = '#0f0'; ctx.font = '13px monospace';
+  ctx.fillText(title, 6, 15);
+  ctx.fillStyle = '#6f6'; ctx.font = '11px monospace';
+  ctx.fillText(sub, 6, 29);
+}
+function roadPoly(pts){
+  if(!pts || pts.length < 3) return;
+  ctx.fillStyle = '#6a6a6a';
+  ctx.beginPath();
+  pts.forEach((p,i)=>{ i===0 ? ctx.moveTo(p[0],p[1]) : ctx.lineTo(p[0],p[1]); });
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#8a8a8a'; ctx.lineWidth = 1; ctx.stroke();
+}
+// 中心线 → 路面多边形（左右各 halfW，顶点法线平均）
+function fatten(pts, halfW){
+  const L = [], R = [];
+  for(let i=0;i<pts.length;i++){
+    const a = pts[Math.max(0,i-1)], b = pts[i], c = pts[Math.min(pts.length-1,i+1)];
+    let ang = Math.atan2(c[1]-a[1], c[0]-a[0]) + Math.PI/2;
+    const nx = Math.cos(ang), ny = Math.sin(ang);
+    L.push([b[0]+nx*halfW, b[1]+ny*halfW]);
+    R.push([b[0]-nx*halfW, b[1]-ny*halfW]);
+  }
+  return L.concat(R.reverse());
+}
+// 路面（沿中心线）+ 中心虚线 + 边缘线
+function roadAlong(center, halfW, dashed=true){
+  roadPoly(fatten(center, halfW));
+  edgeLines(center, halfW);
+  if(dashed) centerDash(center);
+}
+function edgeLines(center, halfW){
+  const L=[],R=[];
+  for(let i=0;i<center.length;i++){
+    const a=center[Math.max(0,i-1)], b=center[i], c=center[Math.min(center.length-1,i+1)];
+    const ang=Math.atan2(c[1]-a[1],c[0]-a[0])+Math.PI/2;
+    L.push([b[0]+Math.cos(ang)*halfW, b[1]+Math.sin(ang)*halfW]);
+    R.push([b[0]-Math.cos(ang)*halfW, b[1]-Math.sin(ang)*halfW]);
+  }
+  ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1;
+  polyline(L); polyline(R);
+}
+function polyline(pts){
+  ctx.beginPath();
+  pts.forEach((p,i)=>{ i===0 ? ctx.moveTo(p[0],p[1]) : ctx.lineTo(p[0],p[1]); });
+  ctx.stroke();
+}
+function centerDash(center){
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.setLineDash([5,7]);
+  polyline(center); ctx.setLineDash([]);
+}
+// 导航路径：暗绿打底 + 亮绿（醒目叠加）
+function navPath(pts){
+  ctx.strokeStyle = '#005a00'; ctx.lineWidth = 7; ctx.lineCap='round';
+  polyline(pts);
+  ctx.strokeStyle = '#00e400'; ctx.lineWidth = 3.5;
+  polyline(pts);
+  ctx.lineCap='butt';
+}
+// 连接车位的引线（未选择支路不发亮；入口段并入 navPath 时不要）
+function drawCar(){
+  const x=CAR[0], y=CAR[1];
+  ctx.fillStyle = '#ff0';
+  ctx.beginPath();
+  ctx.moveTo(x, y-12); ctx.lineTo(x-8, y+9); ctx.lineTo(x+8, y+9);
+  ctx.closePath(); ctx.fill();
+}
+function roundedRing(cx,cy,rIn,rOut,fill){
+  ctx.fillStyle = fill;
+  ctx.beginPath(); ctx.arc(cx,cy,rOut,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#111';
+  ctx.beginPath(); ctx.arc(cx,cy,rIn,0,Math.PI*2); ctx.fill();
+}
+// 圆弧折线（用于路径与路面，与固件离散化一致）
+function arcPts(cx,cy,r,a0,a1,n){
+  const p=[];
+  if(a1<a0) a1 += Math.PI*2;
+  for(let i=0;i<=n;i++){
+    const a = a0 + (a1-a0)*i/n;
+    p.push([cx+Math.cos(a)*r, cy+Math.sin(a)*r]);
+  }
+  return p;
+}
+function branch(center, halfW){ roadAlong(center, halfW, false); }
+
+// ------- 各模板渲染 -------
+const CASES = {};
+
+// 直道：车前方一条直路
+CASES.straight = function(){
+  infoBar('直道', '直行 800 m');
+  const c = [[CAR[0],CAR[1]-10],[CAR[0],VIEW_TOP+6]];
+  roadAlong(c, 30);
+  navPath(c);
+};
+// 弯道：先直后弯
+function curveCase(dir){
+  const c = dir==='L'
+    ? [[160,208],[160,120],[120,70],[70,30]]
+    : [[160,208],[160,120],[200,70],[250,30]];
+  infoBar('弯道-'+(dir==='L'?'左':'右'), '前方弯道 200 m');
+  roadAlong(c, 26);
+  navPath(c);
+}
+CASES.curveL = ()=>curveCase('L');
+CASES.curveR = ()=>curveCase('R');
+
+// 三岔 T 口
+function tCase(dir){
+  infoBar('T口-'+(dir==='L'?'左转':'右转'), '前方 150 m 左/右转');
+  // 竖向主路
+  const vert = [[160,208],[160,96]];
+  roadAlong(vert, 24, false);
+  // 横向支路（左或右延伸）
+  const horz = dir==='L'
+    ? [[160,96],[40,96]]
+    : [[160,96],[280,96]];
+  roadAlong(horz, 24, false);
+  ctx.strokeStyle='#fff'; ctx.lineWidth=1; ctx.setLineDash([5,7]);
+  polyline(vert); ctx.setLineDash([]);
+  // 导航路径：主路到路口后转
+  const path = dir==='L'
+    ? [[160,208],[160,96],[40,96]]
+    : [[160,208],[160,96],[280,96]];
+  navPath(path);
+}
+CASES.tLeft = ()=>tCase('L');
+CASES.tRight = ()=>tCase('R');
+
+// 十字
+function crossCase(mode){
+  infoBar('十字路口', {straight:'直行 500 m', right:'右转 120 m', left:'左转 120 m'}[mode]);
+  const cx=160, cy=104;
+  // 四向路
+  roadAlong([[cx,208],[cx,cy]], 24, false);
+  roadAlong([[cx,cy],[cx,20]], 24, false);
+  branch([[20,cy],[cx,cy]], 24);
+  branch([[cx,cy],[300,cy]], 24);
+  ctx.strokeStyle='#fff'; ctx.lineWidth=1; ctx.setLineDash([5,7]);
+  polyline([[cx,208],[cx,20]]); ctx.setLineDash([]);
+  const path = mode==='straight' ? [[cx,208],[cx,cy],[cx,20]]
+    : mode==='right' ? [[cx,208],[cx,cy],[300,cy]]
+    : [[cx,208],[cx,cy],[20,cy]];
+  navPath(path);
+}
+CASES.crossStraight = ()=>crossCase('straight');
+CASES.crossRight = ()=>crossCase('right');
+CASES.crossLeft = ()=>crossCase('left');
+
+// 环岛（通用：可配出口方向列表与路径出口）
+function roundaboutCase(label, exits, outDir, extra){
+  infoBar(label, extra || ('环岛 300 m · 第'+(exits.indexOf(outDir)+1)+'出口驶出'));
+  const cx=160, cy=112;
+  const rOut=44, rIn=24, roadHalf=20;
+  // 入/出口支路（每个出口画一段：南口接入车）
+  exits.forEach(dir=>{
+    let c;
+    if(dir==='S') c=[[cx,cy+rOut],[cx,cy+rOut+60]];
+    else if(dir==='N') c=[[cx,cy-rOut],[cx,cy-rOut-60]];
+    else if(dir==='E') c=[[cx+rOut,cy],[cx+rOut+60,cy]];
+    else if(dir==='W') c=[[cx-rOut,cy],[cx-rOut-60,cy]];
+    else if(dir==='NE') c=[[cx+rOut*0.7,cy-rOut*0.7],[cx+rOut*0.7+50,cy-rOut*0.7-34]];
+    branch(c, roadHalf);
+  });
+  // 环形路面 + 内岛
+  roundedRing(cx,cy,rIn,rOut,'#6a6a6a');
+  ctx.strokeStyle='#999'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.arc(cx,cy,rOut,0,Math.PI*2); ctx.stroke();
+  // 南口到车（本车所在引路）
+  branch([[CAR[0],CAR[1]-10],[cx,cy+rOut]], roadHalf);
+  // 导航路径：入口 → 环内弧(按出口方向) → 驶出支路
+  const angMap = {S:Math.PI/2, N:-Math.PI/2, E:0, W:Math.PI, NE:-Math.PI/4};
+  const rMid = 34;
+  const path = [[CAR[0],CAR[1]-10],[cx,cy+rOut]];
+  // 从入口角(S=90°)按最近方向转到出口角
+  const aStart = Math.PI/2;
+  const aEnd = angMap[outDir];
+  let diff = aEnd - aStart;
+  while(diff >  Math.PI) diff -= 2*Math.PI;
+  while(diff < -Math.PI) diff += 2*Math.PI;
+  path.push(...arcPts(cx,cy,rMid,aStart,aStart+diff,14));
+  if(outDir==='E') path.push([cx+rOut+60,cy]);
+  else if(outDir==='N') path.push([cx,cy-rOut-60]);
+  else if(outDir==='W') path.push([cx-rOut-60,cy]);
+  else if(outDir==='NE') path.push([cx+rOut*0.7+50,cy-rOut*0.7-34]);
+  else path.push([cx,cy+rOut+60]);
+  navPath(path);
+}
+CASES.rbt2 = ()=>roundaboutCase('环岛 · 4出口', ['S','E','N','W'], 'E', '第2出口=东 · 右转');
+CASES.rbt3 = ()=>roundaboutCase('环岛 · 4出口', ['S','E','N','W'], 'N', '第3出口=北 · 直行');
+CASES.rbt5 = ()=>roundaboutCase('环岛 · 5岔口', ['S','E','NE','N','W'], 'NE', '第3出口=东北斜出');
+
+// 多岔（5 支）
+CASES.multi = function(){
+  infoBar('多岔路口', '前方 150 m 走左前支路');
+  const cx=160, cy=110;
+  branch([[cx,208],[cx,cy]], 20);        // 南入（车方向）
+  branch([[cx,cy],[cx,18]], 20);         // 北
+  branch([[cx,cy],[296,cy]], 20);        // 东
+  branch([[cx,cy],[24,cy]], 20);         // 西
+  branch([[cx,cy],[232,34]], 18);        // 东北斜
+  branch([[cx,cy],[88,34]], 18);         // 西北斜
+  // 交汇区
+  ctx.fillStyle='#6a6a6a';
+  ctx.beginPath(); ctx.arc(cx,cy,22,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='#8a8a8a'; ctx.stroke();
+  navPath([[160,208],[cx,cy],[88,34]]);
+};
+
+// 匝道
+function forkCase(dir){
+  infoBar('匝道-'+(dir==='R'?'右出':'左出'), '靠右/左驶出 400 m');
+  const main = [[160,210],[160,20]];
+  roadAlong(main, 20, false);
+  ctx.strokeStyle='#fff'; ctx.lineWidth=1; ctx.setLineDash([5,7]);
+  polyline(main); ctx.setLineDash([]);
+  // 分出匝道
+  const fork = dir==='R'
+    ? [[160,150],[196,120],[240,86],[285,52]]
+    : [[160,150],[124,120],[80,86],[35,52]];
+  roadAlong(fork, 15, false);
+  navPath(fork);
+}
+CASES.forkRight = ()=>forkCase('R');
+CASES.forkLeft = ()=>forkCase('L');
+
+// ------- 渲染入口 -------
+const META = {
+  straight:['直道','直行','b_straight'],
+  curveL:['弯道-左','弯道',''], curveR:['弯道-右','弯道',''],
+  tLeft:['T口-左转','T口',''], tRight:['T口-右转','T口',''],
+  crossStraight:['十字-直行','十字',''], crossRight:['十字-右转','十字',''], crossLeft:['十字-左转','十字',''],
+  rbt2:['环岛-第2出口','环岛',''], rbt3:['环岛-第3出口','环岛',''], rbt5:['环岛5岔-第3出口','环岛',''],
+  multi:['多岔','多岔',''], forkRight:['匝道-右','匝道',''], forkLeft:['匝道-左','匝道','']
+};
+function show(name){
+  if(!CASES[name]) return;
+  clearView();
+  CASES[name]();
+  drawCar();
+  const meta = META[name] || [name,'',''];
+  document.getElementById('desc').textContent = '当前：' + meta[0] + '（类型组：' + meta[1] + '）—— 灰色=路网；粗亮绿=导航路径（真实走向，叠在路网上）；黄三角=本车（车头朝上）。';
+}
+// 默认展示
+show('straight');
+</script>
+</body>
+</html>

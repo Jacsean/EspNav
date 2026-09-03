@@ -38,6 +38,21 @@
       <button onclick="loadSample('curveRoad')">样例‑弯道</button>
       <button onclick="toggleAnimation()">暂停/播放流动动画</button>
     </div>
+    <div id="modeDesc" class="info">当前模式：行驶条带（透视梯形道路）。点下方模板按钮可在主视图切换为路况模板。</div>
+    <div class="row"><b style="color:#8f8">路况模板（主视图）</b>
+      <button onclick="setRoad('straight')">直道</button>
+      <button onclick="setRoad('curveL')">弯道左</button>
+      <button onclick="setRoad('curveR')">弯道右</button>
+      <button onclick="setRoad('rbt2')">环岛2出口</button>
+      <button onclick="setRoad('rbt3')">环岛3出口</button>
+    </div>
+    <div class="row">
+      <button onclick="setRoad('tLeft')">T口左</button>
+      <button onclick="setRoad('crossRight')">十字右</button>
+      <button onclick="setRoad('multi')">多岔</button>
+      <button onclick="setRoad('forkRight')">匝道右</button>
+      <button onclick="exitRoad()">退出模板</button>
+    </div>
     <div class="row">
       <button onclick="simMessagePopup()">模拟消息弹窗(5s 自动关)</button>
       <button onclick="clearMessagePopup()">立即关闭弹窗</button>
@@ -64,6 +79,8 @@ const LCD_W = 320, LCD_H = 240;
 let navFrame = null;
 let popupMsg = null;
 let popupTimer = null;
+let roadCase = null;           // 当前路况模板（null = 行驶透视条带）
+const TP_CAR = [160,134];      // 模板模式车辆位置（车头朝上，主视图底部）
 
 // 流动虚线动画状态
 let animOffset = 0;
@@ -397,31 +414,196 @@ function drawScene(dt){
   ctx.beginPath();
   ctx.rect(CONFIG.areaMain.x,CONFIG.areaMain.y,CONFIG.areaMain.w,CONFIG.areaMain.h);
   ctx.clip();
-  // 透视梯形道路
-  const tra = genPerspectiveRoadTrapezoid(f.centerLine, CONFIG.roadNearWidth, CONFIG.roadFarWidth);
-  if(tra){
-    fillPolygon(tra.trapezoid, CONFIG.colorRoad);
-    if(!lost && animRunning){
-      animOffset = drawFlowingDashLine(tra.nearLeft[0],tra.nearLeft[1],tra.farLeft[0],tra.farLeft[1],
-        CONFIG.colorRoadEdge,CONFIG.roadEdgeLineWidth,CONFIG.roadEdgeDash,animOffset,CONFIG.roadEdgeSpeed,dt);
-      drawFlowingDashLine(tra.nearRight[0],tra.nearRight[1],tra.farRight[0],tra.farRight[1],
-        CONFIG.colorRoadEdge,CONFIG.roadEdgeLineWidth,CONFIG.roadEdgeDash,animOffset,CONFIG.roadEdgeSpeed,dt);
+  // 主视图内容：路况模板（路网+绿路径） or 行驶透视条带
+  if(roadCase && ROAD_CASES[roadCase]){
+    ROAD_CASES[roadCase]();
+    drawCarTriangle(TP_CAR[0], TP_CAR[1], 13);
+  }else{
+    // 透视梯形道路
+    const tra = genPerspectiveRoadTrapezoid(f.centerLine, CONFIG.roadNearWidth, CONFIG.roadFarWidth);
+    if(tra){
+      fillPolygon(tra.trapezoid, CONFIG.colorRoad);
+      if(!lost && animRunning){
+        animOffset = drawFlowingDashLine(tra.nearLeft[0],tra.nearLeft[1],tra.farLeft[0],tra.farLeft[1],
+          CONFIG.colorRoadEdge,CONFIG.roadEdgeLineWidth,CONFIG.roadEdgeDash,animOffset,CONFIG.roadEdgeSpeed,dt);
+        drawFlowingDashLine(tra.nearRight[0],tra.nearRight[1],tra.farRight[0],tra.farRight[1],
+          CONFIG.colorRoadEdge,CONFIG.roadEdgeLineWidth,CONFIG.roadEdgeDash,animOffset,CONFIG.roadEdgeSpeed,dt);
+      }
+      // 车道中线虚线
+      for(let i=0;i<f.centerLine.length-1;i++){
+        drawDashedLine(f.centerLine[i][0],f.centerLine[i][1],f.centerLine[i+1][0],f.centerLine[i+1][1],CONFIG.colorLaneDash,5,6);
+      }
     }
-    // 车道中线虚线
-    for(let i=0;i<f.centerLine.length-1;i++){
-      drawDashedLine(f.centerLine[i][0],f.centerLine[i][1],f.centerLine[i+1][0],f.centerLine[i+1][1],CONFIG.colorLaneDash,5,6);
+    // 已走/未走路径
+    for(let i=0;i<f.pastCenter.length-1;i++){
+      drawSolidLine(f.pastCenter[i][0],f.pastCenter[i][1],f.pastCenter[i+1][0],f.pastCenter[i+1][1],CONFIG.colorPath,3);
     }
+    for(let i=0;i<f.routeCenter.length-1;i++){
+      drawSolidLine(f.routeCenter[i][0],f.routeCenter[i][1],f.routeCenter[i+1][0],f.routeCenter[i+1][1],CONFIG.colorPath,3);
+    }
+    // 车辆三角
+    drawCarTriangle(f.pos[0], f.pos[1], 14);
   }
-  // 已走/未走路径
-  for(let i=0;i<f.pastCenter.length-1;i++){
-    drawSolidLine(f.pastCenter[i][0],f.pastCenter[i][1],f.pastCenter[i+1][0],f.pastCenter[i+1][1],CONFIG.colorPath,3);
-  }
-  for(let i=0;i<f.routeCenter.length-1;i++){
-    drawSolidLine(f.routeCenter[i][0],f.routeCenter[i][1],f.routeCenter[i+1][0],f.routeCenter[i+1][1],CONFIG.colorPath,3);
-  }
-  // 车辆三角
-  drawCarTriangle(f.pos[0], f.pos[1], 14);
   ctx.restore();
+}
+
+// ================= 路况模板引擎（主视图 320×150，车头朝上） =================
+// 视觉：灰=路网，粗亮绿=导航路径(真实走向叠层)，黄三角=本车
+// 注意：模板绘制算法将来在 ESP32 端以同逻辑(离散化)实现，坐标由手机端换算下发。
+// —— 主视图"近大远小"透视投影：模板以平面坐标定义（车头朝上、车在近端底部），
+//    绘制前按深度(y)对 x 做收缩：近端(yNear)全宽、远端(yFar)收窄；路面半宽随深度同步缩放，
+//    与原有"透视梯形道路"保持同一视觉语言（消失点 cx=160）。
+const PROJ = {cx:160, yNear:134, yFar:4, sNear:1.0, sFar:0.2};
+function scaleAt(y){
+  const t=(y-PROJ.yFar)/(PROJ.yNear-PROJ.yFar);
+  return PROJ.sFar + (PROJ.sNear-PROJ.sFar)*Math.max(0,Math.min(1,t));
+}
+function projP(p){ const s=scaleAt(p[1]); return [PROJ.cx+(p[0]-PROJ.cx)*s, p[1]]; }
+function proj(pts){ return pts.map(projP); }
+function roadPoly(pts){
+  if(!pts || pts.length < 3) return;
+  ctx.fillStyle = CONFIG.colorRoad;
+  ctx.beginPath();
+  pts.forEach((p,i)=>{ i===0 ? ctx.moveTo(p[0],p[1]) : ctx.lineTo(p[0],p[1]); });
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#9a9a9a'; ctx.lineWidth = 1; ctx.stroke();
+}
+function fatten(pts, halfW0){
+  const L=[], R=[];
+  for(let i=0;i<pts.length;i++){
+    const a=pts[Math.max(0,i-1)], b=pts[i], c=pts[Math.min(pts.length-1,i+1)];
+    const pa=projP(a), pb=projP(b), pc=projP(c);
+    const ang=Math.atan2(pc[1]-pa[1],pc[0]-pa[0])+Math.PI/2;
+    const hw=halfW0*scaleAt(b[1]);
+    L.push([pb[0]+Math.cos(ang)*hw, pb[1]+Math.sin(ang)*hw]);
+    R.push([pb[0]-Math.cos(ang)*hw, pb[1]-Math.sin(ang)*hw]);
+  }
+  return L.concat(R.reverse());
+}
+function polyline(pts){
+  ctx.beginPath();
+  pts.forEach((p,i)=>{ i===0 ? ctx.moveTo(p[0],p[1]) : ctx.lineTo(p[0],p[1]); });
+  ctx.stroke();
+}
+function edgeLines(center, halfW0){
+  const L=[],R=[];
+  for(let i=0;i<center.length;i++){
+    const a=center[Math.max(0,i-1)], b=center[i], c=center[Math.min(center.length-1,i+1)];
+    const pa=projP(a), pb=projP(b), pc=projP(c);
+    const ang=Math.atan2(pc[1]-pa[1],pc[0]-pa[0])+Math.PI/2;
+    const hw=halfW0*scaleAt(b[1]);
+    L.push([pb[0]+Math.cos(ang)*hw, pb[1]+Math.sin(ang)*hw]);
+    R.push([pb[0]-Math.cos(ang)*hw, pb[1]-Math.sin(ang)*hw]);
+  }
+  ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1;
+  polyline(L); polyline(R);
+}
+function centerDash(center){
+  ctx.strokeStyle = CONFIG.colorLaneDash; ctx.lineWidth = 1;
+  ctx.setLineDash([5,7]); polyline(proj(center)); ctx.setLineDash([]);
+}
+function branch(center, halfW){ roadPoly(fatten(center, halfW)); edgeLines(center, halfW); }
+function navPath(pts){
+  const pp = proj(pts);
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#004d00'; ctx.lineWidth = 6.5; polyline(pp);
+  ctx.strokeStyle = CONFIG.colorPath; ctx.lineWidth = 3.2; polyline(pp);
+  ctx.lineCap = 'butt';
+}
+function arcPts(cx,cy,r,a0,a1,n){
+  const p=[];
+  if(a1<a0) a1 += Math.PI*2;
+  for(let i=0;i<=n;i++){
+    const a=a0+(a1-a0)*i/n;
+    p.push([cx+Math.cos(a)*r, cy+Math.sin(a)*r]);
+  }
+  return p;
+}
+function roundedRing(cx,cy,rIn,rOut){
+  // 透视下地面上的圆 → 椭圆（横向半轴按该深度收缩）
+  const sx=scaleAt(cy);
+  ctx.fillStyle = CONFIG.colorRoad;
+  ctx.beginPath(); ctx.ellipse(cx,cy,rOut*sx,rOut,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#0d0d0d';
+  ctx.beginPath(); ctx.ellipse(cx,cy,rIn*sx,rIn,0,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle = '#9a9a9a'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.ellipse(cx,cy,rOut*sx,rOut,0,0,Math.PI*2); ctx.stroke();
+}
+function roadStraight(c){
+  branch(c, 24); centerDash(c);
+}
+const ROAD_HINTS = {
+  straight:'前方800米直行', curveL:'前方弯道200米向左', curveR:'前方弯道200米向右',
+  tLeft:'前方150米路口左转', crossRight:'十字路口右转 120米',
+  rbt2:'前方300米环岛第2出口驶出', rbt3:'前方300米环岛第3出口驶出',
+  multi:'多岔路口走左侧支路', forkRight:'靠右驶出匝道 400米'
+};
+const ROAD_LABEL = {
+  straight:'直道', curveL:'弯道-左', curveR:'弯道-右', tLeft:'T口-左转', crossRight:'十字-右转',
+  rbt2:'环岛-4出口-第2出口', rbt3:'环岛-4出口-第3出口', multi:'多岔路口', forkRight:'匝道-右出'
+};
+const ROAD_CASES = {
+  straight(){ roadStraight([[160,132],[160,8]]); navPath([[160,132],[160,8]]); },
+  curveL(){ const c=[[160,132],[160,64],[114,24]]; branch(c,22); centerDash(c); navPath(c); },
+  curveR(){ const c=[[160,132],[160,64],[206,24]]; branch(c,22); centerDash(c); navPath(c); },
+  tLeft(){
+    branch([[160,132],[160,58]],20); branch([[30,58],[160,58]],20);
+    centerDash([[160,132],[160,58]]);
+    navPath([[160,132],[160,58],[30,58]]);
+  },
+  crossRight(){
+    branch([[160,132],[160,58]],18); branch([[160,58],[160,6]],18);
+    branch([[24,58],[160,58]],18); branch([[160,58],[296,58]],18);
+    centerDash([[160,132],[160,6]]);
+    navPath([[160,132],[160,58],[296,58]]);
+  },
+  rbt2(){ rbtCase('E'); },
+  rbt3(){ rbtCase('N'); },
+  multi(){
+    const cx=160, cy=58;
+    branch([[cx,132],[cx,cy]],13); branch([[cx,cy],[cx,8]],13);
+    branch([[18,cy],[cx,cy]],13); branch([[cx,cy],[302,cy]],13);
+    branch([[cx,cy],[96,8]],12);  branch([[cx,cy],[230,104]],12);
+    ctx.fillStyle=CONFIG.colorRoad;
+    ctx.beginPath(); ctx.ellipse(cx,cy,15*scaleAt(cy),15,0,0,Math.PI*2); ctx.fill();
+    navPath([[cx,132],[cx,cy],[96,8]]);
+  },
+  forkRight(){
+    branch([[160,130],[160,8]],16);
+    centerDash([[160,130],[160,8]]);
+    const f=[[160,90],[192,60],[236,28],[286,8]];
+    branch(f,10); navPath(f);
+  }
+};
+function rbtCase(outDir){
+  const cx=160, cy=66, rOut=34, rIn=15, hw=13, rMid=26;
+  branch([[160,132],[160,100]],hw);
+  branch([[160,32],[160,8]],hw);
+  branch([[194,66],[302,66]],hw);
+  branch([[126,66],[18,66]],hw);
+  roundedRing(cx,cy,rIn,rOut);
+  const angMap = {N:-Math.PI/2, E:0, S:Math.PI/2, W:Math.PI};
+  const aStart = Math.PI/2, aEnd = angMap[outDir];
+  let diff = aEnd - aStart;
+  const path = [[160,132],[160,100]];
+  path.push(...arcPts(cx,cy,rMid,aStart,aStart+diff,14));
+  path.push(outDir==='E' ? [302,66] : [160,8]);
+  navPath(path);
+}
+function setRoad(name){
+  if(!navFrame){ navFrame = JSON.parse(JSON.stringify(sample_frames_json.straight)); }
+  navFrame.hint = ROAD_HINTS[name] || navFrame.hint;
+  roadCase = name;
+  animOffset = 0;
+  invalidate();
+  const d = document.getElementById('modeDesc');
+  if(d) d.textContent = '当前模式：路况模板 - ' + (ROAD_LABEL[name]||name) + '（主视图=模板路网+绿路径；点"退出模板"恢复行驶条带）';
+}
+function exitRoad(){
+  roadCase = null;
+  loadSample('straight');
+  const d = document.getElementById('modeDesc');
+  if(d) d.textContent = '当前模式：行驶条带（透视梯形道路）';
 }
 
 function drawPopupBg(){
