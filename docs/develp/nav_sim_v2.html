@@ -546,15 +546,23 @@ function arcPts(cx,cy,r,a0,a1,n){
   }
   return p;
 }
-function roundedRing(cx,cy,rIn,rOut){
-  // 透视下地面上的圆 → 椭圆（横向半轴按该深度收缩）
-  const sx=scaleAt(cy);
+// 椭圆参数角弧线折线（θ: 南=+90° 东=0° 北=-90° 西=180°）；用于环岛行驶弧（沿横椭圆环带中线）
+function ellArcPts(cx,cy,a,b,th0,th1,n){
+  const p=[];
+  for(let i=0;i<=n;i++){
+    const th=th0+(th1-th0)*i/n;
+    p.push([cx+a*Math.cos(th), cy+b*Math.sin(th)]);
+  }
+  return p;
+}
+// 环岛路面：透视地面圆环近似为"横椭圆"（长轴水平 a > 垂直半轴 b），t=环带厚；内岛为深色
+function roundedRing(cx,cy,a,b,t){
   ctx.fillStyle = CONFIG.colorRoad;
-  ctx.beginPath(); ctx.ellipse(cx,cy,rOut*sx,rOut,0,0,Math.PI*2); ctx.fill();
-  ctx.fillStyle = '#0d0d0d';
-  ctx.beginPath(); ctx.ellipse(cx,cy,rIn*sx,rIn,0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx,cy,a,b,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#0d0d0d';               // 内岛
+  ctx.beginPath(); ctx.ellipse(cx,cy,a-t,b-t,0,0,Math.PI*2); ctx.fill();
   ctx.strokeStyle = '#ddd'; ctx.lineWidth = CONFIG.roadEdgeLineWidth;
-  ctx.beginPath(); ctx.ellipse(cx,cy,rOut*sx,rOut,0,0,Math.PI*2); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(cx,cy,a,b,0,0,Math.PI*2); ctx.stroke();
 }
 function roadStraight(c, halfW){
   branch(c, halfW); centerDash(c);
@@ -611,24 +619,27 @@ const ROAD_CASES = {
   }
 };
 function rbtCase(outDir){
-  // 南引路为必经(流动)；outDir 目标出口(流动)；其它出口静态
-  const cx=160, cy=74, rOut=52, rIn=24, rMid=40, hw=24;
-  branch([[160,134],[160,126]],40);   // 南入口引路(流动)
-  if(outDir==='E'){
-    branch([[212,74],[300,74]],hw);       // 东出口(导航,流动)
-    branchStatic([[108,74],[20,74]],hw);  // 西出口(不走,静态)
-  }else{
-    branchStatic([[212,74],[300,74]],hw); // 东出口(不走,静态)
-    branchStatic([[108,74],[20,74]],hw);  // 西出口(不走,静态)
-  }
-  roundedRing(cx,cy,rIn,rOut);
-  // 北向出口：环北缘(y22)朝顶边延伸出视野（透视自然），无需额外支路
-  const angMap = {N:-Math.PI/2, E:0, S:Math.PI/2, W:Math.PI};
-  const aStart=Math.PI/2, aEnd=angMap[outDir];
-  let diff=aEnd-aStart;
-  const path=[[160,134],[160,126]];
-  path.push(...arcPts(cx,cy,rMid,aStart,aStart+diff,14));
-  path.push(outDir==='E'?[300,74]:[160,22]);
+  // 环岛：透视地面圆环近似横椭圆（长轴水平 a=58 > 垂直半轴 b=34），环带厚 t=20
+  const cx=160, cy=84, a=58, b=34, t=20, rw=18;
+  const isE = outDir==='E', isN = outDir==='N';
+  // 南入口引路(必经,流动)：车(134) → 环底(cy+b)
+  branch([[160,134],[160,cy+b]], 36);
+  // 东/西出口（仅东可为目标）
+  if(isE){ branch([[cx+a,cy],[300,cy]], rw); }
+  else{   branchStatic([[cx+a,cy],[300,cy]], rw); }
+  branchStatic([[cx-a,cy],[20,cy]], rw);
+  // 北出口短段（环顶 → 顶部，仅 N 为目标时流动）
+  if(isN){ branch([[cx,cy-b],[160,22]], rw); }
+  else{   branchStatic([[cx,cy-b],[160,22]], rw); }
+  // 环岛路面（横椭圆）与内岛
+  roundedRing(cx,cy,a,b,t);
+  // 行驶弧：沿环带中线（横椭圆参数角）从南转到出口；θ: 南=90° 东=0° 北=-90°
+  const aM=a-t/2, bM=b-t/2;
+  const th0=Math.PI/2;
+  const th1 = isE ? 0 : (isN ? -Math.PI/2 : Math.PI);
+  const path=[[160,134],[160,cy+b]];
+  path.push(...ellArcPts(cx,cy,aM,bM,th0,th1,16));
+  path.push(isE ? [cx+a,cy] : [cx,cy-b]);
   navPath(path);
 }
 function setRoad(name){
