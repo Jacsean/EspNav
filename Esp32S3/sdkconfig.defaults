@@ -1,0 +1,2 @@
+# 骨架阶段最小配置（WiFi/NimBLE/PSRAM 等随模块实现逐步加入，避免未知符号）
+CONFIG_IDF_TARGET="esp32s3"
