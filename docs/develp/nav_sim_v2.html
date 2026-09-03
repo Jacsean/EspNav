@@ -62,6 +62,7 @@
     <div class="row">
       <button onclick="simBadge()">模拟 +1 未读/来电（右下角标）</button>
       <button onclick="turnDemo()">模拟通过路口(右转)</button>
+      <button id="btnRoute" onclick="routeToggle()">帧流演示·双路口链</button>
     </div>
     <div class="row">
       <button onclick="renderCurrentJson()">渲染下方 JSON</button>
@@ -481,6 +482,7 @@ function clearDemoTimers(){
     demoHandle = null;
   }
   demoFade = -1; demoCar = null;
+  routeStop();
 }
 function pointOnPath(pts,t){
   if(!pts || pts.length<2) return pts ? pts[0] : null;
@@ -545,6 +547,100 @@ function finishTurn(ids){
     if(d) d.textContent = '当前模式：行驶条带（透视梯形道路）。点下方模板按钮可在主视图切换为路况模板。';
   }, 3200));
   demoHandle = ids;
+}
+
+/* ============ 帧流实时演示·多路口链（方案 A） ============
+ * 模拟手机端按 10fps 连续下发 NAV_FRAME（road 字段附加/移除），驱动 readRoad 实时渲染，
+ * 验证技术路径 §1.6：直行接近 → 放大图淡入 → 车标沿绿路径推进 → 驶离换 heading 条带(稳定窗口)
+ * → 接近下一路口。时间已压缩（非真实车速/里程）；真实帧生成在手机端（实施计划阶段4）。
+ */
+const ROUTE_DEMO = {
+  title:'双路口链：T口左转 → 直行稳定 → 十字右转',
+  segs:[
+    {kind:'strip', heading:0,   turn_dist:500, hint:'前方500米路口左转', dur:4000},
+    {kind:'road',  heading:0,   road:'tLeft',  hint:'前方120米路口左转', dur:2600},
+    {kind:'strip', heading:270, turn_dist:0,   hint:'左转完成 沿路直行', dur:3000},
+    {kind:'strip', heading:270, turn_dist:450, hint:'前方450米路口右转', dur:3600},
+    {kind:'road',  heading:270, road:'crossRight', hint:'前方120米路口右转', dur:2600},
+    {kind:'strip', heading:0,   turn_dist:0,   hint:'右转完成 沿路直行', dur:2600}
+  ]
+};
+let routePlay = null;      // {si, segT, base, handle}
+function routeStop(){
+  if(!routePlay) return;
+  clearInterval(routePlay.handle);
+  routePlay = null;
+  demoCar = null; demoFade = -1;
+  const b = document.getElementById('btnRoute');
+  if(b) b.textContent = '帧流演示·双路口链';
+}
+function routeToggle(){
+  if(routePlay){ routeStop(); const d=document.getElementById('modeDesc'); if(d) d.textContent='帧流演示已停止。'; invalidate(); return; }
+  routeStart();
+}
+function routeStart(){
+  clearDemoTimers();                       // 内部调 routeStop()（当前为空）并清其它演示
+  const base = JSON.parse(JSON.stringify(sample_frames_json.straight));
+  routePlay = {si:0, segT:0, base:base};
+  const b = document.getElementById('btnRoute');
+  if(b) b.textContent = '停止帧流';
+  const d = document.getElementById('modeDesc');
+  if(d) d.textContent = '帧流演示：' + ROUTE_DEMO.title;
+  applyRouteSeg();
+  routePlay.handle = setInterval(routeTick, 100);   // 10fps，模拟手机端帧流
+}
+function stripRouteFrame(seg, base){
+  const f = JSON.parse(JSON.stringify(base));
+  f.heading = seg.heading;
+  f.hint = seg.hint;
+  f.turn_dist = (seg.turn_dist !== undefined) ? seg.turn_dist : 0;
+  if(f.road) delete f.road;
+  return f;
+}
+function applyRouteSeg(){
+  if(!routePlay) return;
+  const seg = ROUTE_DEMO.segs[routePlay.si];
+  demoCar = null; demoFade = -1;
+  if(seg.kind === 'road'){
+    const sample = ROAD_SAMPLES[seg.road];
+    const f = stripRouteFrame(seg, routePlay.base);
+    f.road = cloneRoad(sample);            // 附加 road → 模板放大图
+    navFrame = f;
+    demoFade = 0.25;                        // 放大图淡入（200-300ms）
+    demoCar = {pts: sample.pts.map(projP), t: 0};   // 车标沿绿路径推进
+  } else {
+    navFrame = stripRouteFrame(seg, routePlay.base);   // 移除 road → 行驶条带
+  }
+  animOffset = 0;
+  invalidate();
+}
+function routeTick(){
+  if(!routePlay) return;
+  routePlay.segT += 100;
+  const seg = ROUTE_DEMO.segs[routePlay.si];
+  if(routePlay.segT >= seg.dur){
+    routePlay.si++;
+    routePlay.segT = 0;
+    if(routePlay.si >= ROUTE_DEMO.segs.length){ routeEnd(); return; }
+    applyRouteSeg();
+    return;
+  }
+  const t = routePlay.segT / seg.dur;
+  if(seg.kind === 'road'){
+    demoFade = Math.min(1, 0.25 + (routePlay.segT / 250) * 0.75);   // ~250ms 淡入完成
+    if(demoCar) demoCar.t = Math.min(1, t);
+  }
+  invalidate();
+}
+function routeEnd(){
+  clearInterval(routePlay.handle);
+  routePlay = null;
+  demoCar = null; demoFade = -1;
+  const d = document.getElementById('modeDesc');
+  if(d) d.textContent = '帧流演示完成：T口左转 → 直行稳定窗口 → 十字右转。可重播或切换其它模式。';
+  const b = document.getElementById('btnRoute');
+  if(b) b.textContent = '帧流演示·双路口链';
+  invalidate();
 }
 
 // ================= 主场景图形 =================
@@ -1088,7 +1184,9 @@ function exportJson(){
 requestAnimationFrame(animate);
 // ?road=<样例键>：直达某模板（无头截图/深链，V1.7 参数化验收）
 const _qRoad = /[?&]road=([A-Za-z0-9_]+)/.exec(location.search);
-if(_qRoad && ROAD_SAMPLES[_qRoad[1]]){ setRoad(_qRoad[1]); } else { loadSample('straight'); }
+if(_qRoad && ROAD_SAMPLES[_qRoad[1]]){ setRoad(_qRoad[1]); }
+else if(/[?&]route=1/.test(location.search)){ routeStart(); }
+else { loadSample('straight'); }
 </script>
 </body>
 </html>
