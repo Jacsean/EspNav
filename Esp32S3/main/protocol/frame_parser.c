@@ -4,6 +4,8 @@
 
 static const char *TAG = "frame_parser";
 
+enum { NL = 0x0A, CR = 0x0D };   /* 换行/回车 */
+
 void frame_parser_init(frame_parser_t *fp)
 {
     if (fp) { fp->len = 0; }
@@ -23,11 +25,10 @@ void frame_parser_feed(frame_parser_t *fp, const uint8_t *data, size_t len,
             fp->len = 0;
             continue;
         }
-        if (ch == '
-') {
-            /* 去尾空白后回调（不含换行符） */
+        if (ch == NL) {
+            /* 去行尾 CR/空格后回调（不含换行符） */
             size_t n = fp->len - 1;
-            while (n > 0 && (fp->buf[n-1] == '' || fp->buf[n-1] == ' ')) n--;
+            while (n > 0 && (fp->buf[n-1] == CR || fp->buf[n-1] == 0x20)) n--;
             if (n > 0) cb((const char *)fp->buf, n, ctx);
             fp->len = 0;
         }
