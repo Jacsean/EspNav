@@ -27,7 +27,7 @@
       V2 变更：① 文字改为 <b>16×16 点阵模拟</b>（全角）/ 8×16（半角），接近真机 16×16 字库观感；
       ② <b>弹窗独立层</b>：无导航帧时也能弹出，5s 自动关闭；
       ③ <b>信号中断态</b>：导航帧停止 3s → 顶部提示"信号中断"并冻结虚线流动，恢复后自动刷新；
-      ④ 布局按 16px 点阵重排（hint≤9 全角 / 弹窗 3 行×16 全角 / 统计 3 行，V1.7）。
+      ④ 布局按 16px 点阵重排（hint≤9 全角 / 弹窗 3 行×17 全角 / 统计 3 行）。
     </div>
   </div>
   <div class="ctrl">
@@ -43,8 +43,8 @@
       <button onclick="setRoad('straight')">直道</button>
       <button onclick="setRoad('curveL')">弯道左</button>
       <button onclick="setRoad('curveR')">弯道右</button>
-      <button onclick="setRoad('rbt2')">环岛-第2出口</button>
-      <button onclick="setRoad('rbt3')">环岛-第3出口</button>
+      <button onclick="setRoad('rbt2')">环岛2出口</button>
+      <button onclick="setRoad('rbt3')">环岛3出口</button>
     </div>
     <div class="row">
       <button onclick="setRoad('tLeft')">T口左</button>
@@ -85,6 +85,7 @@ let popupMsg = null;
 let popupTimer = null;
 let popupScrollTimer = null;   // 超长内容逐行滚动定时器
 const POPUP_LINE_MS = 1400;    // 逐行滚动间隔
+let roadCase = null;           // 当前路况模板（null = 行驶透视条带）
 const TP_CAR = [160,113];      // 模板模式车辆位置（车头朝上，主视图底部）；较绿路径起点(≈134)上移约一个身位，路径尾段在车后可见
 
 // 流动虚线动画状态
@@ -501,12 +502,12 @@ function turnDemo(){
   // 1) 直行接近：行驶条带 + 预告
   navFrame = JSON.parse(JSON.stringify(sample_frames_json.straight));
   navFrame.hint = '前方200米路口右转';
-  animOffset = 0; invalidate();
+  roadCase = null; animOffset = 0; invalidate();
   const d = document.getElementById('modeDesc');
   if(d) d.textContent = '演示：接近路口(右转)…';
   // 2) 进入放大图 + 200ms 淡入
   ids.push(setTimeout(function(){
-    navFrame.road = cloneRoad(ROAD_SAMPLES.crossRight);
+    roadCase = 'crossRight';
     navFrame.hint = '前方路口右转 120米';
     demoFade = 0.25; invalidate();
     let steps = 0;
@@ -520,7 +521,7 @@ function turnDemo(){
   }, 1200));
   // 3) 淡入完成后车标沿绿路径推进(南→路口→东出口, 约1.5s)
   ids.push(setTimeout(function(){
-    const pathPts = (ROAD_SAMPLES.crossRight.pts||[[160,134],[160,60],[296,60]]).map(projP);   // 与 crossRight 样例 pts 同路径(投影后)
+    const pathPts = [[160,134],[160,60],[296,60]].map(projP);   // 与 crossRight navPath 同路径(投影后)
     demoCar = {pts:pathPts, t:0};
     const iv = setInterval(function(){
       demoCar.t = Math.min(1, demoCar.t + 0.02);
@@ -537,7 +538,7 @@ function finishTurn(ids){
   navFrame = JSON.parse(JSON.stringify(sample_frames_json.straight));
   navFrame.heading = 90;
   navFrame.hint = '右转完成 沿路直行';
-  animOffset = 0; invalidate();
+  roadCase = null; animOffset = 0; invalidate();
   const d = document.getElementById('modeDesc');
   if(d) d.textContent = '演示：右转完成，沿新方向直行…(3s 后复位)';
   ids.push(setTimeout(function(){
@@ -569,15 +570,15 @@ function drawScene(dt){
   // 底宽随之增大(×1.1)，上沿不动；与底边(h=160)保留约 17px 间隙
   const _k = (132 + 11 - 22) / (132 - 22);   // = 1.1
   ctx.translate(160, 22); ctx.scale(_k, _k); ctx.translate(-160, -22);
-  // 主视图内容：路况模板（参数化 readRoad：读帧 road 字段） or 行驶透视条带
-  if(f.road && readRoad(f)){
+  // 主视图内容：路况模板（路网+绿路径） or 行驶透视条带
+  if(roadCase && ROAD_CASES[roadCase]){
     // 路缘流动虚线：按 dt 统一推进相位（同行驶条带的速度/节奏；暂停或信号中断时静止）
     if(!lost && animRunning){
       animOffset = (animOffset + CONFIG.roadEdgeSpeed*dt) % (CONFIG.roadEdgeDash[0]+CONFIG.roadEdgeDash[1]);
     }
     // 放大图淡入（demoFade≥0 时模板以 alpha 渐显，模拟"通过路口"演示）
     if(demoFade>=0){ ctx.save(); ctx.globalAlpha = Math.max(0.2, demoFade); }
-    readRoad(f);
+    ROAD_CASES[roadCase]();
     if(demoFade>=0){ ctx.restore(); }
     // 车标：演示推进模式沿绿路径插值移动；否则在模板引路起点
     let carPos = TP_CAR;
@@ -722,17 +723,9 @@ function roundedRing(cx,cy,a,b,aIn,bIn){
   ctx.strokeStyle = '#ddd'; ctx.lineWidth = CONFIG.roadEdgeLineWidth;
   ctx.beginPath(); ctx.ellipse(cx,cy,a,b,0,0,Math.PI*2); ctx.stroke();
 }
-/* ============ 路况模板：参数化渲染（V1.7 readRoad / H1-A / O1 / O2 落地） ============
- * 依据：ble_protocol.md V1.7 §3.1.1（type/dir/exits/pts/cx/cy/r/half）；
- *      模板几何规格.md V0.2（§3.2 exitN 口径与方向弧、§5.3 环岛比率表、§5.2 各 type 规则）。
- * 观感：灰=路网、粗亮绿=导航路径（帧 pts 真实走向）、黄三角=本车；透视语言与行驶条带一致。
- * 样例 ROAD_SAMPLES 键 ↔ 下方模板按钮；road JSON 可直接导出/下发（协议字段）。
- */
-const TPL = {main:62, side:35, ring:27};   // 路面基准半宽(平面px)，主通行近宽≈124px（V1.6 冻结）
-const RBT = {cx:160, cy:84, r:58, b:0.40, aIn:0.66, bIn:0.17, rw:0.31, sIn:0.62}; // O2-A：r=观感外环水平半轴，余为冻结比率(@r=58→b23/aIn38/bIn10/rw18/引路36)
-const AZM = {E:0, SE:45, S:90, SW:135, W:180, NW:225, N:270, NE:315};   // 方位→椭圆参数角(°)，屏幕系 y 向下顺时针为正
-const DIRV = {N:[0,-1], NE:[0.707,-0.707], E:[1,0], SE:[0.707,0.707], S:[0,1], SW:[-0.707,0.707], W:[-1,0], NW:[-0.707,-0.707]};
-
+function roadStraight(c, halfW){
+  branch(c, halfW); centerDash(c);
+}
 const ROAD_HINTS = {
   straight:'前方800米直行', curveL:'前方弯道200米向左', curveR:'前方弯道200米向右',
   tLeft:'前方150米路口左转', crossRight:'十字路口右转 120米',
@@ -743,181 +736,89 @@ const ROAD_LABEL = {
   straight:'直道', curveL:'弯道-左', curveR:'弯道-右', tLeft:'T口-左转', crossRight:'十字-右转',
   rbt2:'环岛-4出口-第2出口', rbt3:'环岛-4出口-第3出口', multi:'多岔路口', forkRight:'匝道-右出'
 };
-// 样例 road JSON（协议字段）；roundabout 的 exits 不含入口、按绕行方向排（逆时针 W1→N2→E3，O1）
-const ROAD_SAMPLES = {
-  straight:  {type:'straight', pts:[[160,134],[160,30]], half:62},
-  curveL:    {type:'curve', pts:[[160,134],[160,102],[150,72],[118,42],[96,30]], half:62},
-  curveR:    {type:'curve', pts:[[160,134],[160,102],[172,72],[204,42],[226,30]], half:62},
-  tLeft:     {type:'tjunc', dir:'left', pts:[[160,134],[160,60],[32,60]], half:62},
-  crossRight:{type:'cross', dir:'right', pts:[[160,134],[160,60],[300,60]], half:62},
-  rbt2:      {type:'roundabout', exits:['W','N','E'], dir:'exit2'},   // 目标=第2出口(北，方向弧 180°)
-  rbt3:      {type:'roundabout', exits:['W','N','E'], dir:'exit3'},   // 目标=第3出口(东，方向弧 270°)
-  multi:     {type:'multi', pts:[[160,134],[160,58],[110,30]], half:62},
-  forkRight: {type:'fork', dir:'right', pts:[[160,96],[180,74],[214,46],[252,30]], half:62}
+const TPL = {main:62, side:35, ring:27};   // 模板路面基准半宽(平面px)；近处宽度较初版增加1/3(主通行近宽≈124px)
+const ROAD_CASES = {
+  straight(){ const c=[[160,134],[160,30]]; roadStraight(c, TPL.main); navPath(c); },
+  curveL(){ const c=[[160,134],[160,102],[150,72],[118,42],[96,30]]; branch(c,TPL.main); centerDash(c); navPath(c); },
+  curveR(){ const c=[[160,134],[160,102],[172,72],[204,42],[226,30]]; branch(c,TPL.main); centerDash(c); navPath(c); },
+  tLeft(){
+    branch([[160,134],[160,60]],TPL.main); branch([[32,60],[160,60]],TPL.side);
+    centerDash([[160,134],[160,60]]);
+    navPath([[160,134],[160,60],[32,60]]);
+  },
+  crossRight(){
+    // 导航道路(南→东)流动虚线；北/西支路静态（不走）
+    branch([[160,134],[160,60]],TPL.main);
+    branchStatic([[160,60],[160,30]],TPL.side);
+    branchStatic([[32,60],[160,60]],TPL.side);
+    branch([[160,60],[296,60]],TPL.side);
+    centerDash([[160,134],[160,60]]);
+    navPath([[160,134],[160,60],[296,60]]);
+  },
+  rbt2(){ rbtCase('E'); },
+  rbt3(){ rbtCase('N'); },
+  multi(){
+    const cx=160, cy=58;
+    branch([[cx,134],[cx,cy]],TPL.main);          // 南主路(导航)
+    branchStatic([[cx,cy],[cx,30]],TPL.side);     // 北(不走)
+    branchStatic([[32,cy],[cx,cy]],TPL.side);     // 西(不走)
+    branchStatic([[cx,cy],[300,cy]],TPL.side);    // 东(不走)
+    branch([[cx,cy],[110,30]],TPL.side);          // 左前斜(导航)
+    branchStatic([[cx,cy],[236,100]],TPL.side);   // 右后(不走)
+    ctx.fillStyle=CONFIG.colorRoad;
+    ctx.beginPath(); ctx.ellipse(cx,cy,21*scaleAt(cy),21,0,0,Math.PI*2); ctx.fill();
+    navPath([[cx,134],[cx,cy],[110,30]]);
+  },
+  forkRight(){
+    // 主路直行为非导航(静态)；匝道为导航路径(流动)
+    branchStatic([[160,132],[160,30]],TPL.main);
+    centerDash([[160,132],[160,30]]);
+    const f=[[160,96],[180,74],[214,46],[252,30]];
+    branch(f,TPL.side-6); navPath(f);
+  }
 };
-function cloneRoad(o){ return JSON.parse(JSON.stringify(o)); }
-function azRad(name){ return (AZM[name]!==undefined ? AZM[name] : 0) * Math.PI / 180; }
-
-// 沿方向延伸到主视图边界内（顶/底/左/右）；用于支路"到边截断"
-function dirToEdge(from, dirName){
-  const v = DIRV[dirName] || [0,-1];
-  let t = 1e9;
-  if(v[0] > 0) t = Math.min(t, (300 - from[0]) / v[0]);
-  if(v[0] < 0) t = Math.min(t, (20 - from[0]) / v[0]);
-  if(v[1] > 0) t = Math.min(t, (134 - from[1]) / v[1]);
-  if(v[1] < 0) t = Math.min(t, (26 - from[1]) / v[1]);
-  t = Math.max(8, Math.min(t, 600));
-  return [from[0] + v[0]*t, from[1] + v[1]*t];
-}
-// pts 上最大折点（>20° 视为路口中心 C）；直线返回 -1
-function findTurnVertex(pts){
-  if(!pts || pts.length < 3) return -1;
-  let bi = -1, ba = 0;
-  for(let i=1;i<pts.length-1;i++){
-    const a=pts[i-1], b=pts[i], c=pts[i+1];
-    const u=[b[0]-a[0], b[1]-a[1]], w=[c[0]-b[0], c[1]-b[1]];
-    const du=Math.hypot(u[0],u[1]), dw=Math.hypot(w[0],w[1]);
-    if(du<1 || dw<1) continue;
-    const ang = Math.acos(Math.max(-1, Math.min(1, (u[0]*w[0]+u[1]*w[1])/(du*dw))));
-    if(ang > ba){ ba = ang; bi = i; }
-  }
-  return (ba > 0.35) ? bi : -1;   // ~20°
-}
-function roadCenter(pts){
-  const k = findTurnVertex(pts);
-  if(k > 0) return pts[k];
-  if(pts.length >= 3) return pts[Math.floor(pts.length/2)];
-  return [(pts[0][0]+pts[pts.length-1][0])/2, (pts[0][1]+pts[pts.length-1][1])/2];
-}
-
-// —— type 规则（规格 V0.2 §5.2；返回 false 表示参数不足，调用方回退行驶条带）——
-function pathRoad(pts, halfW){ branch(pts, halfW); centerDash(pts); }
-function tjuncRoad(rd){
-  const pts = rd.pts, half = rd.half || TPL.main;
-  if(!pts || pts.length < 3) return false;
-  const k = findTurnVertex(pts);
-  if(k <= 0){ pathRoad(pts, half); navPath(pts); return true; }
-  branch(pts.slice(0, k+1), half); centerDash(pts.slice(0, k+1));   // 南引路(主通行, 流动)
-  branch(pts.slice(k), TPL.side);                                    // 转向支路(流动)
-  navPath(pts);
-  return true;
-}
-function crossRoad(rd){
-  const pts = rd.pts, half = rd.half || TPL.main;
-  if(!pts || pts.length < 2) return false;
-  const C = roadCenter(pts), k = findTurnVertex(pts);
-  const inSeg = (k > 0) ? pts.slice(0, k+1) : [pts[0], C];
-  branch(inSeg, half); centerDash(inSeg);
-  const toDir = rd.dir==='left' ? 'W' : (rd.dir==='right' ? 'E' : 'N');
-  const arms = {N:[C[0],26], W:[20,C[1]], E:[300,C[1]]};
-  for(const d in arms){
-    const seg = [C, arms[d]];
-    if(d === toDir) branch(seg, TPL.side); else branchStatic(seg, TPL.side);
-  }
-  navPath(pts);
-  return true;
-}
-function multiRoad(rd){
-  const pts = rd.pts, half = rd.half || TPL.main;
-  if(!pts || pts.length < 2) return false;
-  const C = roadCenter(pts);
-  branch([pts[0], C], half);                                         // 南主路(导航, 流动)
-  // 造型支路终点按 v2 冻结；方向组参数化待协议字段（规格 O3）
-  const arms = [{d:'N', to:[C[0],30]}, {d:'W', to:[20,C[1]]}, {d:'E', to:[300,C[1]]},
-                {d:'NW', to:[110,30]}, {d:'SE', to:[236,100]}];
-  let best = '', bestDot = 0.85;
-  const t0 = pts[pts.length-1][0]-C[0], t1 = pts[pts.length-1][1]-C[1];
-  const tl = Math.hypot(t0, t1);
-  if(tl > 1){
-    for(const a of arms){
-      const v = DIRV[a.d];
-      const dot = (t0*v[0]+t1*v[1])/tl;
-      if(dot > bestDot){ bestDot = dot; best = a.d; }
-    }
-  }
-  for(const a of arms){
-    const seg = [C, a.to];
-    if(a.d === best) branch(seg, TPL.side); else branchStatic(seg, TPL.side);
-  }
-  navPath(pts);
-  return true;
-}
-function forkRoad(rd){
-  const pts = rd.pts, half = rd.half || TPL.main;
-  if(!pts || pts.length < 2) return false;
-  const mx = Math.round(pts[0][0]);                                   // 主路中线 x = 匝道起点 x
-  branchStatic([[mx,134],[mx,30]], half); centerDash([[mx,134],[mx,30]]);   // 主路直行(静态, 非导航)
-  branch(pts, TPL.side - 6); navPath(pts);                            // 匝道(导航, 流动)
-  return true;
-}
-function roundaboutRoad(rd){
-  const cx = rd.cx!==undefined ? rd.cx : RBT.cx;
-  const cy = rd.cy!==undefined ? rd.cy : RBT.cy;
-  const r  = rd.r!==undefined  ? rd.r  : RBT.r;
-  const b = r*RBT.b, aIn = r*RBT.aIn, bIn = r*RBT.bIn, rw = r*RBT.rw, sIn = r*RBT.sIn;
-  const exits = (rd.exits && rd.exits.length) ? rd.exits : ['W','N','E'];
-  const m = /^exit(\d+)$/.exec(rd.dir || 'exit1');
-  const ti = Math.max(0, Math.min(exits.length-1, (m ? parseInt(m[1],10) : 1) - 1));
-  const target = exits[ti];
-  // 绕行方向（O1）：exits[0] 相对南入口(S) 的短方向（样例 W1→N2→E3 为逆时针）
-  const thS = azRad('S');
-  let d0 = azRad(exits[0]) - thS;
-  while(d0 >  Math.PI) d0 -= 2*Math.PI;
-  while(d0 < -Math.PI) d0 += 2*Math.PI;
-  const spin = (d0 >= 0) ? 1 : -1;
-  branch([[160,134],[cx,cy+b]], sIn);                                 // 南引路(必经, 流动)
-  roundedRing(cx, cy, r, b, aIn, bIn);                                // 环岛路面(横椭圆)与内岛
-  for(const name of exits){                                           // 出口支路：静态，目标出口流动
-    const th = azRad(name);
-    const ex = [cx + r*Math.cos(th), cy + b*Math.sin(th)];
-    const seg = [ex, dirToEdge(ex, name)];
-    if(name === target) branch(seg, rw); else branchStatic(seg, rw);
-  }
-  // 绿路径：帧 pts 优先；否则 入口→环底→沿绕行方向全弧→目标出口（方向弧，弃最近短弧）
-  if(rd.pts && rd.pts.length >= 2){ navPath(rd.pts); return true; }
-  const thT = azRad(target), tau = 2*Math.PI;
-  let sweep = spin > 0 ? ((thT - thS) % tau + tau) % tau : -(((thS - thT) % tau + tau) % tau);
-  if(sweep === 0) sweep = spin * tau * 0.999;
-  const aM = (r + aIn)/2, bM = (b + bIn)/2;
-  const arc = ellArcPts(cx, cy, aM, bM, thS, thS + sweep, 32);
-  const outP = [cx + r*Math.cos(thT), cy + b*Math.sin(thT)];
-  navPath([[160,134],[cx,cy+b]].concat(arc, [outP], dirToEdge(outP, target)));
-  return true;
-}
-// —— 入口：读帧 road 字段参数化渲染（V1.7）——
-function readRoad(f){
-  const rd = f && f.road;
-  if(!rd || !rd.type) return false;
-  switch(rd.type){
-    case 'straight': case 'curve':
-      if(!rd.pts || rd.pts.length < 2) return false;
-      pathRoad(rd.pts, rd.half || TPL.main); navPath(rd.pts); return true;
-    case 'tjunc': return tjuncRoad(rd);
-    case 'cross': return crossRoad(rd);
-    case 'multi': return multiRoad(rd);
-    case 'roundabout': return roundaboutRoad(rd);
-    case 'fork': return forkRoad(rd);
-    default: return false;
-  }
+function rbtCase(outDir){
+  // 环岛：透视横椭圆 长轴水平 a=58 不变，纵轴较原缩小1/3：b=34→23；内岛同步 (aIn=38, bIn=10)
+  const cx=160, cy=84, a=58, b=23, aIn=38, bIn=10, rw=18;
+  const isE = outDir==='E', isN = outDir==='N';
+  // 南入口引路(必经,流动)：车(134) → 环底(cy+b)
+  branch([[160,134],[160,cy+b]], 36);
+  // 东/西出口（仅东可为目标）
+  if(isE){ branch([[cx+a,cy],[300,cy]], rw); }
+  else{   branchStatic([[cx+a,cy],[300,cy]], rw); }
+  branchStatic([[cx-a,cy],[20,cy]], rw);
+  // 北出口短段（环顶 → 顶部，仅 N 为目标时流动）
+  if(isN){ branch([[cx,cy-b],[160,22]], rw); }
+  else{   branchStatic([[cx,cy-b],[160,22]], rw); }
+  // 环岛路面（横椭圆）与内岛
+  roundedRing(cx,cy,a,b,aIn,bIn);
+  // 行驶弧：沿环带中线（横椭圆参数角）从南转到出口；θ: 南=90° 东=0° 北=-90°
+  const aM=(a+aIn)/2, bM=(b+bIn)/2;
+  const th0=Math.PI/2;
+  const th1 = isE ? 0 : (isN ? -Math.PI/2 : Math.PI);
+  const path=[[160,134],[160,cy+b]];
+  path.push(...ellArcPts(cx,cy,aM,bM,th0,th1,16));
+  path.push(isE ? [300,cy] : [cx,cy-b]);
+  path.push(isE ? [300,cy] : [160,22]);
+  navPath(path);
 }
 function setRoad(name){
   clearDemoTimers();
   if(!navFrame){ navFrame = JSON.parse(JSON.stringify(sample_frames_json.straight)); }
-  const s = ROAD_SAMPLES[name];
-  if(!s){ alert('未知模板: ' + name); return; }
-  navFrame.road = cloneRoad(s);
   navFrame.hint = ROAD_HINTS[name] || navFrame.hint;
+  roadCase = name;
   animOffset = 0;
   invalidate();
   const d = document.getElementById('modeDesc');
-  if(d) d.textContent = '当前模式：路况模板 - ' + (ROAD_LABEL[name]||name) + '（readRoad 参数化渲染；点“退出模板”恢复行驶条带）';
+  if(d) d.textContent = '当前模式：路况模板 - ' + (ROAD_LABEL[name]||name) + '（主视图=模板路网+绿路径；点"退出模板"恢复行驶条带）';
 }
 function exitRoad(){
-  if(navFrame) delete navFrame.road;
+  roadCase = null;
   loadSample('straight');
   const d = document.getElementById('modeDesc');
-  if(d) d.textContent = '当前模式：行驶条带（透视梯形道路）。点下方模板按钮可在主视图切换为路况模板。';
+  if(d) d.textContent = '当前模式：行驶条带（透视梯形道路）';
 }
+
 function drawPopupBg(){
   const pr = CONFIG.popupRect;
   ctx.fillStyle = CONFIG.colorPopupBg;
@@ -1086,9 +987,7 @@ function exportJson(){
 
 // ================= 启动 =================
 requestAnimationFrame(animate);
-// ?road=<样例键>：直达某模板（无头截图/深链，V1.7 参数化验收）
-const _qRoad = /[?&]road=([A-Za-z0-9_]+)/.exec(location.search);
-if(_qRoad && ROAD_SAMPLES[_qRoad[1]]){ setRoad(_qRoad[1]); } else { loadSample('straight'); }
+loadSample('straight');
 </script>
 </body>
 </html>
