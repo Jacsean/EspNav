@@ -60,6 +60,9 @@
       <button onclick="clearScreen()">清屏(模拟 CLEAR_SCREEN)</button>
     </div>
     <div class="row">
+      <button onclick="simBadge()">模拟 +1 未读/来电（右下角标）</button>
+    </div>
+    <div class="row">
       <button onclick="renderCurrentJson()">渲染下方 JSON</button>
       <button onclick="exportJson()">导出当前帧 JSON</button>
     </div>
@@ -95,7 +98,7 @@ const POPUP_MS = 5000;   // 弹窗 5s 自动关闭
 
 // ================= UI 配置 =================
 const CONFIG = {
-  areaMain:{x:0,y:0,w:320,h:150},
+  areaMain:{x:0,y:0,w:320,h:160},
   areaBottomLeft:{x:0,y:160,w:220,h:80},
   areaBottomRight:{x:220,y:160,w:100,h:80},
   colorBg:"#000000",
@@ -135,9 +138,9 @@ const sample_frames_json = {
   straight:{
     heading:0, turn_dist:500, hint:"前方500米直行", total_dist:8200, progress_pct:34,
     elapsed_min:28, eta_time:"14:27",
-    centerLine:[[160,130],[160,110],[160,80],[160,50],[160,20]],
+    centerLine:[[160,130],[160,110],[160,80],[160,50],[160,28]],
     pastCenter:[[160,130],[160,110]],
-    routeCenter:[[160,110],[160,80],[160,50],[160,20]],
+    routeCenter:[[160,110],[160,80],[160,50],[160,28]],
     pos:[160,110],
     overview:[[8,6],[22,19],[46,14],[62,26]], overview_dot:[22,19]
   },
@@ -178,6 +181,9 @@ function getGlyph(ch){
     oc.fillStyle = '#fff';
     oc.font = (GLYPH_H*GLYPH_SCALE)+'px "Noto Sans SC","Microsoft YaHei","PingFang SC",sans-serif';
     oc.textBaseline = 'alphabetic';
+    const _adv = oc.measureText(ch).width;
+    const _tw = (half ? 8 : 16) * GLYPH_SCALE;
+    if(_adv > _tw) oc.scale(_tw / _adv, 1);
     oc.fillText(ch, 0, (GLYPH_H-1)*GLYPH_SCALE); // 底部对齐采样格
     const img = oc.getImageData(0,0,off.width,off.height).data;
     const rows = new Array(GLYPH_H);
@@ -351,6 +357,8 @@ function paintAllText(){
   // 6) 弹窗内容在 renderFrame 末尾单独绘制（弹窗期间其余元素置灰、消息绿字）
   // 7) 信号中断提示
   if(lost) paintLostText();
+  // 8) 右下角消息/来电角标（主视图右下）
+  paintBadges();
 }
 
 function drawNorthArrowOnText(x,y,color){
@@ -399,6 +407,69 @@ function paintLostText(){
   paintDotText(tctx, x, y, msg, CONFIG.colorLostText);
 }
 
+// ============ 右下角消息/来电角标 ============
+// 演示数据（wx=微信未读、sms=短信未读、call=未接来电）；真机由手机端统计（通知监听/通话记录）后随帧下发
+let badges = {wx:2, sms:1, call:3};
+const ICON_PATHS = {
+  wx:'M20,2H4C2.9,2 2,2.9 2,4v18l4,-4h14c1.1,0 2,-0.9 2,-2V4C22,2.9 21.1,2 20,2z',
+  sms:'M20,4H4c-1.1,0 -1.99,0.9 -1.99,2L2,18c0,1.1 0.9,2 2,2h16c1.1,0 2,-0.9 2,-2V6c0,-1.1 -0.9,-2 -2,-2zM20,8l-8,5 -8,-5V6l8,5 8,-5v2z',
+  call:'M6.62,10.79c1.44,2.83 3.76,5.14 6.59,6.59l2.2,-2.2c0.27,-0.27 0.67,-0.36 1.02,-0.24 1.12,0.37 2.33,0.57 3.57,0.57 0.55,0 1,0.45 1,1V20c0,0.55 -0.45,1 -1,1 -9.39,0 -17,-7.61 -17,-17 0,-0.55 0.45,-1 1,-1h3.5c0.55,0 1,0.45 1,1 0,1.25 0.2,2.45 0.57,3.57 0.11,0.35 0.03,0.74 -0.25,1.02z'
+};
+function rr(c,x,y,w,h,r){
+  c.beginPath();
+  c.moveTo(x+r,y);
+  c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r);
+  c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r);
+  c.closePath();
+}
+// 图标：pad=垫底色(可 null)；wx=绿色气泡+白眼睛，sms/call=白形+垫色
+function drawIconTile(x,y,pad,fg,key){
+  if(pad){
+    tctx.fillStyle = pad;
+    rr(tctx,x-1,y-1,20,20,5); tctx.fill();
+  }
+  try{
+    tctx.save();
+    tctx.translate(x+2,y+2);
+    tctx.scale(16/24,16/24);
+    tctx.fillStyle = fg;
+    tctx.fill(new Path2D(ICON_PATHS[key]));
+    tctx.restore();
+  }catch(e){
+    tctx.fillStyle = fg; tctx.fillRect(x+4,y+4,12,12);
+  }
+  if(key==='wx'){   // 气泡眼睛（白点）
+    tctx.fillStyle = '#fff';
+    tctx.beginPath(); tctx.arc(x+6.5,y+9,1.5,0,Math.PI*2); tctx.fill();
+    tctx.beginPath(); tctx.arc(x+12.5,y+9,1.5,0,Math.PI*2); tctx.fill();
+  }
+}
+function badgeCount(x,y,n){
+  if(!n || n<=0) return;
+  const label = n>99 ? '99+' : String(n);
+  tctx.fillStyle = '#e53935';
+  tctx.beginPath(); tctx.arc(x+15,y-1,6,0,Math.PI*2); tctx.fill();
+  tctx.fillStyle = '#fff';
+  tctx.font = 'bold 7px monospace';
+  tctx.textAlign = 'center'; tctx.textBaseline = 'middle';
+  tctx.fillText(label, x+15, y-1);
+  tctx.textAlign = 'left'; tctx.textBaseline = 'alphabetic';
+}
+function paintBadges(){
+  // 主视图右下角两组图标：微信/短信（消息组）、未接来电（通话组）；右上红角标=未读数/来电数
+  // 向下"生长"2/3 字高(≈11px)：y112→123，与道路近端同水平，底边保留小间隙
+  const by = 123;
+  drawIconTile(246,by,null,'#07c160','wx');  badgeCount(246,by,badges.wx);
+  drawIconTile(270,by,'#1e88e5','#fff','sms'); badgeCount(270,by,badges.sms);
+  drawIconTile(294,by,'#e53935','#fff','call'); badgeCount(294,by,badges.call);
+}
+function simBadge(){
+  const keys=['wx','sms','call'];
+  const k=keys[Math.floor(Math.random()*keys.length)];
+  badges[k]=(badges[k]||0)+1;
+  invalidate();
+}
+
 // ================= 主场景图形 =================
 function drawScene(dt){
   ctx.fillStyle = CONFIG.colorBg;
@@ -417,6 +488,10 @@ function drawScene(dt){
   ctx.beginPath();
   ctx.rect(CONFIG.areaMain.x,CONFIG.areaMain.y,CONFIG.areaMain.w,CONFIG.areaMain.h);
   ctx.clip();
+  // 底部"生长"：以顶部 y≈22 为锚、中心 x=160 等比放大，近端向下生长约 2/3 文字高(11px, y132→143)，
+  // 底宽随之增大(×1.1)，上沿不动；与底边(h=160)保留约 17px 间隙
+  const _k = (132 + 11 - 22) / (132 - 22);   // = 1.1
+  ctx.translate(160, 22); ctx.scale(_k, _k); ctx.translate(-160, -22);
   // 主视图内容：路况模板（路网+绿路径） or 行驶透视条带
   if(roadCase && ROAD_CASES[roadCase]){
     // 路缘流动虚线：按 dt 统一推进相位（同行驶条带的速度/节奏；暂停或信号中断时静止）
@@ -555,12 +630,12 @@ function ellArcPts(cx,cy,a,b,th0,th1,n){
   }
   return p;
 }
-// 环岛路面：透视地面圆环近似为"横椭圆"（长轴水平 a > 垂直半轴 b），t=环带厚；内岛为深色
-function roundedRing(cx,cy,a,b,t){
+// 环岛路面：透视地面圆环近似"横椭圆"（长轴水平 a > 垂直 b），aIn/bIn=内岛半轴（垂直较 a 缩小 1/3）
+function roundedRing(cx,cy,a,b,aIn,bIn){
   ctx.fillStyle = CONFIG.colorRoad;
   ctx.beginPath(); ctx.ellipse(cx,cy,a,b,0,0,Math.PI*2); ctx.fill();
   ctx.fillStyle = '#0d0d0d';               // 内岛
-  ctx.beginPath(); ctx.ellipse(cx,cy,a-t,b-t,0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx,cy,aIn,bIn,0,0,Math.PI*2); ctx.fill();
   ctx.strokeStyle = '#ddd'; ctx.lineWidth = CONFIG.roadEdgeLineWidth;
   ctx.beginPath(); ctx.ellipse(cx,cy,a,b,0,0,Math.PI*2); ctx.stroke();
 }
@@ -579,19 +654,19 @@ const ROAD_LABEL = {
 };
 const TPL = {main:62, side:35, ring:27};   // 模板路面基准半宽(平面px)；近处宽度较初版增加1/3(主通行近宽≈124px)
 const ROAD_CASES = {
-  straight(){ const c=[[160,134],[160,22]]; roadStraight(c, TPL.main); navPath(c); },
-  curveL(){ const c=[[160,134],[160,102],[150,72],[118,42],[96,22]]; branch(c,TPL.main); centerDash(c); navPath(c); },
-  curveR(){ const c=[[160,134],[160,102],[172,72],[204,42],[226,22]]; branch(c,TPL.main); centerDash(c); navPath(c); },
+  straight(){ const c=[[160,134],[160,30]]; roadStraight(c, TPL.main); navPath(c); },
+  curveL(){ const c=[[160,134],[160,102],[150,72],[118,42],[96,30]]; branch(c,TPL.main); centerDash(c); navPath(c); },
+  curveR(){ const c=[[160,134],[160,102],[172,72],[204,42],[226,30]]; branch(c,TPL.main); centerDash(c); navPath(c); },
   tLeft(){
-    branch([[160,134],[160,60]],TPL.main); branch([[24,60],[160,60]],TPL.side);
+    branch([[160,134],[160,60]],TPL.main); branch([[32,60],[160,60]],TPL.side);
     centerDash([[160,134],[160,60]]);
-    navPath([[160,134],[160,60],[24,60]]);
+    navPath([[160,134],[160,60],[32,60]]);
   },
   crossRight(){
     // 导航道路(南→东)流动虚线；北/西支路静态（不走）
     branch([[160,134],[160,60]],TPL.main);
-    branchStatic([[160,60],[160,22]],TPL.side);
-    branchStatic([[24,60],[160,60]],TPL.side);
+    branchStatic([[160,60],[160,30]],TPL.side);
+    branchStatic([[32,60],[160,60]],TPL.side);
     branch([[160,60],[296,60]],TPL.side);
     centerDash([[160,134],[160,60]]);
     navPath([[160,134],[160,60],[296,60]]);
@@ -601,26 +676,26 @@ const ROAD_CASES = {
   multi(){
     const cx=160, cy=58;
     branch([[cx,134],[cx,cy]],TPL.main);          // 南主路(导航)
-    branchStatic([[cx,cy],[cx,22]],TPL.side);     // 北(不走)
-    branchStatic([[20,cy],[cx,cy]],TPL.side);     // 西(不走)
+    branchStatic([[cx,cy],[cx,30]],TPL.side);     // 北(不走)
+    branchStatic([[32,cy],[cx,cy]],TPL.side);     // 西(不走)
     branchStatic([[cx,cy],[300,cy]],TPL.side);    // 东(不走)
-    branch([[cx,cy],[110,22]],TPL.side);          // 左前斜(导航)
+    branch([[cx,cy],[110,30]],TPL.side);          // 左前斜(导航)
     branchStatic([[cx,cy],[236,100]],TPL.side);   // 右后(不走)
     ctx.fillStyle=CONFIG.colorRoad;
     ctx.beginPath(); ctx.ellipse(cx,cy,21*scaleAt(cy),21,0,0,Math.PI*2); ctx.fill();
-    navPath([[cx,134],[cx,cy],[110,22]]);
+    navPath([[cx,134],[cx,cy],[110,30]]);
   },
   forkRight(){
     // 主路直行为非导航(静态)；匝道为导航路径(流动)
-    branchStatic([[160,132],[160,22]],TPL.main);
-    centerDash([[160,132],[160,22]]);
-    const f=[[160,96],[180,74],[214,46],[252,24]];
+    branchStatic([[160,132],[160,30]],TPL.main);
+    centerDash([[160,132],[160,30]]);
+    const f=[[160,96],[180,74],[214,46],[252,30]];
     branch(f,TPL.side-6); navPath(f);
   }
 };
 function rbtCase(outDir){
-  // 环岛：透视地面圆环近似横椭圆（长轴水平 a=58 > 垂直半轴 b=34），环带厚 t=20
-  const cx=160, cy=84, a=58, b=34, t=20, rw=18;
+  // 环岛：透视横椭圆 长轴水平 a=58 不变，纵轴较原缩小1/3：b=34→23；内岛同步 (aIn=38, bIn=10)
+  const cx=160, cy=84, a=58, b=23, aIn=38, bIn=10, rw=18;
   const isE = outDir==='E', isN = outDir==='N';
   // 南入口引路(必经,流动)：车(134) → 环底(cy+b)
   branch([[160,134],[160,cy+b]], 36);
@@ -632,14 +707,15 @@ function rbtCase(outDir){
   if(isN){ branch([[cx,cy-b],[160,22]], rw); }
   else{   branchStatic([[cx,cy-b],[160,22]], rw); }
   // 环岛路面（横椭圆）与内岛
-  roundedRing(cx,cy,a,b,t);
+  roundedRing(cx,cy,a,b,aIn,bIn);
   // 行驶弧：沿环带中线（横椭圆参数角）从南转到出口；θ: 南=90° 东=0° 北=-90°
-  const aM=a-t/2, bM=b-t/2;
+  const aM=(a+aIn)/2, bM=(b+bIn)/2;
   const th0=Math.PI/2;
   const th1 = isE ? 0 : (isN ? -Math.PI/2 : Math.PI);
   const path=[[160,134],[160,cy+b]];
   path.push(...ellArcPts(cx,cy,aM,bM,th0,th1,16));
-  path.push(isE ? [cx+a,cy] : [cx,cy-b]);
+  path.push(isE ? [300,cy] : [cx,cy-b]);
+  path.push(isE ? [300,cy] : [160,22]);
   navPath(path);
 }
 function setRoad(name){
