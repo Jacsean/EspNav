@@ -2,7 +2,7 @@
 > - 用途：手机 / Web ↔ ESP32-S3 BLE，传输导航帧、配置指令、事件上报；面向 TFT-LCD 320×240 导航模拟器。
 > - 传输层：BLE GATT，特征值 **WRITE 用于下发指令 / 帧数据**，**NOTIFY 用于设备上报事件**。
 > - 编码：UTF-8，JSON 文本，**每条 MTU 分片不超过 240 字节**；完整 JSON 帧用 `\n` 作为帧结束分隔符。
-> - 版本：V1.7
+> - 版本：V1.8
 
 ## 1. GATT 服务与特征值定义
 
@@ -83,7 +83,7 @@
 - `centerLine`：道路中心线屏幕坐标点数组 `[[x,y],...]`，近处点在前，远处在后
 - `pastCenter`：已经驶过的路径线段（屏幕坐标）
 - `routeCenter`：未来将要行驶的路径线段（屏幕坐标）
-- `pos`：车辆本机坐标 `[x,y]`
+- `pos`：车辆本机坐标 `[x,y]`；**模板段（帧含 `road`）内 pos 即车标位置**（应位于 pts 路径上，由手机端沿 pts 推进，见几何规格 §4.2/O6），缺省用渲染端模板南引路起点。
 - `overview`：右下角小地图路径点
 - `overview_dot`：小地图当前位置点
 
@@ -106,14 +106,14 @@ payload 附加字段：
 - `road`（对象，可选）：路况模板参数，坐标一律为**车头朝上平面像素坐标**（x: 0~319，y: 0~239），渲染端按主视图"近大远小"透视投影绘制（投影常量两端一致，见技术实现路径 1.5）：
   - `type`：`straight | curve | tjunc | cross | multi | roundabout | fork`
   - `dir`：方向参数，**统一为车头相对语义**：`straight | left | right | exitN`（N=环岛目标出口序数，1 起，自南入口沿绕行方向计；`roundabout` 专用）。**不使用地理方位作 dir 值**；出口支路方位由可选 `exits` 提供。
-  - `exits`（可选，仅 `roundabout`）：出口方向数组，元素取 `S | E | N | W | NE | NW | SE | SW`（车头朝上屏幕系，E=右 / N=上，车辆自 S=底部南入口进入）；渲染端据此绘制各出口支路几何。
+  - `exits`（可选）：**多出口路况的候选出口方位数组**（`roundabout` / `multi` 通用），元素取 `S | E | N | W | NE | NW | SE | SW`（车头朝上屏幕系，E=右 / N=上，车辆自 S=底部南入口进入）。`roundabout`：**不含南入口**、按绕行方向排列（exits[0]=进入后第 1 岔路，见几何规格 §3.2）；`multi`：候选支路方位集合。渲染端据此绘制各出口/支路几何。
   - `pts`：平面中心线/支路关键点 `[[x,y],…]`（上限 ≤16，与 centerLine 一致）
   - `cx` / `cy` / `r`：`roundabout` 圆心（平面）与半径（像素）
   - `half`：路面半宽（平面像素）
 
 > 触发（主机侧）：`turn_dist` 小于阈值（建议 200m）且机动非直行时附加 `road`；驶离路口后恢复不带 `road` 的帧。
 > 叠加规则：模板 `type/dir/pts` 由手机按导航路线在该段内的**真实走向**生成；渲染顺序固定为 灰路网 → 亮绿路径（真实走向，画在路网之上）→ 车辆光标，路径以帧内路线数据为准、模板路网仅作背景示意。
-> type×dir 合法组合（V1.7）：`straight`→dir 缺省；`curve`→`left|right`；`tjunc`→`left|right`；`cross`→`straight|left|right`；`roundabout`→`exitN`（配合 `exits`）；`fork`→`left|right`；`multi`→dir 缺省（支路与出口走线由 `pts` 表达）。
+> type×dir 合法组合（V1.7）：`straight`→dir 缺省；`curve`→`left|right`；`tjunc`→`left|right`；`cross`→`straight|left|right`；`roundabout`→`exitN`（配合 `exits`）；`fork`→`left|right`；`multi`→dir 缺省（候选支路由 `exits` 提供，缺省渲染端五方向示意；出口走线由 `pts` 表达）。
 > 模板几何由渲染端按 `type/dir/exits` **参数化生成**（非预置造型）；参数化规则与 `pts` 语义见 `docs/develp/模板几何规格.md`（V1.7 草案，HTML V2 为验收基准）。
 > 叠加规则：模板 `type/dir/pts` 由手机按导航路线在该段内的**真实走向**生成；渲染顺序固定为 灰路网 → 亮绿路径（真实走向，画在路网之上）→ 车辆光标，路径以帧内路线数据为准、模板路网仅作背景示意。
 
@@ -236,11 +236,12 @@ LCD 全部填充黑色，停止导航动画。
 
 1. 非法 JSON：设备丢弃，累加 `err` 计数，不回复；
 2. 未知 `msg_type`：直接忽略；
-3. 字段缺失：使用内置默认值渲染，不崩溃；
+3. 字段缺失：使用内置默认值渲染，不崩溃。缺省值表（V1.8，两端一致）：NAV_FRAME：`heading`=0、`turn_dist`=0、`hint`=空、`total_dist`=0、`progress_pct`=0、`elapsed_min`=0、`eta_time`=空；`centerLine` 缺失 → 不画行驶条带（仅统计/罗盘/overview UI）；`pastCenter`/`routeCenter` 空 → 不绘路径线；`pos` 缺失 → 条带模式不画车标；`overview`/`overview_dot` 缺失 → 不绘小地图；`road` 存在但 `type` 未知 → 忽略 `road` 按条带渲染；`road.pts` 缺失（roundabout 除外）→ 不渲染该模板回退条带；`road.exits` 缺失（roundabout）→ 缺省 `['W','N','E']`；`maneuver` 缺失 → 无顶部机动符号。SET_CONFIG/DEV_STATUS 出厂缺省：`lcd_brightness`=80、`dash_speed`=60、`anim_enable`=true、`popup_timeout`=5。
 4. BLE 断开：设备自动清屏，回到待机状态；
 5. 弹窗超时自动关闭：设备按 `popup_timeout`（默认 5s）自动关闭弹窗，不依赖主机 POPUP_CLOSE（见 §3.5）。
 6. 导航帧超时（**仅限导航态**判定）：设备处于导航渲染态且连续 3s 未收到 NAV_FRAME（BLE 连接与心跳正常）→ 屏幕顶部显示"信号中断"并停止流动虚线动画；收到新 NAV_FRAME 后自动恢复刷新；待机 / 纯弹窗态不触发。计时边界：主机 PING 2s 保活；导航态 3s 无 NAV_FRAME 先触发"信号中断"；连续 5s 未收到**任何**主机报文或连接断开 → 判定链路异常并清屏（见 §3.7）。
 7. 显示容量规则（渲染端强制，HTML V2 与 ESP32 一致）：`hint` 顶栏单行按 ≤9 全角截断并追加省略号；弹窗标题 1 行、超出弹窗内可用宽度截断；弹窗内容按 16 全角/行折行、可视 3 行，超过 3 行按 §3.5 滚动。
+8. 渲染端固定常量（V1.8，HTML V2 与 ESP32 一致）：弹窗期间置灰层 `rgba(110,110,110,0.62)`，关闭恢复；"信号中断"条 = 主视图中部（y≈56）黑底(alpha≈0.72)红字；`lcd_brightness` 0-100 线性映射背光 PWM 占空（0=灭、100=全亮）。
 
 ## 7. Web 模拟器与 ESP32 交互时序示例
 
@@ -285,7 +286,8 @@ typedef struct {
 | V1.1 | 2026-09-02 | 确认 JSON 为协议基准（原二进制帧方案废弃）：移除无硬件来源字段（key_event/vbat/percent）；DEV_STATUS 增加 `err` 错误计数并明确帧内不设 CRC；补充设备端行为约定（弹窗超时自动关闭、NAV_FRAME 不干预弹窗、PING 2s/5s 心跳）；新增坐标与上限约定（点数 ≤16、单帧 ≤2048B、文本上限、overview 坐标基准）；修正 MTU 分包说明（MTU 247 下有效载荷上限 244，按 240 切分） |
 | V1.2 | 2026-09-02 | 补充数据流歧义裁决：导航帧超时兜底（3s 无 NAV_FRAME → 顶部"信号中断"提示并停动画，恢复后自动刷新）；POPUP_MSG 明示尽力投递、丢失不重试；DEV_STATUS `err` 上报触发（err>0 每 30s 主动 Notify，直至清零） |
 | V1.3 | 2026-09-02 | 对齐弹窗可视容量（16px 点阵）：title 标题区 1 行；content 内容区 3 行 × 17 全角、发送端预截断到 ≤48 全角并追加省略号；明确 hint/title/content 截断规则（见 §3.1 第 4 条） |
-| V1.5 | 2026-09-02 | 新增复杂路况模板（B+D 方案）：NAV_FRAME 可选 `maneuver` 与 `road` 字段（7 类模板、平面像素坐标、向后兼容，见 §3.1.1）；模板触发/叠加规则；视觉原型见 nav_sim_v2.html（主视图集成、近大远小投影）与 nav_sim_v3.html（整屏样例） |
+| V1.5 | 2026-09-02 | （注：V1.4 为内部草稿、未发布，V1.3 后直接跳 V1.5）新增复杂路况模板（B+D 方案）：NAV_FRAME 可选 `maneuver` 与 `road` 字段（7 类模板、平面像素坐标、向后兼容，见 §3.1.1）；模板触发/叠加规则；视觉原型见 nav_sim_v2.html（主视图集成、近大远小投影）与 nav_sim_v3.html（整屏样例） |
+| V1.8 | 2026-09-03 | C 清零落盘：`exits` 扩展 roundabout/multi 通用（O3）；`pos` 模板段=车标语义（O6）；§6 字段缺失默认值表（L1）与渲染端固定常量（L6）；修订表注明 V1.4 内部草稿（L5）。 |
 | V1.7 | 2026-09-03 | 审查决策落地：① `dir` 统一车头相对语义（straight/left/right/exitN），弃地理方位混列，`roundabout` 增可选 `exits`；`maneuver` 补 curve/multi/uturn；新增 type×dir 合法组合表（§3.1.1）。② 弹窗行容量更正为 3 行×16 全角；`content` 发送端不预截断（≤128），超 3 行触发滚动（§3.1/§3.5）。③ 新增 §6.7 渲染端显示容量规则。④ "信号中断"仅导航态判定，2s/3s/5s 计时边界写清。⑤ 主机 NAV_FRAME 丢旧保新发送策略（§5）。 |
 | V1.6 | 2026-09-02 | 行为澄清
 

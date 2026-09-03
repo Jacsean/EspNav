@@ -676,8 +676,8 @@ function drawScene(dt){
     readRoad(f);
     if(demoFade>=0){ ctx.restore(); }
     // 车标：演示推进模式沿绿路径插值移动；否则在模板引路起点
-    let carPos = TP_CAR;
-    if(demoCar){ carPos = pointOnPath(demoCar.pts, demoCar.t); }
+    let carPos = (f.pos && f.pos.length === 2) ? f.pos : TP_CAR;   // O6：帧 pos 优先（手机端沿 pts 推进）
+    if(demoCar){ carPos = pointOnPath(demoCar.pts, demoCar.t); }    // 演示推进优先于 pos
     drawCarTriangle(carPos[0], carPos[1], 13);
   }else{
     // 透视梯形道路
@@ -708,7 +708,7 @@ function drawScene(dt){
   ctx.restore();
 }
 
-// ================= 路况模板引擎（主视图 320×150，车头朝上） =================
+// ================= 路况模板引擎（主视图 320×160，车头朝上） =================
 // 视觉：灰=路网，粗亮绿=导航路径(真实走向叠层)，黄三角=本车
 // 注意：模板绘制算法将来在 ESP32 端以同逻辑(离散化)实现，坐标由手机端换算下发。
 // —— 主视图"近大远小"透视投影：模板以平面坐标定义（车头朝上、车在近端底部），
@@ -824,7 +824,7 @@ function roundedRing(cx,cy,a,b,aIn,bIn){
  * 观感：灰=路网、粗亮绿=导航路径（帧 pts 真实走向）、黄三角=本车；透视语言与行驶条带一致。
  * 样例 ROAD_SAMPLES 键 ↔ 下方模板按钮；road JSON 可直接导出/下发（协议字段）。
  */
-const TPL = {main:62, side:35, ring:27};   // 路面基准半宽(平面px)，主通行近宽≈124px（V1.6 冻结）
+const TPL = {main:62, side:35, ring:27};   // 路面基准半宽(平面px)，主通行近宽≈124px（V1.6 冻结）；TPL.ring 预留未用（O5）
 const RBT = {cx:160, cy:84, r:58, b:0.40, aIn:0.66, bIn:0.17, rw:0.31, sIn:0.62}; // O2-A：r=观感外环水平半轴，余为冻结比率(@r=58→b23/aIn38/bIn10/rw18/引路36)
 const AZM = {E:0, SE:45, S:90, SW:135, W:180, NW:225, N:270, NE:315};   // 方位→椭圆参数角(°)，屏幕系 y 向下顺时针为正
 const DIRV = {N:[0,-1], NE:[0.707,-0.707], E:[1,0], SE:[0.707,0.707], S:[0,1], SW:[-0.707,0.707], W:[-1,0], NW:[-0.707,-0.707]};
@@ -918,9 +918,14 @@ function multiRoad(rd){
   if(!pts || pts.length < 2) return false;
   const C = roadCenter(pts);
   branch([pts[0], C], half);                                         // 南主路(导航, 流动)
-  // 造型支路终点按 v2 冻结；方向组参数化待协议字段（规格 O3）
-  const arms = [{d:'N', to:[C[0],30]}, {d:'W', to:[20,C[1]]}, {d:'E', to:[300,C[1]]},
-                {d:'NW', to:[110,30]}, {d:'SE', to:[236,100]}];
+  // 候选支路：road.exits 优先（O3 协议化）；缺省 v2 冻结五方向组
+  let arms;
+  if(rd.exits && rd.exits.length){
+    arms = rd.exits.map(function(nm){ return {d:nm, to:dirToEdge(C,nm)}; });
+  } else {
+    arms = [{d:'N', to:[C[0],30]}, {d:'W', to:[20,C[1]]}, {d:'E', to:[300,C[1]]},
+            {d:'NW', to:[110,30]}, {d:'SE', to:[236,100]}];
+  }
   let best = '', bestDot = 0.85;
   const t0 = pts[pts.length-1][0]-C[0], t1 = pts[pts.length-1][1]-C[1];
   const tl = Math.hypot(t0, t1);

@@ -1,0 +1,4 @@
+[23744:20892:0903/134054.090:ERROR:chrome\browser\importer\edge_china_browsers\edge_qqbrowser_importer_utils_win.cc:165] QQBrowser user data path not found.
+53147 bytes written to file D:/example/projects/Esp32Nav/v1.0.0.1/docs/develp/backup/_snap_v2param/route_demo.png
+[23744:23080:0903/134054.476:ERROR:components\edge_auth\edge_auth_errors.cc:553] EDGE_IDENTITY: Image Fetch FAILED: Error: Primary Error: kAccountImageFetchFailure, Secondary Error: kUnspecified, Platform error: 0, Error string: [empty]
+
