@@ -8,7 +8,7 @@ enum { NL = 0x0A, CR = 0x0D };   /* 换行/回车 */
 
 void frame_parser_init(frame_parser_t *fp)
 {
-    if (fp) { fp->len = 0; }
+    if (fp) { fp->len = 0; fp->overflow_count = 0; }
 }
 
 void frame_parser_feed(frame_parser_t *fp, const uint8_t *data, size_t len,
@@ -21,7 +21,8 @@ void frame_parser_feed(frame_parser_t *fp, const uint8_t *data, size_t len,
             fp->buf[fp->len++] = ch;
         } else {
             /* 缓冲满仍未见换行：脏数据，清空重来（协议 §5） */
-            ESP_LOGW(TAG, "buffer overflow, discard");
+            fp->overflow_count++;
+            ESP_LOGW(TAG, "buffer overflow #%lu, discard", (unsigned long)fp->overflow_count);
             fp->len = 0;
             continue;
         }

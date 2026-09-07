@@ -7,6 +7,7 @@
 typedef struct {
     uint8_t buf[4096];
     size_t  len;
+    uint32_t overflow_count;   /* 缓冲溢出(脏数据)次数 */
 } frame_parser_t;
 
 typedef void (*frame_line_cb)(const char *line, size_t len, void *ctx);
