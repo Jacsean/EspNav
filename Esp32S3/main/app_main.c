@@ -10,6 +10,7 @@
 #include "display_task.h"
 #include "protocol/config.h"
 #include "render/geo.h"
+#include "render/render_nav.h"
 #include "comm/comm_if.h"
 #include "lcd/lcd_driver.h"
 #include "font/font.h"
@@ -29,10 +30,11 @@ void app_main(void)
     font_init();
     display_task_start();
 
-    /* M1 点亮探测：色条轮换 + 串口日志（确认 LCD 驱动/引脚） */
-    lcd_probe_color_cycle();
+    /* M1：直行条带渲染（内置样例，与 HTML V2 参数一致） */
+    render_nav_init();
+    render_nav_demo();
 
-    ESP_LOGI(TAG, "骨架启动完成（待板载 LCD/通信模块接入后进入 M1 点亮）");
+    ESP_LOGI(TAG, "M1: 条带渲染完成（下一步：通信承载 M2 接入帧流）");
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(10000));
         ESP_LOGI(TAG, "alive ...");

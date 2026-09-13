@@ -5,6 +5,8 @@ idf_component_register(
     "protocol/frame_parser.c"
     "protocol/config.c"
     "render/geo.c"
+    "render/lcd_fb.c"
+    "render/render_nav.c"
     "comm/comm_if.c"
     "comm/wifi_sta.c"
     "comm/softap_prov.c"
@@ -15,5 +17,5 @@ idf_component_register(
     "lcd/ili9341.c"
     "font/font.c"
   INCLUDE_DIRS "." "protocol" "render" "comm" "lcd" "font"
-  REQUIRES esp_driver_spi esp_driver_gpio esp_driver_ledc
+  REQUIRES esp_driver_spi esp_driver_gpio esp_driver_ledc esp_psram
 )

@@ -119,3 +119,22 @@ void lcd_ili9341_fill(uint16_t color)
 }
 
 void lcd_ili9341_backlight(uint8_t pct) { bl_set(pct); }
+
+/* 整屏推送：逐行 native->大端 转换 + SPI 传输（20MHz 下约 60ms/帧） */
+void lcd_ili9341_flush(const uint16_t *fb, int w, int h)
+{
+    if (!s_spi || !fb) return;
+    if (w > LCD_W) w = LCD_W;
+    if (h > LCD_H) h = LCD_H;
+    lcd_ili9341_set_window(0, 0, (uint16_t)(w - 1), (uint16_t)(h - 1));
+    gpio_set_level(LCD_PIN_DC, 1);
+    for (int y = 0; y < h; y++) {
+        const uint16_t *src = &fb[y * w];
+        for (int x = 0; x < w; x++) {
+            uint16_t c = src[x];
+            s_line[x] = (uint16_t)((c >> 8) | (c << 8));
+        }
+        spi_transaction_t t = { .length = (size_t)w * 16, .tx_buffer = s_line };
+        ESP_ERROR_CHECK(spi_device_transmit(s_spi, &t));
+    }
+}
