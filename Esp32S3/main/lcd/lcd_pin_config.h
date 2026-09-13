@@ -17,5 +17,6 @@
 #define LCD_PIN_BL          45
 #define LCD_SPI_HZ          (20 * 1000 * 1000)
 #define LCD_BL_ACTIVE_HIGH  1         /* 背光高有效；若反了改 0 */
+#define LCD_INVERT          1         /* 1=发送 INVON(0x21)；若某板不需反相改 0(发 INVOFF) */
 #define LCD_W               320
 #define LCD_H               240

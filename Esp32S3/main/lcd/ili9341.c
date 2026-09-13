@@ -69,6 +69,11 @@ static void ili9341_init_seq(void)
     lcd_cmd(0x11); vTaskDelay(pdMS_TO_TICKS(150));          /* SLPOUT */
     lcd_cmd(0x3A); lcd_data1(0x55);                         /* COLMOD: 16bit RGB565 */
     lcd_cmd(0x36); lcd_data1(0x28);                         /* MADCTL: 横屏(MV)+BGR */
+#if LCD_INVERT
+    lcd_cmd(0x21);                                          /* INVON: 反相型面板（2.8" 通用模块常见） */
+#else
+    lcd_cmd(0x20);                                          /* INVOFF */
+#endif
     lcd_cmd(0x13);                                          /* NORON */
     lcd_cmd(0x29); vTaskDelay(pdMS_TO_TICKS(50));           /* DISPON */
 }
