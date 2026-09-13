@@ -12,6 +12,8 @@ idf_component_register(
     "comm/mdns_service.c"
     "comm/ble_fallback.c"
     "lcd/lcd_driver.c"
+    "lcd/ili9341.c"
     "font/font.c"
   INCLUDE_DIRS "." "protocol" "render" "comm" "lcd" "font"
+  REQUIRES esp_driver_spi esp_driver_gpio esp_driver_ledc
 )

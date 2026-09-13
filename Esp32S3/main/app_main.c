@@ -29,6 +29,9 @@ void app_main(void)
     font_init();
     display_task_start();
 
+    /* M1 点亮探测：色条轮换 + 串口日志（确认 LCD 驱动/引脚） */
+    lcd_probe_color_cycle();
+
     ESP_LOGI(TAG, "骨架启动完成（待板载 LCD/通信模块接入后进入 M1 点亮）");
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(10000));

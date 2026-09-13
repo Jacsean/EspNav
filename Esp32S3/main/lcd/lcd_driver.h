@@ -12,3 +12,6 @@ void lcd_driver_init(void);
 const lcd_driver_ops_t *lcd_driver_ops(void);
 /* 基础绘图原语（M1 实现）：填充矩形/画线/虚线/多边形/文字 */
 void lcd_fill_rect(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint16_t color);
+
+/* M1 点亮探测：全屏色条轮换（红/绿/蓝/白/黑），串口同步打印 */
+void lcd_probe_color_cycle(void);
