@@ -1,0 +1,6 @@
+# 名称,   类型, 子类型,  偏移,    大小
+# 16MB flash 布局（N16R8）
+nvs,      data, nvs,     0x9000,  0x6000
+phy_init, data, phy,     0xf000,  0x1000
+factory,  app,  factory, 0x10000, 4M
+font,     data, 0x40,    ,        1M
