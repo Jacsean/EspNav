@@ -1,4 +1,5 @@
 #include "wifi_ap.h"
+#include <stdio.h>
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -47,9 +48,9 @@ void wifi_ap_start(void)
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
     wifi_config_t wc = { 0 };
-    strncpy((char *)wc.ap.ssid, AP_SSID, sizeof(wc.ap.ssid) - 1);
+    snprintf((char *)wc.ap.ssid, sizeof(wc.ap.ssid), "%s", AP_SSID);
     wc.ap.ssid_len = (uint8_t)strlen(AP_SSID);
-    strncpy((char *)wc.ap.password, AP_PASS, sizeof(wc.ap.password) - 1);
+    snprintf((char *)wc.ap.password, sizeof(wc.ap.password), "%s", AP_PASS);
     wc.ap.channel = AP_CHANNEL;
     wc.ap.max_connection = AP_MAX_STA;
     wc.ap.authmode = WIFI_AUTH_WPA2_PSK;

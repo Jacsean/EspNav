@@ -1,4 +1,5 @@
 #include "nav_frame.h"
+#include <stdio.h>
 #include <string.h>
 #include "json_lite.h"
 #include "esp_log.h"
@@ -23,8 +24,7 @@ bool nav_frame_on_json_line(const char *line, int len)
     (void)len;
     char type[16] = { 0 };
     jl_get_str(line, "msg_type", type, sizeof(type));
-    strncpy(s_last_type, type, sizeof(s_last_type) - 1);
-    s_last_type[sizeof(s_last_type) - 1] = 0;
+    snprintf(s_last_type, sizeof(s_last_type), "%s", type);
 
     if (!jl_has_key(line, "payload")) {
         ESP_LOGW(TAG, "no payload / parse miss");
