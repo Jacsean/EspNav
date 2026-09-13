@@ -11,6 +11,11 @@
 
 static const char *TAG = "wifi_ap";
 
+#define AP_SSID     "ESPNav-AP"
+#define AP_PASS     "espnav1234"
+#define AP_CHANNEL  1
+#define AP_MAX_STA  2
+
 static void wifi_ap_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     (void)arg;
@@ -24,10 +29,6 @@ static void wifi_ap_event(void *arg, esp_event_base_t base, int32_t id, void *da
         ESP_LOGI(TAG, "客户端已断开");
     }
 }
-#define AP_SSID     "ESPNav-AP"
-#define AP_PASS     "espnav1234"
-#define AP_CHANNEL  1
-#define AP_MAX_STA  2
 
 void wifi_ap_start(void)
 {
