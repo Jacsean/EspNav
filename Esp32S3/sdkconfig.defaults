@@ -1,2 +1,6 @@
-# 骨架阶段最小配置（WiFi/NimBLE/PSRAM 等随模块实现逐步加入，避免未知符号）
+# ESP32-S3 N16R8 集成板（实测 2026-09-03：ESP32-S3 rev v0.2 / 16MB flash / 8MB 内嵌 PSRAM / USB-Serial-JTAG）
 CONFIG_IDF_TARGET="esp32s3"
+
+# 控制台走内置 USB-Serial/JTAG（板上仅此一个 USB 口；默认 UART0 未引出，会导致 monitor 无日志）
+CONFIG_ESP_CONSOLE_UART_DEFAULT=n
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
