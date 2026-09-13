@@ -12,6 +12,8 @@
 #include "render/geo.h"
 #include "render/render_nav.h"
 #include "comm/comm_if.h"
+#include "comm/wifi_ap.h"
+#include "comm/tcp_server.h"
 #include "lcd/lcd_driver.h"
 #include "font/font.h"
 
@@ -34,7 +36,12 @@ void app_main(void)
     render_nav_init();
     render_nav_demo();
 
-    ESP_LOGI(TAG, "M1: 条带渲染完成（下一步：通信承载 M2 接入帧流）");
+    ESP_LOGI(TAG, "M1: 条带渲染完成");
+
+    /* M2：softAP + TCP :8899 接收协议帧（PC/手机连接后发 NAV_FRAME 即刷新画面） */
+    wifi_ap_start();
+    tcp_server_start();
+    ESP_LOGI(TAG, "M2: 通信就绪，等待 NAV_FRAME ...");
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(10000));
         ESP_LOGI(TAG, "alive ...");
