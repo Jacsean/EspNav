@@ -5,6 +5,7 @@ idf_component_register(
     "protocol/frame_parser.c"
     "protocol/config.c"
     "protocol/nav_frame.c"
+    "protocol/json_lite.c"
     "render/geo.c"
     "render/lcd_fb.c"
     "render/render_nav.c"
@@ -20,5 +21,5 @@ idf_component_register(
     "lcd/ili9341.c"
     "font/font.c"
   INCLUDE_DIRS "." "protocol" "render" "comm" "lcd" "font"
-  REQUIRES esp_driver_spi esp_driver_gpio esp_driver_ledc esp_psram esp_wifi esp_netif nvs_flash json lwip
+  REQUIRES esp_driver_spi esp_driver_gpio esp_driver_ledc esp_psram esp_wifi esp_netif nvs_flash lwip
 )
