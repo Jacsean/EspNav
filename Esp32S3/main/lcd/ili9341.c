@@ -109,8 +109,7 @@ void lcd_ili9341_init(void)
              LCD_SPI_HZ / 1000000);
 
     gpio_set_direction(LCD_PIN_DC, GPIO_MODE_OUTPUT);
-    gpio_set_direction(LCD_PIN_CS, GPIO_MODE_OUTPUT);
-    gpio_set_level(LCD_PIN_CS, 0);
+    /* CS 交给 SPI 驱动逐笔控制（官方 esp_lcd 亦然）；此前“常拉低”在 0xF6 接口控制后可能失效 */
     bl_init();
 
     spi_bus_config_t bus = {
@@ -118,7 +117,7 @@ void lcd_ili9341_init(void)
         .quadwp_io_num = -1, .quadhd_io_num = -1, .max_transfer_sz = LCD_W * 2 + 8 };
     ESP_ERROR_CHECK(spi_bus_initialize(LCD_SPI_HOST, &bus, SPI_DMA_CH_AUTO));
     spi_device_interface_config_t dev = {
-        .clock_speed_hz = LCD_SPI_HZ, .mode = 0, .spics_io_num = -1, .queue_size = 4 };
+        .clock_speed_hz = LCD_SPI_HZ, .mode = 0, .spics_io_num = LCD_PIN_CS, .queue_size = 4 };
     ESP_ERROR_CHECK(spi_bus_add_device(LCD_SPI_HOST, &dev, &s_spi));
 
     lcd_reset();
