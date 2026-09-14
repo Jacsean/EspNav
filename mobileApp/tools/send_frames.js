@@ -2,8 +2,11 @@
  * send_frames.js — PC 端测试脚本：向 ESP32 TCP :8899 发送协议帧（V1.10）
  * 用法：
  *   node send_frames.js --host 192.168.4.1 --port 8899 --demo
- *   node send_frames.js --file frames.jsonl     # 每行一个完整 JSON 帧（含 \n 自动补）
- * 说明：先让电脑连上 ESP32 的热点 ESPNav-AP（密码 espnav1234），再运行本脚本。
+ *   node send_frames.js --file frames.jsonl     # 每行一个完整 JSON 帧
+ * 真机语义（M3 起固件按此实现）：
+ *   - 车标 pos 固定（车头朝上视角，车在画面底部）；
+ *   - centerLine/pastCenter/routeCenter 随行驶更新；
+ *   - 两侧虚线“向下滚动”由渲染端按 dash_speed 做动画，不靠帧位移。
  */
 'use strict';
 const net = require('net');
@@ -16,19 +19,21 @@ function arg(name, def) {
 const HOST = arg('host', '192.168.4.1');
 const PORT = parseInt(arg('port', '8899'), 10);
 const FILE = arg('file', null);
-const DEMO = process.argv.includes('--demo') || !FILE;
 
-function frame(payload, type = 'NAV_FRAME') {
+function frameObj(payload, type = 'NAV_FRAME') {
   return JSON.stringify({ msg_type: type, payload: payload }) + '\n';
 }
-function stripFrame(heading, turnDist, hint, posY) {
+/* 固定中心线；pastCount 增长模拟“已行驶段变长”，pos 固定不动 */
+function stripFrame(turnDist, hint, pastCount) {
+  const center = [[160, 130], [160, 110], [160, 80], [160, 50], [160, 28]];
+  const pc = Math.max(1, Math.min(center.length - 1, pastCount));
   return {
-    heading: heading, turn_dist: turnDist, hint: hint,
+    heading: 0, turn_dist: turnDist, hint: hint,
     total_dist: 8200, progress_pct: 34, elapsed_min: 28, eta_time: '14:27',
-    centerLine: [[160, 130], [160, 110], [160, 80], [160, 50], [160, 28]],
-    pastCenter: [[160, 130], [160, 110]],
-    routeCenter: [[160, 110], [160, 80], [160, 50], [160, 28]],
-    pos: [160, typeof posY === 'number' ? posY : 110]
+    centerLine: center,
+    pastCenter: center.slice(0, pc + 1),
+    routeCenter: center.slice(pc),
+    pos: [160, 122]                      /* 车标固定（真机语义） */
   };
 }
 
@@ -44,21 +49,18 @@ const sock = net.connect(PORT, HOST, () => {
       i++;
     }, 300);
   } else {
-    // demo：直行 10 帧（车标/距离/提示变化）-> PING -> GET_CONFIG
     let n = 0;
     const t = setInterval(() => {
       n++;
       if (n <= 10) {
         const turnDist = 500 - n * 40;
-        const y = 118 - n * 4;
-        const msg = frame(stripFrame(0, turnDist, '前方' + turnDist + '米直行', y));
-        sock.write(msg);
-        console.log('[tx] frame#' + n + ' turn_dist=' + turnDist);
+        sock.write(frameObj(stripFrame(turnDist, '前方' + turnDist + '米直行', 1 + Math.floor(n / 4))));
+        console.log('[tx] frame#' + n + ' turn_dist=' + turnDist + ' past=' + (1 + Math.floor(n / 4)));
       } else if (n === 11) {
-        sock.write(frame({ ts: Math.floor(Date.now() / 1000) }, 'PING'));
+        sock.write(frameObj({ ts: Math.floor(Date.now() / 1000) }, 'PING'));
         console.log('[tx] PING');
       } else if (n === 12) {
-        sock.write(frame({}, 'GET_CONFIG'));
+        sock.write(frameObj({}, 'GET_CONFIG'));
         console.log('[tx] GET_CONFIG');
       } else {
         clearInterval(t); sock.end();

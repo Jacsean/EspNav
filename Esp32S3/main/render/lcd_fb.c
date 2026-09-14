@@ -67,19 +67,29 @@ void fb_line(int x0, int y0, int x1, int y1, uint16_t color)
     }
 }
 
-void fb_dashed_line(int x0, int y0, int x1, int y1, uint16_t color, int dash, int gap)
+void fb_dashed_line_off(int x0, int y0, int x1, int y1, uint16_t color, int dash, int gap, float offset)
 {
     int dx = x1 - x0, dy = y1 - y0;
     float len = sqrtf((float)(dx * dx + dy * dy));
     if (len < 1.0f) return;
     float ux = dx / len, uy = dy / len;
-    float pos = 0.0f;
-    while (pos < len) {
-        float e = pos + dash; if (e > len) e = len;
-        fb_line(x0 + (int)(ux * pos), y0 + (int)(uy * pos),
+    float cycle = (float)(dash + gap);
+    if (cycle < 1.0f) cycle = 1.0f;
+    float phase = fmodf(offset, cycle);
+    if (phase < 0) phase += cycle;
+    for (float pos = -phase; pos < len; pos += cycle) {
+        float a = pos < 0 ? 0.0f : pos;
+        float e = pos + dash;
+        if (e > len) e = len;
+        if (e <= a) continue;
+        fb_line(x0 + (int)(ux * a), y0 + (int)(uy * a),
                 x0 + (int)(ux * e), y0 + (int)(uy * e), color);
-        pos += dash + gap;
     }
+}
+
+void fb_dashed_line(int x0, int y0, int x1, int y1, uint16_t color, int dash, int gap)
+{
+    fb_dashed_line_off(x0, y0, x1, y1, color, dash, gap, 0.0f);
 }
 
 void fb_fill_quad(const int *qx, const int *qy, uint16_t color)

@@ -13,6 +13,8 @@ void fb_pixel(int x, int y, uint16_t color);
 void fb_fill_rect(int x0, int y0, int x1, int y1, uint16_t color);
 void fb_line(int x0, int y0, int x1, int y1, uint16_t color);
 void fb_dashed_line(int x0, int y0, int x1, int y1, uint16_t color, int dash, int gap);
+/* 带相位偏移的虚线（offset 增大 -> 图案向起点(x0,y0)方向滚动） */
+void fb_dashed_line_off(int x0, int y0, int x1, int y1, uint16_t color, int dash, int gap, float offset);
 /* 四点四边形扫描线填充（顺序任意，凸四边形） */
 void fb_fill_quad(const int *qx, const int *qy, uint16_t color);
 /* 实心三角形（车标） */

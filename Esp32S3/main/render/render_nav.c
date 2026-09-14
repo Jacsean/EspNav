@@ -2,6 +2,7 @@
 #include "lcd_fb.h"
 #include <math.h>
 #include "esp_log.h"
+#include "config.h"
 
 static const char *TAG = "render_nav";
 
@@ -67,7 +68,18 @@ static void quad_from_centerline(const nav_frame_t *f, int nearHalf, int farHalf
     qx[3] = x1 + (int)(nx * farHalf);  qy[3] = y1 + (int)(ny * farHalf);
 }
 
-void render_nav_frame(const nav_frame_t *f)
+static nav_frame_t s_cur;
+static bool s_have = false;
+static float s_anim = 0.0f;
+
+void render_nav_set_frame(const nav_frame_t *f)
+{
+    if (!f || !f->valid) return;
+    s_cur = *f;
+    s_have = true;
+}
+
+static void draw_frame(const nav_frame_t *f, float anim)
 {
     if (!f || !f->valid) return;
     fb_clear(RGB565_BLACK);
@@ -79,13 +91,14 @@ void render_nav_frame(const nav_frame_t *f)
         int qx[4], qy[4];
         quad_from_centerline(f, NAV_NEAR_HALF, NAV_FAR_HALF, qx, qy);
         fb_fill_quad(qx, qy, ROAD_GRAY);
-        /* 边界虚线（梯形左右边 + 顶点法线四角） */
-        fb_dashed_line(qx[0], qy[0], qx[3], qy[3], RGB565_WHITE, 8, 6);
-        fb_dashed_line(qx[1], qy[1], qx[2], qy[2], RGB565_WHITE, 8, 6);
+        /* 边界虚线（带流动相位：offset 增大 -> 向近端/下方滚动） */
+        fb_dashed_line_off(qx[0], qy[0], qx[3], qy[3], RGB565_WHITE, 8, 6, anim);
+        fb_dashed_line_off(qx[1], qy[1], qx[2], qy[2], RGB565_WHITE, 8, 6, anim);
         /* 车道中线虚线（沿 centerLine 折线） */
         for (int i = 0; i + 1 < f->center_n; i++) {
-            fb_dashed_line(f->center_line[i].x, f->center_line[i].y,
-                           f->center_line[i + 1].x, f->center_line[i + 1].y, RGB565_WHITE, 5, 7);
+            fb_dashed_line_off(f->center_line[i].x, f->center_line[i].y,
+                               f->center_line[i + 1].x, f->center_line[i + 1].y,
+                               RGB565_WHITE, 5, 7, anim);
         }
     }
     /* 已行驶 / 未行驶路径（绿） */
@@ -97,4 +110,21 @@ void render_nav_frame(const nav_frame_t *f)
     if (f->pos_valid) fb_triangle(f->pos.x, f->pos.y, 14, RGB565_YELLOW);
 
     fb_flush();
+}
+
+/* 显示任务周期调用：推进虚线动画并重绘（dash_speed 来自 SET_CONFIG，默认 60 px/s） */
+void render_nav_tick(float dt)
+{
+    if (!s_have) return;
+    const espnav_config_t *cfg = config_get();
+    s_anim += (float)cfg->dash_speed * dt;
+    if (s_anim > 100000.0f) s_anim = 0.0f;
+    draw_frame(&s_cur, s_anim);
+}
+
+/* 立即渲染（调试/单帧） */
+void render_nav_frame(const nav_frame_t *f)
+{
+    render_nav_set_frame(f);
+    draw_frame(f, 0.0f);
 }
