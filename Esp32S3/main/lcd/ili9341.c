@@ -82,8 +82,9 @@ static void ili9341_init_seq(void)
     wr_reg(0xC1); wr_data(0x13);                       /* Power control 2 */
     wr_reg(0xC5); wr_data(0x22); wr_data(0x35);        /* VCOM 1 */
     wr_reg(0xC7); wr_data(0xBD);                       /* VCOM 2 */
+    wr_reg(0x11); vTaskDelay(pdMS_TO_TICKS(120));      /* SLPOUT（官方序列位置） */
     wr_reg(0x21);                                      /* INVON */
-    wr_reg(0x36); wr_data(0x68);                       /* MADCTL 横屏: BGR|MY|MV */
+    wr_reg(0x36); wr_data(0xA0);                       /* MADCTL 横屏: MV|MY (RGB 序, 官方 esp_lcd 等价值) */
     wr_reg(0xB6); wr_data(0x0A); wr_data(0xA2);
     wr_reg(0x3A); wr_data(0x55);                       /* COLMOD 16bit */
     wr_reg(0xF6); wr_data(0x01); wr_data(0x30);
@@ -98,7 +99,6 @@ static void ili9341_init_seq(void)
     wr_data(0x00); wr_data(0x0A); wr_data(0x0F); wr_data(0x04); wr_data(0x11); wr_data(0x08);
     wr_data(0x36); wr_data(0x58); wr_data(0x4D); wr_data(0x07); wr_data(0x10); wr_data(0x0C);
     wr_data(0x32); wr_data(0x34); wr_data(0x0F);
-    wr_reg(0x11); vTaskDelay(pdMS_TO_TICKS(120));      /* SLPOUT */
     wr_reg(0x29); vTaskDelay(pdMS_TO_TICKS(50));       /* DISPON */
 }
 
