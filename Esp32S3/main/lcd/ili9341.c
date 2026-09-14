@@ -29,6 +29,26 @@ static void lcd_data(const uint8_t *d, size_t n)
     ESP_ERROR_CHECK(spi_device_transmit(s_spi, &t));
 }
 static void lcd_data1(uint8_t d) { lcd_data(&d, 1); }
+/* 读面板 ID（RDDID 0x04）：判定 SPI 双向通信是否正常。
+ * ILI9341 正常应读到含 00 93 41 的序列；全 FF/00 表示通信异常或 MISO 未接。 */
+static void lcd_read(uint8_t cmd, uint8_t *out, int n)
+{
+    gpio_set_level(LCD_PIN_DC, 0);
+    spi_transaction_t t = { .length = 8, .tx_buffer = &cmd };
+    ESP_ERROR_CHECK(spi_device_transmit(s_spi, &t));
+    gpio_set_level(LCD_PIN_DC, 1);
+    spi_transaction_t r = { .length = (size_t)n * 8, .rx_buffer = out };
+    ESP_ERROR_CHECK(spi_device_transmit(s_spi, &r));
+}
+
+static void lcd_log_panel_id(void)
+{
+    static uint8_t id[8];
+    memset(id, 0, sizeof(id));
+    lcd_read(0x04, id, 4);
+    ESP_LOGI(TAG, "panel ID(RDDID) = %02X %02X %02X %02X  (ILI9341 正常应见 00 93 41)",
+             id[0], id[1], id[2], id[3]);
+}
 
 /* 背光 PWM（LEDC） */
 static void bl_init(void)
@@ -99,6 +119,7 @@ void lcd_ili9341_init(void)
 
     hw_reset();
     ili9341_init_seq();
+    lcd_log_panel_id();
     bl_set(100);
     ESP_LOGI(TAG, "init done, backlight 100%%");
 }
