@@ -25,7 +25,7 @@ function frameObj(payload, type = 'NAV_FRAME') {
 }
 /* 固定中心线；pastCount 增长模拟“已行驶段变长”，pos 固定不动 */
 function stripFrame(turnDist, hint, pastCount) {
-  const center = [[160, 130], [160, 110], [160, 80], [160, 50], [160, 28]];
+  const center = [[160, 144], [160, 118], [160, 86], [160, 54], [160, 30]];   /* 路面下边沿下移到 144 */
   const pc = Math.max(1, Math.min(center.length - 1, pastCount));
   return {
     heading: 0, turn_dist: turnDist, hint: hint,
@@ -33,7 +33,7 @@ function stripFrame(turnDist, hint, pastCount) {
     centerLine: center,
     pastCenter: center.slice(0, pc + 1),
     routeCenter: center.slice(pc),
-    pos: [160, 96]                       /* 车标固定；较底边(130)上移约一个车身 */
+    pos: [160, 110]                      /* 车标固定（路面下边沿上移约两个车身） */
   };
 }
 

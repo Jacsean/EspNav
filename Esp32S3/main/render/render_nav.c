@@ -10,7 +10,7 @@ static const char *TAG = "render_nav";
 
 /* 与 nav_sim_v2.html 冻结基准一致：主视图 320x160 / 近宽150 远宽36 / y近130 远28 */
 #define NAV_CX        160
-#define NAV_NEAR_Y    130
+#define NAV_NEAR_Y    144     /* 路面下边沿下移一个车身（2026-09-14 反馈） */
 #define NAV_FAR_Y     28
 #define NAV_NEAR_HALF 75      /* 近宽 150 */
 #define NAV_FAR_HALF  18      /* 远宽 36  */
@@ -144,6 +144,13 @@ void render_nav_tick(float dt)
     const espnav_config_t *cfg = config_get();
     s_anim += (float)cfg->dash_speed * dt;
     if (s_anim > 100000.0f) s_anim = 0.0f;
+    draw_frame(&s_cur, s_anim);
+}
+
+/* 收帧即渲染（双保险：不依赖显示任务定时器） */
+void render_nav_draw_now(void)
+{
+    if (!s_have) return;
     draw_frame(&s_cur, s_anim);
 }
 
