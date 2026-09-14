@@ -3,6 +3,8 @@
 #include <math.h>
 #include "esp_log.h"
 #include "config.h"
+#include "font.h"
+#include <stdio.h>
 
 static const char *TAG = "render_nav";
 
@@ -108,6 +110,29 @@ static void draw_frame(const nav_frame_t *f, float anim)
         fb_line(f->route_center[i].x, f->route_center[i].y, f->route_center[i + 1].x, f->route_center[i + 1].y, PATH_GREEN);
     /* 车辆光标 */
     if (f->pos_valid) fb_triangle(f->pos.x, f->pos.y, 14, RGB565_YELLOW);
+
+    /* ---- 文字层（hint / 距离 / 统计）---- */
+    {
+        char buf[64];
+        font_clip_utf8(f->hint, 9 * 16, buf, sizeof(buf));      /* hint ≤9 全角（协议 §6.7） */
+        font_draw_text(4, 2, buf, PATH_GREEN);
+
+        snprintf(buf, sizeof(buf), "距离：%d m", (int)f->turn_dist);
+        font_draw_text(4, 22, buf, PATH_GREEN);
+
+        int km = (int)(f->total_dist / 1000);
+        int frac = (int)((f->total_dist % 1000) / 100);
+        snprintf(buf, sizeof(buf), "全程 %d.%d km  已完 %u%%", km, frac, (unsigned)f->progress_pct);
+        font_draw_text(6, 168, buf, PATH_GREEN);
+
+        snprintf(buf, sizeof(buf), "耗时 %u min", (unsigned)f->elapsed_min);
+        font_draw_text(6, 190, buf, PATH_GREEN);
+
+        snprintf(buf, sizeof(buf), "预计到达 %s", f->eta_time);
+        font_draw_text(6, 212, buf, PATH_GREEN);
+
+        font_draw_text(300, 168, "北", PATH_GREEN);
+    }
 
     fb_flush();
 }
