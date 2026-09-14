@@ -15,7 +15,7 @@
 #define LCD_PIN_DC          46
 #define LCD_PIN_RST         (-1)      /* -1 = 无 GPIO 复位（板上接 EN），走软复位 */
 #define LCD_PIN_BL          45
-#define LCD_SPI_HZ          (10 * 1000 * 1000)   /* 20MHz 出现花屏/竖线，降到 10MHz 排查信号余量 */
+#define LCD_SPI_HZ          (20 * 1000 * 1000)
 #define LCD_BL_ACTIVE_HIGH  1         /* 背光高有效；若反了改 0 */
 #define LCD_INVERT          1         /* 1=发送 INVON(0x21)；若某板不需反相改 0(发 INVOFF) */
 #define LCD_W               320
