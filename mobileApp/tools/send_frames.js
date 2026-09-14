@@ -33,7 +33,7 @@ function stripFrame(turnDist, hint, pastCount) {
     centerLine: center,
     pastCenter: center.slice(0, pc + 1),
     routeCenter: center.slice(pc),
-    pos: [160, 108]                      /* 车标固定；较底边(130)上移约一个车身 */
+    pos: [160, 96]                       /* 车标固定；较底边(130)上移约一个车身 */
   };
 }
 

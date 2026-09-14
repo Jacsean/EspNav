@@ -20,11 +20,16 @@ static void display_task(void *arg)
         last = now;
         if (dt > 0.5f) dt = 0.5f;
         render_nav_tick(dt);
+        static uint32_t n = 0;
+        n++;
+        if (n == 1 || (n % 150) == 0) {
+            ESP_LOGI(TAG, "render tick #%lu (dt=%.3fs)", (unsigned long)n, dt);
+        }
     }
 }
 
 void display_task_start(void)
 {
     ESP_LOGI(TAG, "starting ...");
-    xTaskCreate(display_task, "nav_display", 4096, NULL, 5, NULL);
+    xTaskCreate(display_task, "nav_display", 8192, NULL, 5, NULL);   /* 8KB：字体/文字渲染需要 */
 }

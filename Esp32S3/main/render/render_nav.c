@@ -42,7 +42,7 @@ void render_nav_demo(void)
     fb_line(NAV_CX, 110, NAV_CX, NAV_FAR_Y, PATH_GREEN);
 
     /* 车辆三角（黄） */
-    fb_triangle(NAV_CX, 110, 14, RGB565_YELLOW);
+    fb_triangle(NAV_CX, 96, 14, RGB565_YELLOW);   /* 车标较近端(130)上移约一个车身 */
 
     /* 版面示意：顶部信息带 + 左下统计区 + 右下 overview 区 */
     fb_fill_rect(0, 0, FB_W - 1, 1, RGB565_GREEN);
@@ -113,7 +113,7 @@ static void draw_frame(const nav_frame_t *f, float anim)
 
     /* ---- 文字层（hint / 距离 / 统计）---- */
     {
-        char buf[64];
+        static char buf[64];                 /* static：避免显示任务栈压力 */
         font_clip_utf8(f->hint, 9 * 16, buf, sizeof(buf));      /* hint ≤9 全角（协议 §6.7） */
         font_draw_text(4, 2, buf, PATH_GREEN);
 
