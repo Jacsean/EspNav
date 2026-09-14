@@ -9,6 +9,9 @@
 
 static const char *TAG = "render_nav";
 
+/* 临时二分开关：1=渲染文字层；0=跳过文字（用于定位黑屏/崩溃是否由文字渲染引起） */
+#define RENDER_TEXT 0
+
 /* 与 nav_sim_v2.html 冻结基准一致：主视图 320x160 / 近宽150 远宽36 / y近130 远28 */
 #define NAV_CX        160
 #define NAV_NEAR_Y    144     /* 路面下边沿下移一个车身（2026-09-14 反馈） */
@@ -111,6 +114,7 @@ static void draw_frame(const nav_frame_t *f, float anim)
     /* 车辆光标 */
     if (f->pos_valid) fb_triangle(f->pos.x, f->pos.y, 14, RGB565_YELLOW);
 
+#if RENDER_TEXT
     /* ---- 文字层（hint / 距离 / 统计）---- */
     {
         static char buf[64];                 /* static：避免显示任务栈压力 */
@@ -134,7 +138,15 @@ static void draw_frame(const nav_frame_t *f, float anim)
         font_draw_text(300, 168, "北", PATH_GREEN);
     }
 
+#endif
     fb_flush();
+    {
+        static uint32_t n = 0;
+        n++;
+        if ((n % 150) == 1) {
+            ESP_LOGI(TAG, "flushed frame #%lu (have=%d)", (unsigned long)n, (int)s_have);
+        }
+    }
 }
 
 /* 显示任务周期调用：推进虚线动画并重绘（dash_speed 来自 SET_CONFIG，默认 60 px/s） */
