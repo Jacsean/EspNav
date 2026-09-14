@@ -21,5 +21,5 @@ idf_component_register(
     "lcd/ili9341.c"
     "font/font.c"
   INCLUDE_DIRS "." "protocol" "render" "comm" "lcd" "font"
-  REQUIRES esp_driver_spi esp_driver_gpio esp_driver_ledc esp_psram esp_wifi esp_netif nvs_flash lwip
+  REQUIRES esp_driver_spi esp_driver_gpio esp_driver_ledc esp_psram esp_wifi esp_netif nvs_flash lwip esp_timer
 )
