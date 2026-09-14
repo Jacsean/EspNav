@@ -17,10 +17,23 @@
 #include "lcd/lcd_driver.h"
 #include "font/font.h"
 
+/* 临时诊断开关：1 = 只点屏（不启动 WiFi/字库/任务），用于判定显示层；0 = 正常固件 */
+#define LCD_ONLY_TEST 1
+
 static const char *TAG = "app_main";
 
 void app_main(void)
 {
+#if LCD_ONLY_TEST
+    /* ==== 最小点屏测试：排除一切其它因素 ==== */
+    ESP_LOGI(TAG, "LCD_ONLY_TEST: 只初始化并轮换纯色（无 WiFi/字库/任务）");
+    lcd_driver_init();
+    for (;;) {
+        ESP_LOGI(TAG, "color cycle RED/GREEN/BLUE/WHITE/BLACK");
+        lcd_probe_color_cycle();
+        vTaskDelay(pdMS_TO_TICKS(2000));
+    }
+#endif
     ESP_LOGI(TAG, "Esp32Nav 固件骨架 v0.0.1 (IDF %s)", IDF_VER);
     ESP_LOGI(TAG, "目标: ESP32-S3 320x240 外置导航屏 | 协议 ble_protocol V1.10");
 
