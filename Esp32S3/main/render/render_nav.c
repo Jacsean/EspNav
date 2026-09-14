@@ -50,8 +50,12 @@ void render_nav_demo(void)
     fb_line(220, 160, 220, FB_H - 1, RGB565_DGRAY);
     fb_fill_rect(222, 162, FB_W - 3, FB_H - 3, RGB565_BLACK);
 
+    /* 自检文字：开屏即显示（用于确认字体渲染/上屏是否正常） */
+    font_draw_text(4, 2, "Esp32Nav 自检 前方460米直行", PATH_GREEN);
+    font_draw_text(4, 22, "距离：460 m", PATH_GREEN);
+
     fb_flush();
-    ESP_LOGI(TAG, "demo strip rendered (near150/far36) and flushed");
+    ESP_LOGI(TAG, "demo strip rendered (near150/far36) + text selfcheck flushed");
 }
 
 /* 帧渲染（M2）：按 centerLine 首末点生成透视梯形（近宽150/远宽36，与 v2 genPerspectiveRoadTrapezoid 一致） */
