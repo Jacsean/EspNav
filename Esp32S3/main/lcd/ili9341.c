@@ -166,9 +166,3 @@ void lcd_ili9341_flush(const uint16_t *fb, int w, int h)
         ESP_ERROR_CHECK(spi_device_transmit(s_spi, &t));
     }
 }
-
-static void ops_init(void) { lcd_ili9341_init(); }
-static const lcd_driver_ops_t s_ops = {
-    .init = ops_init, .set_window = lcd_ili9341_set_window,
-    .push_pixels = NULL, .backlight = lcd_ili9341_backlight,
-};
