@@ -3,6 +3,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 
 static const char *TAG = "lcd_driver";
 
@@ -36,14 +37,17 @@ void lcd_fill_rect(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint16_t 
 /* M1 点亮探测：全屏色条轮换（红->绿->蓝->白->黑），串口同步打印，便于用户反馈屏幕现象 */
 void lcd_probe_color_cycle(void)
 {
+    /* 慢速自检：红->绿->蓝，每色 2 秒（便于肉眼确认）；含单色填充耗时日志 */
     const struct { const char *name; uint16_t color; } seq[] = {
-        { "RED",   0xF800 }, { "GREEN", 0x07E0 }, { "BLUE", 0x001F },
-        { "WHITE", 0xFFFF }, { "BLACK", 0x0000 },
+        { "RED", 0xF800 }, { "GREEN", 0x07E0 }, { "BLUE", 0x001F },
     };
-    for (int i = 0; i < 5; i++) {
-        ESP_LOGI(TAG, "fill %s", seq[i].name);
+    for (int i = 0; i < 3; i++) {
+        int64_t t0 = esp_timer_get_time();
+        ESP_LOGI(TAG, "fill %s ...", seq[i].name);
         lcd_ili9341_fill(seq[i].color);
-        vTaskDelay(pdMS_TO_TICKS(900));
+        int64_t ms = (esp_timer_get_time() - t0) / 1000;
+        ESP_LOGI(TAG, "fill %s done (%lld ms)", seq[i].name, (long long)ms);
+        vTaskDelay(pdMS_TO_TICKS(2000));
     }
     ESP_LOGI(TAG, "probe cycle done");
 }
