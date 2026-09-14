@@ -5,6 +5,7 @@
 #include "config.h"
 #include "font.h"
 #include <stdio.h>
+#include <string.h>
 
 static const char *TAG = "render_nav";
 
@@ -24,41 +25,36 @@ void render_nav_init(void)
 
 void render_nav_demo(void)
 {
-    fb_clear(RGB565_BLACK);
+    /* 内置直行样例帧：交给显示任务周期渲染（含虚线动画与文字），
+     * 开机即验证 帧->渲染->动画->文字 整条链路，不依赖外部发帧。 */
+    static nav_frame_t f;
+    memset(&f, 0, sizeof(f));
+    f.heading = 0;
+    f.turn_dist = 460;
+    snprintf(f.hint, sizeof(f.hint), "%s", "前方460米直行");
+    f.total_dist = 8200;
+    f.progress_pct = 34;
+    f.elapsed_min = 28;
+    snprintf(f.eta_time, sizeof(f.eta_time), "%s", "14:27");
 
-    /* 主视图透视梯形条带 */
-    int qx[4] = { NAV_CX - NAV_NEAR_HALF, NAV_CX + NAV_NEAR_HALF,
-                  NAV_CX + NAV_FAR_HALF,  NAV_CX - NAV_FAR_HALF };
-    int qy[4] = { NAV_NEAR_Y, NAV_NEAR_Y, NAV_FAR_Y, NAV_FAR_Y };
-    fb_fill_quad(qx, qy, ROAD_GRAY);
+    static const int pts[5][2] = { {160, NAV_NEAR_Y}, {160, 118}, {160, 86}, {160, 54}, {160, 30} };
+    for (int i = 0; i < 5; i++) {
+        f.center_line[i].x = (int16_t)pts[i][0];
+        f.center_line[i].y = (int16_t)pts[i][1];
+    }
+    f.center_n = 5;
+    f.past_n = 2;
+    f.past_center[0] = f.center_line[0];
+    f.past_center[1] = f.center_line[1];
+    f.route_n = 4;
+    for (int i = 0; i < 4; i++) f.route_center[i] = f.center_line[i + 1];
+    f.pos.x = 160; f.pos.y = 110; f.pos_valid = true;
+    f.valid = true;
 
-    /* 两侧边界虚线 + 车道中线虚线 */
-    fb_dashed_line(NAV_CX - NAV_NEAR_HALF, NAV_NEAR_Y, NAV_CX - NAV_FAR_HALF, NAV_FAR_Y, RGB565_WHITE, 8, 6);
-    fb_dashed_line(NAV_CX + NAV_NEAR_HALF, NAV_NEAR_Y, NAV_CX + NAV_FAR_HALF, NAV_FAR_Y, RGB565_WHITE, 8, 6);
-    fb_dashed_line(NAV_CX, NAV_NEAR_Y, NAV_CX, NAV_FAR_Y, RGB565_WHITE, 5, 7);
-
-    /* 已行驶 / 未行驶路径（绿） */
-    fb_line(NAV_CX, NAV_NEAR_Y, NAV_CX, 110, PATH_GREEN);
-    fb_line(NAV_CX, 110, NAV_CX, NAV_FAR_Y, PATH_GREEN);
-
-    /* 车辆三角（黄） */
-    fb_triangle(NAV_CX, 96, 14, RGB565_YELLOW);   /* 车标较近端(130)上移约一个车身 */
-
-    /* 版面示意：顶部信息带 + 左下统计区 + 右下 overview 区 */
-    fb_fill_rect(0, 0, FB_W - 1, 1, RGB565_GREEN);
-    fb_line(0, 160, FB_W - 1, 160, RGB565_DGRAY);
-    fb_line(220, 160, 220, FB_H - 1, RGB565_DGRAY);
-    fb_fill_rect(222, 162, FB_W - 3, FB_H - 3, RGB565_BLACK);
-
-    /* 自检文字：开屏即显示（用于确认字体渲染/上屏是否正常） */
-    font_draw_text(4, 2, "Esp32Nav 自检 前方460米直行", PATH_GREEN);
-    font_draw_text(4, 22, "距离：460 m", PATH_GREEN);
-
-    fb_flush();
-    ESP_LOGI(TAG, "demo strip rendered (near150/far36) + text selfcheck flushed");
+    render_nav_set_frame(&f);
+    ESP_LOGI(TAG, "demo frame set (built-in straight sample, rendered by display task)");
 }
 
-/* 帧渲染（M2）：按 centerLine 首末点生成透视梯形（近宽150/远宽36，与 v2 genPerspectiveRoadTrapezoid 一致） */
 static void quad_from_centerline(const nav_frame_t *f, int nearHalf, int farHalf, int *qx, int *qy)
 {
     float dx = (float)(f->center_line[f->center_n - 1].x - f->center_line[0].x);

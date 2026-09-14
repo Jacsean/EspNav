@@ -70,5 +70,5 @@ static void server_task(void *arg)
 
 void tcp_server_start(void)
 {
-    xTaskCreate(server_task, "tcp_srv", 6144, NULL, 5, NULL);
+    xTaskCreate(server_task, "tcp_srv", 12288, NULL, 5, NULL);
 }

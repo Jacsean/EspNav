@@ -57,8 +57,7 @@ bool nav_frame_on_json_line(const char *line, int len)
         ESP_LOGI(TAG, "NAV_FRAME hint=%s dist=%d center=%d past=%d route=%d pos=%d,%d road=%d",
                  s_nav.hint, s_nav.turn_dist, s_nav.center_n, s_nav.past_n, s_nav.route_n,
                  (int)s_nav.pos.x, (int)s_nav.pos.y, (int)s_nav.has_road);
-        render_nav_set_frame(&s_nav);   /* 缓存（供显示任务动画） */
-        render_nav_draw_now();          /* 双保险：立即渲染，帧必上屏 */
+        render_nav_set_frame(&s_nav);   /* 仅缓存；渲染统一由显示任务 tick 完成（避免占用 TCP 任务栈） */
         return true;
     }
     ESP_LOGI(TAG, "msg_type=%s (未渲染)", type);
