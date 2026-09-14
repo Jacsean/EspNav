@@ -44,18 +44,19 @@ bool nav_frame_on_json_line(const char *line, int len)
     s_nav.past_n   = jl_get_pts16(line, "pastCenter", (int16_t *)s_nav.past_center, NAV_MAX_PTS);
     s_nav.route_n  = jl_get_pts16(line, "routeCenter", (int16_t *)s_nav.route_center, NAV_MAX_PTS);
 
-    int16_t pos[2] = { 0, 0 };
-    if (jl_get_pts16(line, "pos", pos, 1) == 1) {
-        s_nav.pos.x = pos[0];
-        s_nav.pos.y = pos[1];
+    int px = 0, py = 0;
+    if (jl_get_pair(line, "pos", &px, &py)) {          /* pos 是扁平 [x,y] */
+        s_nav.pos.x = (int16_t)px;
+        s_nav.pos.y = (int16_t)py;
         s_nav.pos_valid = true;
     }
     s_nav.has_road = jl_has_key(line, "road");
     s_nav.valid = true;
 
     if (strcmp(type, "NAV_FRAME") == 0) {
-        ESP_LOGI(TAG, "NAV_FRAME hint=%s dist=%d pts=%d road=%d",
-                 s_nav.hint, s_nav.turn_dist, s_nav.center_n, (int)s_nav.has_road);
+        ESP_LOGI(TAG, "NAV_FRAME hint=%s dist=%d center=%d past=%d route=%d pos=%d,%d road=%d",
+                 s_nav.hint, s_nav.turn_dist, s_nav.center_n, s_nav.past_n, s_nav.route_n,
+                 (int)s_nav.pos.x, (int)s_nav.pos.y, (int)s_nav.has_road);
         render_nav_frame(&s_nav);
         return true;
     }

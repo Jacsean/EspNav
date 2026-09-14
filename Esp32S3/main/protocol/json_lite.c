@@ -63,6 +63,7 @@ int jl_get_pts16(const char *json, const char *key, int16_t *out_xy, int max)
     int n = 0;
     while (*p && n < max) {
         p = skip_ws(p);
+        if (*p == ',') { p++; continue; }     /* 元素之间的分隔逗号 */
         if (*p == ']') break;
         if (*p != '[') break;
         p++;
@@ -81,4 +82,24 @@ int jl_get_pts16(const char *json, const char *key, int16_t *out_xy, int max)
         if (*p == ']') p++;
     }
     return n;
+}
+
+bool jl_get_pair(const char *json, const char *key, int *x, int *y)
+{
+    const char *p = find_value(json, key);
+    if (!p || *p != '[' || !x || !y) return false;
+    p++;
+    char *end = NULL;
+    const char *q = skip_ws(p);
+    double vx = strtod(q, &end);
+    if (end == q) return false;
+    p = skip_ws(end);
+    if (*p == ',') p++;
+    end = NULL;
+    q = skip_ws(p);
+    double vy = strtod(q, &end);
+    if (end == q) return false;
+    *x = (int)vx;
+    *y = (int)vy;
+    return true;
 }

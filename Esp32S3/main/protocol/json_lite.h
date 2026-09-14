@@ -9,3 +9,5 @@ bool jl_get_int(const char *json, const char *key, int def, int *out);
 bool jl_get_str(const char *json, const char *key, char *out, int outsz);
 /* 解析 "key": [[x,y],[x,y],...]；out_xy 交错存 x,y；返回点数 */
 int  jl_get_pts16(const char *json, const char *key, int16_t *out_xy, int max);
+/* 解析 "key": [x,y]（单点）；成功返回 true */
+bool jl_get_pair(const char *json, const char *key, int *x, int *y);
