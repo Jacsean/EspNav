@@ -4,7 +4,7 @@
 > - 传输层（备用）：BLE GATT——WiFi 连接失败/运行中断线时**自动回退**，特征值 WRITE 下发 / NOTIFY 上报；恢复后切回（见 §0）。
 > - 编码：UTF-8，JSON 文本，完整 JSON 帧用 `
 ` 作为帧结束分隔符；单帧 ≤2048B（WiFi-TCP 无需分片；BLE 承载下单包 ≤240B 分包，见 §5）。
-> - 版本：V1.10
+> - 版本：V1.11
 
 ## 0. 承载层选择与 WiFi-TCP（V1.10，默认承载）
 
@@ -261,7 +261,7 @@ LCD 全部填充黑色，停止导航动画。
 
 1. 非法 JSON：设备丢弃，累加 `err` 计数，不回复；
 2. 未知 `msg_type`：直接忽略；
-3. 字段缺失：使用内置默认值渲染，不崩溃。缺省值表（V1.8，两端一致）：NAV_FRAME：`heading`=0、`turn_dist`=0、`hint`=空、`total_dist`=0、`progress_pct`=0、`elapsed_min`=0、`eta_time`=空；`centerLine` 缺失 → 不画行驶条带（仅统计/罗盘/overview UI）；`pastCenter`/`routeCenter` 空 → 不绘路径线；`pos` 缺失 → 条带模式不画车标；`overview`/`overview_dot` 缺失 → 不绘小地图；`road` 存在但 `type` 未知 → 忽略 `road` 按条带渲染；`road.pts` 缺失（roundabout 除外）→ 不渲染该模板回退条带；`road.exits` 缺失（roundabout）→ 缺省 `['W','N','E']`；`maneuver` 缺失 → 无顶部机动符号。SET_CONFIG/DEV_STATUS 出厂缺省：`lcd_brightness`=80、`dash_speed`=60、`anim_enable`=true、`popup_timeout`=5。
+3. 字段缺失：使用内置默认值渲染，不崩溃。缺省值表（V1.8，两端一致）：NAV_FRAME：`heading`=0、`turn_dist`=0、`hint`=空、`total_dist`=0、`progress_pct`=0、`elapsed_min`=0、`eta_time`=空；`centerLine` 缺失 → 不画行驶条带（仅统计/罗盘/overview UI）；`pastCenter`/`routeCenter` 空 → 不绘路径线；`pos` 缺失 → 条带模式不画车标；`overview`/`overview_dot` 缺失 → 不绘小地图；`road` 存在但 `type` 未知 → 忽略 `road` 按条带渲染；`road.pts` 缺失（roundabout 除外）→ 不渲染该模板回退条带；`road.exits` 缺失（roundabout）→ 缺省 `['W','N','E']`；`maneuver` 缺失 → 无顶部机动符号。SET_CONFIG/DEV_STATUS 出厂缺省：`lcd_brightness`=80、`dash_speed`=40、`anim_enable`=true、`popup_timeout`=5。
 4. 链路断开（WiFi-TCP 连接断开 / BLE 断开）：设备自动清屏，回到待机状态；
 5. 弹窗超时自动关闭：设备按 `popup_timeout`（默认 5s）自动关闭弹窗，不依赖主机 POPUP_CLOSE（见 §3.5）。
 6. 导航帧超时（**仅限导航态**判定）：设备处于导航渲染态且连续 3s 未收到 NAV_FRAME（BLE 连接与心跳正常）→ 屏幕顶部显示"信号中断"并停止流动虚线动画；收到新 NAV_FRAME 后自动恢复刷新；待机 / 纯弹窗态不触发。计时边界：主机 PING 2s 保活；导航态 3s 无 NAV_FRAME 先触发"信号中断"；连续 5s 未收到**任何**主机报文或连接断开 → 判定链路异常并清屏（见 §3.7）。
@@ -313,6 +313,7 @@ typedef struct {
 | V1.3 | 2026-09-02 | 对齐弹窗可视容量（16px 点阵）：title 标题区 1 行；content 内容区 3 行 × 17 全角、发送端预截断到 ≤48 全角并追加省略号；明确 hint/title/content 截断规则（见 §3.1 第 4 条） |
 | V1.5 | 2026-09-02 | （注：V1.4 为内部草稿、未发布，V1.3 后直接跳 V1.5）新增复杂路况模板（B+D 方案）：NAV_FRAME 可选 `maneuver` 与 `road` 字段（7 类模板、平面像素坐标、向后兼容，见 §3.1.1）；模板触发/叠加规则；视觉原型见 nav_sim_v2.html（主视图集成、近大远小投影）与 nav_sim_v3.html（整屏样例） |
 | V1.9 | 2026-09-03 | 承载层决策（WiFi 主 / BLE 备）：默认 WiFi-TCP（ESP32 STA 多凭据自动重连 + softAP 配网页 + TCP Server:8899，手机 TCP Client）；BLE-GATT 降为备用（WiFi 失败/断线自动回退、恢复切回）；帧协议与承载无关；新增 §0 承载层、§1 改 BLE 承载、§5/§6/§7 措辞承载无关化。 |
+| V1.11 | 2026-09-14 | 出场缺省 `dash_speed` 60→40（实机骑行观感偏快，固件与 HTML V2 同步）。 |
 | V1.10 | 2026-09-03 | 承载细化（A 补全）：§0 新增设备发现（mDNS espnav.local/_espnav._tcp:8899 + IP 记忆/手动兜底）、配网会话安全（fresh/长按 BOOT 触发、口令、10min 自动关 AP、≤4 组凭据）、多主机策略（最新连接者接管）、回退/断线续播语义（不重置渲染状态，重连续发即恢复）。帧协议不变，向后兼容。 |
 | V1.8 | 2026-09-03 | C 清零落盘：`exits` 扩展 roundabout/multi 通用（O3）；`pos` 模板段=车标语义（O6）；§6 字段缺失默认值表（L1）与渲染端固定常量（L6）；修订表注明 V1.4 内部草稿（L5）。 |
 | V1.7 | 2026-09-03 | 审查决策落地：① `dir` 统一车头相对语义（straight/left/right/exitN），弃地理方位混列，`roundabout` 增可选 `exits`；`maneuver` 补 curve/multi/uturn；新增 type×dir 合法组合表（§3.1.1）。② 弹窗行容量更正为 3 行×16 全角；`content` 发送端不预截断（≤128），超 3 行触发滚动（§3.1/§3.5）。③ 新增 §6.7 渲染端显示容量规则。④ "信号中断"仅导航态判定，2s/3s/5s 计时边界写清。⑤ 主机 NAV_FRAME 丢旧保新发送策略（§5）。 |

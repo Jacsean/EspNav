@@ -8,7 +8,7 @@ static espnav_config_t s_cfg;
 void config_init(void)
 {
     s_cfg.lcd_brightness = 80;
-    s_cfg.dash_speed     = 60;
+    s_cfg.dash_speed     = 40;   /* 骑行观感调慢（原 60 偏快），可经 SET_CONFIG 调整 */
     s_cfg.anim_enable    = true;
     s_cfg.popup_timeout  = 5;
     strncpy(s_cfg.firmware_ver, "V0.0.1", sizeof(s_cfg.firmware_ver) - 1);
