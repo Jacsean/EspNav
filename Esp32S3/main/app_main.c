@@ -29,6 +29,11 @@ void app_main(void)
     geo_init();
     comm_if_init();
     lcd_driver_init();
+
+    /* M1 自检（在 WiFi 启动之前执行）：红/绿/蓝/白/黑 全屏轮换约 4.5s。
+     * 判据：能看到颜色轮换 => 屏幕/背光/接线正常，问题在后续；
+     *       看不到任何颜色   => 屏幕/背光/供电/接线层面问题。 */
+    lcd_probe_color_cycle();
     font_init();
     display_task_start();
 
