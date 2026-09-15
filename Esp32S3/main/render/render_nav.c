@@ -125,7 +125,7 @@ static void draw_overview(const nav_frame_t *f)
         int dx = ax + 8 + f->overview_dot.x, dy = ay + 8 + (40 - f->overview_dot.y);
         fb_fill_rect(dx - 2, dy - 2, dx + 2, dy + 2, RGB565_YELLOW);
     }
-    font_draw_text(ax + 82, ay + 4, "N", PATH_GREEN);   /* 小地图北向标记 */
+    font_draw_text(ax + 80, ay + 2, "北", PATH_GREEN);   /* 小地图北向标记（汉字，与 HTML V2 一致） */
 }
 
 static void draw_frame(const nav_frame_t *f, float anim)

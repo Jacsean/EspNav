@@ -84,7 +84,7 @@ static void ili9341_init_seq(void)
     wr_reg(0xC7); wr_data(0xBD);                       /* VCOM 2 */
     wr_reg(0x11); vTaskDelay(pdMS_TO_TICKS(120));      /* SLPOUT（官方序列位置） */
     wr_reg(0x21);                                      /* INVON */
-    wr_reg(0x36); wr_data(0xA0);                       /* MADCTL 横屏: MV|MY (RGB 序, 官方 esp_lcd 等价值) */
+    wr_reg(0x36); wr_data(0xA8);                       /* MADCTL 横屏: BGR|MV|MY（官方 vendor 序列为 0x08=BGR，esp_lcd 再叠加 MV/MY => 0xA8） */
     wr_reg(0xB6); wr_data(0x0A); wr_data(0xA2);
     wr_reg(0x3A); wr_data(0x55);                       /* COLMOD 16bit */
     wr_reg(0xF6); wr_data(0x01); wr_data(0x30);
