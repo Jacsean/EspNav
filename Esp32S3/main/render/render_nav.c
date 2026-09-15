@@ -52,6 +52,15 @@ void render_nav_demo(void)
     f.route_n = 4;
     for (int i = 0; i < 4; i++) f.route_center[i] = f.center_line[i + 1];
     f.pos.x = 160; f.pos.y = 110; f.pos_valid = true;
+
+    f.heading = 45;                                  /* 罗盘可动 */
+    static const int ov[4][2] = { {8,6}, {22,19}, {46,14}, {62,26} };
+    for (int i = 0; i < 4; i++) {
+        f.overview[i].x = (int16_t)ov[i][0];
+        f.overview[i].y = (int16_t)ov[i][1];
+    }
+    f.overview_n = 4;
+    f.overview_dot.x = 22; f.overview_dot.y = 19; f.overview_dot_valid = true;
     f.valid = true;
 
     render_nav_set_frame(&f);
@@ -82,6 +91,41 @@ void render_nav_set_frame(const nav_frame_t *f)
     if (!f || !f->valid) return;
     s_cur = *f;
     s_have = true;
+}
+
+/* 罗盘（顶部右侧）：8 方位标签随 heading 平移 + 中央红色车头箭头（车头朝上） */
+static void draw_compass(const nav_frame_t *f)
+{
+    static const char *labels[8] = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
+    const int bx = 235, spread = 75, y = 4;
+    for (int i = 0; i < 8; i++) {
+        int off = (((((i * 45) - f->heading + 360) % 360) - 180) * spread) / 180;
+        int tx = bx + off - font_text_width(labels[i]) / 2;
+        if (tx > bx - spread && tx < bx + spread && tx > -20 && tx < 312) {
+            font_draw_text(tx, y, labels[i], PATH_GREEN);
+        }
+    }
+    fb_triangle(bx, 28, 6, RGB565_RED);          /* 红色车头箭头（固定朝上） */
+}
+
+/* 行程图（右下 overview）：网格 + 路径 + 当前位置点
+ * 协议 §3.1 第 5 条：坐标为相对小地图左上角像素坐标；渲染端内边距 8、y 翻转(40-y)。 */
+static void draw_overview(const nav_frame_t *f)
+{
+    const int ax = 220, ay = 160, aw = 100, ah = 80;
+    const uint16_t grid = 0x2104;
+    for (int x = ax; x < ax + aw; x += 10) fb_line(x, ay, x, ay + ah - 1, grid);
+    for (int y = ay; y < ay + ah; y += 10) fb_line(ax, y, ax + aw - 1, y, grid);
+    for (int i = 0; i + 1 < f->overview_n; i++) {
+        int x0 = ax + 8 + f->overview[i].x,     y0 = ay + 8 + (40 - f->overview[i].y);
+        int x1 = ax + 8 + f->overview[i + 1].x, y1 = ay + 8 + (40 - f->overview[i + 1].y);
+        fb_line(x0, y0, x1, y1, PATH_GREEN);
+    }
+    if (f->overview_dot_valid) {
+        int dx = ax + 8 + f->overview_dot.x, dy = ay + 8 + (40 - f->overview_dot.y);
+        fb_fill_rect(dx - 2, dy - 2, dx + 2, dy + 2, RGB565_YELLOW);
+    }
+    font_draw_text(ax + 82, ay + 4, "N", PATH_GREEN);   /* 小地图北向标记 */
 }
 
 static void draw_frame(const nav_frame_t *f, float anim)
@@ -115,6 +159,10 @@ static void draw_frame(const nav_frame_t *f, float anim)
     if (f->pos_valid) fb_triangle(f->pos.x, f->pos.y, 14, RGB565_YELLOW);
 
 #if RENDER_TEXT
+    /* 罗盘 + 行程图（不依赖 RENDER_TEXT 开关） */
+    draw_compass(f);
+    draw_overview(f);
+
     /* ---- 文字层（hint / 距离 / 统计）---- */
     {
         static char buf[64];                 /* static：避免显示任务栈压力 */

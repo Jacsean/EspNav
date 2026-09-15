@@ -22,6 +22,8 @@ typedef struct {
     npt_t    past_center[NAV_MAX_PTS];  int past_n;
     npt_t    route_center[NAV_MAX_PTS]; int route_n;
     npt_t    pos;                       bool pos_valid;
+    npt_t    overview[NAV_MAX_PTS];     int  overview_n;
+    npt_t    overview_dot;              bool overview_dot_valid;
 
     bool     has_road;                  /* M2 暂不渲染模板，仅记录 */
     bool     valid;

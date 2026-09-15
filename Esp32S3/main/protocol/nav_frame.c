@@ -50,6 +50,13 @@ bool nav_frame_on_json_line(const char *line, int len)
         s_nav.pos.y = (int16_t)py;
         s_nav.pos_valid = true;
     }
+    s_nav.overview_n = jl_get_pts16(line, "overview", (int16_t *)s_nav.overview, NAV_MAX_PTS);
+    int ox = 0, oy = 0;
+    if (jl_get_pair(line, "overview_dot", &ox, &oy)) {
+        s_nav.overview_dot.x = (int16_t)ox;
+        s_nav.overview_dot.y = (int16_t)oy;
+        s_nav.overview_dot_valid = true;
+    }
     s_nav.has_road = jl_has_key(line, "road");
     s_nav.valid = true;
 

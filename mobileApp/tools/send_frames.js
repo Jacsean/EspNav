@@ -28,12 +28,14 @@ function stripFrame(turnDist, hint, pastCount) {
   const center = [[160, 144], [160, 118], [160, 86], [160, 54], [160, 30]];   /* 路面下边沿下移到 144 */
   const pc = Math.max(1, Math.min(center.length - 1, pastCount));
   return {
-    heading: 0, turn_dist: turnDist, hint: hint,
+    heading: (turnDist * 3) % 360, turn_dist: turnDist, hint: hint,
     total_dist: 8200, progress_pct: 34, elapsed_min: 28, eta_time: '14:27',
     centerLine: center,
     pastCenter: center.slice(0, pc + 1),
     routeCenter: center.slice(pc),
-    pos: [160, 110]                      /* 车标固定（路面下边沿上移约两个车身） */
+    pos: [160, 110],                     /* 车标固定 */
+    overview: [[8, 6], [22, 19], [46, 14], [62, 26]],
+    overview_dot: [22, 19]
   };
 }
 
