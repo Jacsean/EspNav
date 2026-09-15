@@ -14,9 +14,12 @@ static const char *TAG = "wifi_sta";
 
 #define NVS_NS   "espnav_wifi"
 #define KEY_CNT  "count"
-#define RETRY_MS 10000
+#define RETRY_MIN_MS 10000
+#define RETRY_MAX_MS 30000
+#define FAIL_BACKOFF_AFTER 3
 
 static bool          s_inited = false;
+static int           s_fail_count = 0;
 static volatile bool s_connected = false;
 static char          s_ip[16] = "";
 
@@ -95,17 +98,34 @@ void wifi_sta_erase_all(void)
 
 /* ---------------- 事件 ---------------- */
 
+static const char *sta_reason_str(int r)
+{
+    switch (r) {
+    case WIFI_REASON_NO_AP_FOUND:            return "找不到热点(SSID 错/热点不在 2.4GHz)";
+    case WIFI_REASON_AUTH_FAIL:              return "认证失败(密码错)";
+    case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT: return "四次握手超时(密码错)";
+    case WIFI_REASON_ASSOC_FAIL:             return "关联失败";
+    case WIFI_REASON_HANDSHAKE_TIMEOUT:      return "握手超时";
+    case WIFI_REASON_CONNECTION_FAIL:        return "连接失败";
+    default:                                 return "其它原因";
+    }
+}
+
 static void sta_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     (void)arg;
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+        wifi_event_sta_disconnected_t *d = (wifi_event_sta_disconnected_t *)data;
+        int reason = d ? (int)d->reason : -1;
         s_connected = false;
         s_ip[0] = 0;
-        ESP_LOGW(TAG, "STA 断开（由重连任务轮换凭据重试）");
+        s_fail_count++;
+        ESP_LOGW(TAG, "STA 断开: reason=%d (%s) 累计失败 %d 次", reason, sta_reason_str(reason), s_fail_count);
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *e = (ip_event_got_ip_t *)data;
         snprintf(s_ip, sizeof(s_ip), IPSTR, IP2STR(&e->ip_info.ip));
         s_connected = true;
+        s_fail_count = 0;
         ESP_LOGI(TAG, "STA 连接成功 IP=%s（手机/PC 可用该 IP，或 http://espnav.local:8899）", s_ip);
     }
 }
@@ -140,7 +160,8 @@ static void sta_task(void *arg)
                 idx++;                       /* 本轮失败 -> 换下一组凭据 */
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(RETRY_MS));
+        /* 连续失败退避：避免 STA 不停扫描导致自身 AP 反复换信道（手机掉线） */
+        vTaskDelay(pdMS_TO_TICKS((s_fail_count >= FAIL_BACKOFF_AFTER) ? RETRY_MAX_MS : RETRY_MIN_MS));
     }
 }
 
