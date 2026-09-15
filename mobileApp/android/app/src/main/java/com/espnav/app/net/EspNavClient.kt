@@ -7,7 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
@@ -100,7 +100,7 @@ class EspNavClient(private val scope: CoroutineScope) {
         var reason = "对端关闭"
         try {
             val reader = BufferedReader(InputStreamReader(s.getInputStream(), Charsets.UTF_8))
-            while (isActive) {
+            while (coroutineContext.isActive) {
                 val line = reader.readLine() ?: break
                 if (line.isBlank()) continue
                 withContext(Dispatchers.Main) { listener?.onLine(line) }
@@ -114,7 +114,7 @@ class EspNavClient(private val scope: CoroutineScope) {
     }
 
     private suspend fun heartbeat() {
-        while (isActive) {
+        while (coroutineContext.isActive) {
             delay(heartbeatSeconds * 1000L)
             val w = writer ?: continue
             try {
