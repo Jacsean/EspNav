@@ -4,10 +4,13 @@
 「手机 → ESP32 → 320×240 屏幕」整条链路，后续 P3 再接入高德导航 SDK 作为真实数据源。
 
 ## 环境要求
-- Android Studio（任意近三年版本；本项目用 **AGP 7.4.2 / Gradle 7.5 / Kotlin 1.8.10**，兼容性优先）
+- Android Studio（任意近三年版本；本项目用 **AGP 7.4.2 / Gradle 7.6.6 / Kotlin 1.8.10**，兼容性优先）
 - JDK 11+（Android Studio 自带）
 - 手机 Android 7.0+（minSdk 24）；本项目在华为 Mate 40 Pro / HarmonyOS 4.0 上联调
 - 首次 Sync 需要联网下载 Gradle 与依赖
+  - **国内网络说明**：`gradle/wrapper/gradle-wrapper.properties` 已配置为阿里云镜像
+    （`https://mirrors.aliyun.com/github/releases/gradle/gradle-distributions/v7.6.6/gradle-7.6.6-bin.zip`），
+    直连 `services.gradle.org` 慢或不通时即用此镜像（本项目实测可用）
 
 ## 导入与编译
 1. Android Studio → **Open** → 选择本目录 `mobileApp/android`（不要选上层目录）
@@ -62,7 +65,8 @@ mobileApp/android/
 | 连接超时 | 确认手机连的是 `ESPNav-AP`；固件日志出现 `TCP server listening :8899`；关掉手机「智能切换网络/WLAN+」 |
 | 连上但屏幕不动 | 点「开始模拟导航」；或先「发送一帧」确认链路；看日志是否有 `← DEV_STATUS` |
 | Sync 失败 | 检查网络/代理；必要时 File → Invalidate Caches and Restart |
-| 提示缺 gradle-wrapper.jar | Android Studio 一般会自动补齐；或命令行执行 `gradle wrapper --gradle-version 7.5` |
+| 提示缺 gradle-wrapper.jar | 仓库已含 `gradlew`/`gradlew.bat`/`gradle-wrapper.jar`；若仍缺可执行 `gradle wrapper --gradle-version 7.6.6` |
+| Sync 卡在下载 Gradle | 改 `gradle/wrapper/gradle-wrapper.properties` 的 `distributionUrl` 为阿里云镜像（见上）|
 
 ## 方式 B：不做 USB 调试，直接装 APK（推荐用于日常联调）
 App 与 ESP32 之间是 **WiFi-TCP**，**不依赖 USB**，所以手动装 APK 完全够用：
