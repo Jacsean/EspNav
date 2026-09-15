@@ -183,7 +183,7 @@ static void draw_frame(const nav_frame_t *f, float anim)
         snprintf(buf, sizeof(buf), "预计到达 %s", f->eta_time);
         font_draw_text(6, 212, buf, PATH_GREEN);
 
-        font_draw_text(300, 168, "北", PATH_GREEN);
+        /* 北向标记统一由 draw_overview() 绘制（固定表示行程图方向），此处不再重复 */
     }
 
 #endif
