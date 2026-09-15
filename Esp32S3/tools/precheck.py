@@ -33,10 +33,42 @@ def read(path):
 
 
 def strip_comments(src):
-    """Remove comments, keeping line count stable."""
-    src = re.sub(r'/\*.*?\*/', lambda m: NL * m.group(0).count(NL), src, flags=re.S)
-    src = re.sub(r'//[^\n]*', ' ', src)
-    return src
+    """状态机剥注释：正确跳过字符串/字符常量内部的 // 与 /* （保留换行以稳定行号）"""
+    out = []
+    i = 0
+    n = len(src)
+    while i < n:
+        c = src[i]
+        if c == QD or c == QS:                      # 字符串/字符常量：原样保留（含转义）
+            q = c
+            out.append(c)
+            i += 1
+            while i < n:
+                ch = src[i]
+                out.append(ch)
+                if ch == BS and i + 1 < n:
+                    out.append(src[i + 1])
+                    i += 2
+                    continue
+                i += 1
+                if ch == q:
+                    break
+            continue
+        if c == chr(47) and i + 1 < n and src[i + 1] == chr(47):      # //
+            while i < n and src[i] != NL:
+                i += 1
+            continue
+        if c == chr(47) and i + 1 < n and src[i + 1] == chr(42):      # /*
+            i += 2
+            while i + 1 < n and not (src[i] == chr(42) and src[i + 1] == chr(47)):
+                if src[i] == NL:
+                    out.append(NL)
+                i += 1
+            i += 2
+            continue
+        out.append(c)
+        i += 1
+    return str().join(out)
 
 
 def strip_literals(src):

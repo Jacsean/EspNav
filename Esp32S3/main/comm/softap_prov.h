@@ -1,3 +1,4 @@
 #pragma once
-/* softAP 配网页（ESPNav-AP，口令/10min 自动关/fresh+BOOT 触发）（骨架：接口占位，M2/M3 实现） */
+/* 配网页：手机连 ESPNav-AP -> 浏览器打开 http://192.168.4.1
+ * 可搜索附近 WiFi、填写并保存凭据（保存后 ESP32 自动以 STA 连接）。 */
 void softap_prov_init(void);

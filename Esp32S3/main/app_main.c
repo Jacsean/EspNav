@@ -13,6 +13,9 @@
 #include "render/render_nav.h"
 #include "comm/comm_if.h"
 #include "comm/wifi_ap.h"
+#include "comm/wifi_sta.h"
+#include "comm/softap_prov.h"
+#include "comm/mdns_service.h"
 #include "comm/tcp_server.h"
 #include "lcd/lcd_driver.h"
 #include "font/font.h"
@@ -52,12 +55,22 @@ void app_main(void)
 
     ESP_LOGI(TAG, "M1: 条带渲染完成");
 
-    /* M2：softAP + TCP :8899 接收协议帧（PC/手机连接后发 NAV_FRAME 即刷新画面） */
+    /* M6：承载启动顺序
+     * 1) softAP（兼容：手机可直连 ESPNav-AP 调试/配网）
+     * 2) STA：用 NVS 保存的凭据连手机热点/路由器（使手机保持外网；APSTA 并存）
+     * 3) 配网页：http://192.168.4.1 搜索/填写 WiFi，保存后自动连接
+     * 4) mDNS：espnav.local（需 espressif/mdns 组件，当前为空实现）
+     * 5) TCP :8899：接收 NAV_FRAME */
     wifi_ap_start();
+    wifi_sta_init();
+    softap_prov_init();
+    mdns_service_init();
     tcp_server_start();
-    ESP_LOGI(TAG, "M2: 通信就绪，等待 NAV_FRAME ...");
+    ESP_LOGI(TAG, "M6: 通信就绪（AP:192.168.4.1 / 配网页:http://192.168.4.1 / TCP:8899）");
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(10000));
-        ESP_LOGI(TAG, "alive ...");
+        ESP_LOGI(TAG, "alive ... STA=%s ip=%s rssi=%d AP_clients_ok",
+                 wifi_sta_is_connected() ? "已连接" : "未连接",
+                 wifi_sta_ip_str()[0] ? wifi_sta_ip_str() : "-", wifi_sta_rssi());
     }
 }
