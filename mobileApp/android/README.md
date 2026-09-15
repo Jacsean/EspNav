@@ -63,3 +63,32 @@ mobileApp/android/
 | 连上但屏幕不动 | 点「开始模拟导航」；或先「发送一帧」确认链路；看日志是否有 `← DEV_STATUS` |
 | Sync 失败 | 检查网络/代理；必要时 File → Invalidate Caches and Restart |
 | 提示缺 gradle-wrapper.jar | Android Studio 一般会自动补齐；或命令行执行 `gradle wrapper --gradle-version 7.5` |
+
+## 方式 B：不做 USB 调试，直接装 APK（推荐用于日常联调）
+App 与 ESP32 之间是 **WiFi-TCP**，**不依赖 USB**，所以手动装 APK 完全够用：
+
+1. Android Studio 菜单 **Build → Build Bundle(s) / APK(s) → Build APK(s)**
+2. 等右下角出现 “APK(s) generated successfully” → 点 **locate**
+   - 产物路径：`mobileApp/android/app/build/outputs/apk/debug/app-debug.apk`
+3. 把 APK 传到手机（数据线 / 微信文件传输助手 / 局域网）
+4. 手机上打开该文件安装（首次需允许「安装未知应用」）
+5. 打开 App → 按上面“联调步骤”操作
+
+## Run 没反应 / 手机不被识别：排查顺序
+1. **看设备下拉框**：Android Studio 顶部工具栏中间的设备下拉是否有手机型号？
+   - 为空 = 设备未识别（继续第 2 步）；有型号 = 选中它再点 ▶
+2. **命令行确认 adb 是否识别**（PowerShell）：
+   ```powershell
+   & "$env:LOCALAPPDATA\Android\Sdk\platform-toolsdb.exe" kill-server
+   & "$env:LOCALAPPDATA\Android\Sdk\platform-toolsdb.exe" start-server
+   & "$env:LOCALAPPDATA\Android\Sdk\platform-toolsdb.exe" devices
+   ```
+   - 输出为空 → USB 驱动/线材/模式问题（见第 3 步）
+   - 显示 `unauthorized` → 看手机屏幕，点「允许 USB 调试」并勾选「一律允许」
+   - 显示 `device` → 设备正常，问题在 AS：**Run → Edit Configurations**，确认有 `app` 配置、Module 选 `app`
+3. **手机侧设置（华为/HarmonyOS 常见坑）**：
+   - USB 连接方式改为 **“传输文件”**（不要选“仅充电”）
+   - 开发者选项里打开 **“仅充电模式下允许 ADB 调试”**
+   - 部分华为机型还需开启 **“USB 调试（安全设置）”**
+   - 换一根**数据线**（很多线只能充电不能传数据）与另一个 USB 口
+4. 若仍不识别：直接用**方式 B（构建 APK 手动安装）**，不必纠缠 USB 调试。
