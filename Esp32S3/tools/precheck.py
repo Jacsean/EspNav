@@ -198,6 +198,41 @@ def check_control_chars(path, raw):
     return []
 
 
+# ---- 预检项 9：snprintf 截断风险（-Werror=format-truncation）----
+# 能精确判定的（目标与源都是本文件数组）-> 报错；目标是结构成员（无法得知实际宽度）-> 仅提示
+def check_format_truncation(path, src):
+    issues, hints = [], []
+    body = strip_literals(strip_comments(src))
+    arr = {}
+    for m in re.finditer(r'char\s+(\w+)\s*\[\s*(\d+)\s*\]', body):
+        arr[m.group(1)] = int(m.group(2))
+    if not arr:
+        return issues, hints
+    for m in re.finditer(r'snprintf\s*\(\s*([^,]+?)\s*,\s*sizeof\s*\(\s*([\w.\->\[\]]+)\s*\)', body):
+        dst_expr = m.group(1).strip()
+        size_key = m.group(2).strip()
+        tail = body[m.end(): m.end() + 240]
+        stop = tail.find(');')
+        if stop >= 0:
+            tail = tail[:stop]
+        src_used = None
+        for sname, ssz in arr.items():
+            if re.search('(^|[^A-Za-z0-9_])' + re.escape(sname) + '($|[^A-Za-z0-9_])', tail):
+                src_used = (sname, ssz)
+                break
+        if not src_used:
+            continue
+        sname, ssz = src_used
+        if size_key in arr:                       # 目标也是本文件数组 -> 精确判定
+            if ssz > arr[size_key]:
+                issues.append('snprintf into %s[%d] may get %s[%d] -> truncation (use memcpy + explicit length)'
+                              % (size_key, arr[size_key], sname, ssz))
+        elif ('.' in size_key or '->' in size_key or '(' in dst_expr):
+            hints.append('check %s target vs source %s[%d]: member width unknown -> verify manually'
+                         % (size_key, sname, ssz))
+    return issues, hints
+
+
 def main():
     if not os.path.isdir(ROOT):
         print('dir not found: %s' % ROOT)
@@ -240,6 +275,13 @@ def main():
         for hdr, tys in sorted(tmiss.items()):
             print('[missing include] %s: #include "%s"  (types: %s)' % (c, hdr, ', '.join(sorted(tys))))
             problems += 1
+
+        tr_issues, tr_hints = check_format_truncation(c, raw)
+        for msg in tr_issues:
+            print('[truncation] %s: %s' % (c, msg))
+            problems += 1
+        for msg in tr_hints:
+            print('[hint] %s: %s' % (c, msg))
 
         for msg in check_control_chars(c, raw):
             print('[control-char] %s: %s' % (c, msg))

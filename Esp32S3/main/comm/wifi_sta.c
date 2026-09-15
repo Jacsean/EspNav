@@ -22,16 +22,16 @@ static char          s_ip[16] = "";
 
 /* ---------------- NVS 凭据 ---------------- */
 
-static bool cred_read(int i, char *ssid, size_t ssid_sz, char *pass, size_t pass_sz)
+static bool cred_read(uint8_t idx, char *ssid, size_t ssid_sz, char *pass, size_t pass_sz)
 {
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READONLY, &h) != ESP_OK) return false;
     char k[12];
     size_t l = ssid_sz;
-    snprintf(k, sizeof(k), "ssid%d", i);
+    snprintf(k, sizeof(k), "ssid%u", (unsigned)idx);
     esp_err_t r = nvs_get_str(h, k, ssid, &l);
     if (r == ESP_OK) {
-        snprintf(k, sizeof(k), "pass%d", i);
+        snprintf(k, sizeof(k), "pass%u", (unsigned)idx);
         l = pass_sz;
         if (nvs_get_str(h, k, pass, &l) != ESP_OK) pass[0] = 0;
     }
@@ -57,27 +57,27 @@ bool wifi_sta_save_credential(const char *ssid, const char *pass)
     if (!ssid || !ssid[0]) return false;
 
     const int n = wifi_sta_cred_count();
-    int slot = -1;
+    int found = -1;
     char es[64], ep[64];
-    for (int i = 0; i < n; i++) {
-        if (cred_read(i, es, sizeof(es), ep, sizeof(ep)) && strcmp(es, ssid) == 0) { slot = i; break; }
+    for (uint8_t i = 0; i < (uint8_t)n; i++) {
+        if (cred_read(i, es, sizeof(es), ep, sizeof(ep)) && strcmp(es, ssid) == 0) { found = i; break; }
     }
-    if (slot < 0) slot = (n >= WIFI_STA_MAX_CRED) ? 0 : n;   /* 满则覆盖最旧 */
+    uint8_t slot = (found >= 0) ? (uint8_t)found : (uint8_t)((n >= WIFI_STA_MAX_CRED) ? 0 : n);
 
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) {
         ESP_LOGE(TAG, "nvs_open 失败，凭据未保存");
         return false;
     }
-    char k[12];
-    snprintf(k, sizeof(k), "ssid%d", slot);
+    char k[16];
+    snprintf(k, sizeof(k), "ssid%u", (unsigned)slot);
     nvs_set_str(h, k, ssid);
-    snprintf(k, sizeof(k), "pass%d", slot);
+    snprintf(k, sizeof(k), "pass%u", (unsigned)slot);
     nvs_set_str(h, k, pass ? pass : "");
-    if (slot == n && n < WIFI_STA_MAX_CRED) nvs_set_u8(h, KEY_CNT, (uint8_t)(n + 1));
+    if ((int)slot == n && n < WIFI_STA_MAX_CRED) nvs_set_u8(h, KEY_CNT, (uint8_t)(n + 1));
     nvs_commit(h);
     nvs_close(h);
-    ESP_LOGI(TAG, "凭据已保存: slot=%d ssid=%s", slot, ssid);
+    ESP_LOGI(TAG, "凭据已保存: slot=%u ssid=%s", (unsigned)slot, ssid);
     return true;
 }
 
@@ -125,8 +125,13 @@ static void sta_task(void *arg)
                 if (idx >= n) idx = 0;
                 if (cred_read(idx, ssid, sizeof(ssid), pass, sizeof(pass))) {
                     wifi_config_t wc = { 0 };
-                    snprintf((char *)wc.sta.ssid, sizeof(wc.sta.ssid), "%s", ssid);
-                    snprintf((char *)wc.sta.password, sizeof(wc.sta.password), "%s", pass);
+                    /* 显式限定长度：目标 ssid[32]/password[64]，用 memcpy 避免 -Werror=format-truncation */
+                    size_t sl = strlen(ssid);
+                    size_t pl = strlen(pass);
+                    if (sl > sizeof(wc.sta.ssid) - 1) sl = sizeof(wc.sta.ssid) - 1;
+                    if (pl > sizeof(wc.sta.password) - 1) pl = sizeof(wc.sta.password) - 1;
+                    memcpy(wc.sta.ssid, ssid, sl);
+                    memcpy(wc.sta.password, pass, pl);
                     wc.sta.threshold.authmode = WIFI_AUTH_OPEN;
                     esp_wifi_set_config(WIFI_IF_STA, &wc);
                     ESP_LOGI(TAG, "尝试连接 [%d/%d] SSID=%s", idx + 1, n, ssid);

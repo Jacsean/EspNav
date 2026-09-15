@@ -150,14 +150,18 @@ static esp_err_t scan_get(httpd_req_t *req)
     if (esp_wifi_scan_get_ap_records(&n, recs) != ESP_OK) n = 0;
 
     size_t off = 0;
-    off += (size_t)snprintf(s_json + off, sizeof(s_json) - off, "[");
-    for (uint16_t i = 0; i < n && off < sizeof(s_json) - 80; i++) {
+    s_json[off++] = '[';
+    s_json[off] = 0;
+    for (uint16_t i = 0; i < n; i++) {
         char e[80];
         json_escape((const char *)recs[i].ssid, e, sizeof(e));
-        off += (size_t)snprintf(s_json + off, sizeof(s_json) - off, "%s{\"ssid\":\"%s\",\"rssi\":%d}",
-                                (i ? "," : ""), e, recs[i].rssi);
+        if (off + strlen(e) + 64 >= sizeof(s_json)) break;      /* 显式边界，避免截断 */
+        int w = snprintf(s_json + off, sizeof(s_json) - off, "%s{\"ssid\":\"%s\",\"rssi\":%d}",
+                         (i ? "," : ""), e, recs[i].rssi);
+        if (w < 0) break;
+        off += (size_t)w;
     }
-    snprintf(s_json + off, sizeof(s_json) - off, "]");
+    if (off + 2 < sizeof(s_json)) { s_json[off++] = ']'; s_json[off] = 0; }
     ESP_LOGI(TAG, "扫描完成，发现 %u 个热点", (unsigned)n);
 
     httpd_resp_set_type(req, "application/json");

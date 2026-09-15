@@ -62,3 +62,9 @@
 - **解决方案**：把模块级状态变量**统一提到文件顶部**（`s_cur/s_have/s_blank_req/s_anim`），从结构上杜绝此类错误；并在预检脚本中新增检查项 7（使用先于声明，覆盖 static 变量与文件内 static 函数）。
 - **附带发现**：预检脚本自身的 `re.escape(name) + r''` 被写入工具折叠成了**退格符 0x08**，导致该检查静默失效（返回 0 问题）。已修复，并新增检查项 8（源码控制字符检测）；同时用**出错的历史版本**反证检查器有效。
 - **预防措施**：① 模块级状态变量一律集中在文件顶部；② 新检查项上线后，必须用"曾经出错的历史版本"回归验证其有效性；③ 交付前除自动预检外，必须做**逐项人工 review**（声明顺序/系统头/数组边界/类型/栈/跨任务资源）。
+
+## F11. 编译失败：`%s directive output may be truncated`（-Werror=format-truncation）
+- **现象**：`wifi_sta.c` 三处报错——`snprintf((char *)wc.sta.ssid, sizeof(wc.sta.ssid), "%s", ssid)`（本地 `char ssid[64]` -> 驱动 `uint8_t ssid[32]`）；`snprintf(k, sizeof(k), "ssid%d", slot)`（`int` 范围推断最长 11 位 > `char k[12]` 可用空间）。
+- **原因**：GCC 在**目标和源的长度都可静态推断**时会判定"可能截断"，而 ESP-IDF 默认把警告升级为错误（`-Werror`）。
+- **解决方案**：① 写入驱动结构体一律用**显式长度 memcpy**（`size_t n = strlen(src); if (n > sizeof(dst)-1) n = sizeof(dst)-1; memcpy(dst, src, n);`，结构体已 `{0}` 初始化，尾部自然为 NUL）；② 索引/计数类参数改为 `uint8_t` 并用 `%u` 输出；③ 缓冲名加宽（`char k[16]`）。
+- **预防措施**：① 每轮交付前 `grep -rn "snprintf(" main/` **逐条核对源与目标宽度**（已写入《代码质量门》）；② `tools/precheck.py` 新增检查项 9：目标与源都是本文件数组时**精确报错**，目标是结构成员（宽度不可知，如 `wc.sta.ssid`）时给**提示**要求人工核对；③ 这条无法完全自动化，必须保留人工核对环节。
