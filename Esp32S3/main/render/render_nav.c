@@ -10,7 +10,7 @@
 static const char *TAG = "render_nav";
 
 /* 临时二分开关：1=渲染文字层；0=跳过文字（用于定位黑屏/崩溃是否由文字渲染引起） */
-#define RENDER_TEXT 0
+#define RENDER_TEXT 1   /* 文字渲染已恢复（黑屏根因=CS 控制，与文字无关） */
 
 /* 与 nav_sim_v2.html 冻结基准一致：主视图 320x160 / 近宽150 远宽36 / y近130 远28 */
 #define NAV_CX        160
