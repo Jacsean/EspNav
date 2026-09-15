@@ -137,3 +137,44 @@ void fb_flush(void)
     if (!s_fb) return;
     lcd_ili9341_flush(s_fb, FB_W, FB_H);
 }
+
+void fb_fill_poly(const int *xs, const int *ys, int n, uint16_t color)
+{
+    if (!s_fb || !xs || !ys || n < 3) return;
+    int ymin = ys[0], ymax = ys[0];
+    for (int i = 1; i < n; i++) { if (ys[i] < ymin) ymin = ys[i]; if (ys[i] > ymax) ymax = ys[i]; }
+    if (ymin < 0) ymin = 0;
+    if (ymax > FB_H - 1) ymax = FB_H - 1;
+    int xbuf[64];
+    for (int y = ymin; y <= ymax; y++) {
+        int cnt = 0;
+        for (int i = 0; i < n; i++) {
+            int j = (i + 1) % n;
+            int ya = ys[i], yb = ys[j];
+            if ((ya <= y && yb > y) || (yb <= y && ya > y)) {
+                float t = (float)(y - ya) / (float)(yb - ya);
+                int x = xs[i] + (int)(t * (float)(xs[j] - xs[i]));
+                if (cnt < 64) xbuf[cnt++] = x;
+            }
+        }
+        if (cnt < 2) continue;
+        int lo = xbuf[0], hi = xbuf[0];
+        for (int i = 1; i < cnt; i++) { if (xbuf[i] < lo) lo = xbuf[i]; if (xbuf[i] > hi) hi = xbuf[i]; }
+        if (lo < 0) lo = 0;
+        if (hi > FB_W - 1) hi = FB_W - 1;
+        uint16_t *row = &s_fb[y * FB_W];
+        for (int x = lo; x <= hi; x++) row[x] = color;
+    }
+}
+
+void fb_ellipse(int cx, int cy, int a, int b, uint16_t color)
+{
+    int xs[33], ys[33];
+    int n = 32;
+    for (int i = 0; i < n; i++) {
+        float th = 6.2831853f * (float)i / (float)n;
+        xs[i] = cx + (int)(a * cosf(th));
+        ys[i] = cy + (int)(b * sinf(th));
+    }
+    fb_fill_poly(xs, ys, n, color);
+}

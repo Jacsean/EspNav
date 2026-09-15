@@ -9,6 +9,19 @@
 
 typedef struct { int16_t x, y; } npt_t;
 
+/* 协议 §3.1.1 路况模板字段（road 可选） */
+#define NAV_EXITS_MAX 8
+#define NAV_NAME_MAX  12
+typedef struct {
+    bool     present;
+    char     type[NAV_NAME_MAX];                 /* straight/curve/tjunc/cross/multi/roundabout/fork */
+    char     dir[NAV_NAME_MAX];                  /* straight/left/right/exitN/... */
+    char     exits[NAV_EXITS_MAX][6];            /* 方位名 S/E/N/W/NE/... */
+    int      exits_n;
+    npt_t    pts[NAV_MAX_PTS];  int pts_n;
+    int16_t  cx, cy, r, half;
+} nav_road_t;
+
 typedef struct {
     int16_t  heading;
     int16_t  turn_dist;
@@ -25,7 +38,8 @@ typedef struct {
     npt_t    overview[NAV_MAX_PTS];     int  overview_n;
     npt_t    overview_dot;              bool overview_dot_valid;
 
-    bool     has_road;                  /* M2 暂不渲染模板，仅记录 */
+    nav_road_t road;                    /* M4：模板参数 */
+    bool     has_road;                  /* 兼容：road 是否存在 */
     bool     valid;
 } nav_frame_t;
 

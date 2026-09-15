@@ -103,3 +103,25 @@ bool jl_get_pair(const char *json, const char *key, int *x, int *y)
     *y = (int)vy;
     return true;
 }
+
+int jl_get_str_array(const char *json, const char *key, char *out, int outw, int max)
+{
+    const char *p = find_value(json, key);
+    if (!p || *p != '[' || !out || outw <= 1 || max <= 0) return 0;
+    p++;
+    int n = 0;
+    while (*p && n < max) {
+        p = skip_ws(p);
+        if (*p == ',') { p++; continue; }
+        if (*p == ']') break;
+        if (*p != (char)0x22) break;
+        p++;
+        int i = 0;
+        char *dst = out + (size_t)n * outw;
+        while (*p && *p != (char)0x22 && i < outw - 1) dst[i++] = *p++;
+        dst[i] = 0;
+        if (*p == (char)0x22) p++;
+        n++;
+    }
+    return n;
+}

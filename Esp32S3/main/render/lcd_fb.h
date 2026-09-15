@@ -17,6 +17,11 @@ void fb_dashed_line(int x0, int y0, int x1, int y1, uint16_t color, int dash, in
 void fb_dashed_line_off(int x0, int y0, int x1, int y1, uint16_t color, int dash, int gap, float offset);
 /* 四点四边形扫描线填充（顺序任意，凸四边形） */
 void fb_fill_quad(const int *qx, const int *qy, uint16_t color);
+/* 通用凸/凹多边形扫描线填充（点数 <= 64） */
+void fb_fill_poly(const int *xs, const int *ys, int n, uint16_t color);
+/* 实心椭圆 */
+void fb_ellipse(int cx, int cy, int a, int b, uint16_t color);
+
 /* 实心三角形（车标） */
 void fb_triangle(int cx, int cy, int size, uint16_t color);
 /* 推送整屏（逐行 DMA） */

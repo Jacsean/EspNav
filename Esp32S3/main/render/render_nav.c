@@ -6,6 +6,7 @@
 #include "font.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 static const char *TAG = "render_nav";
 
@@ -128,6 +129,296 @@ static void draw_overview(const nav_frame_t *f)
     font_draw_text(ax + 80, ay + 2, "北", PATH_GREEN);   /* 小地图北向标记（汉字，与 HTML V2 一致） */
 }
 
+/* ================= M4：路况模板渲染（参照 nav_sim_v2.html readRoad / 几何规格 V0.3） ================= */
+#define TPL_SIDE   35.0f
+#define EDGE_LEFT  20
+#define EDGE_RIGHT 300
+#define EDGE_TOP   26
+#define EDGE_BOT  134
+#define ROAD_GRAY2 0x73AE
+
+static int turn_vertex(const npt_t *p, int n)
+{
+    if (n < 3) return -1;
+    int bi = -1; float ba = 0.0f;
+    for (int i = 1; i < n - 1; i++) {
+        float ux = (float)(p[i].x - p[i-1].x), uy = (float)(p[i].y - p[i-1].y);
+        float vx = (float)(p[i+1].x - p[i].x), vy = (float)(p[i+1].y - p[i].y);
+        float du = sqrtf(ux*ux + uy*uy), dv = sqrtf(vx*vx + vy*vy);
+        if (du < 1.0f || dv < 1.0f) continue;
+        float dot = (ux*vx + uy*vy) / (du*dv);
+        if (dot > 1.0f) dot = 1.0f;
+        if (dot < -1.0f) dot = -1.0f;
+        float ang = acosf(dot);
+        if (ang > ba) { ba = ang; bi = i; }
+    }
+    return (ba > 0.35f) ? bi : -1;
+}
+
+/* 沿中心线（平面坐标）填路面：fatten(含投影) -> 多边形填充 */
+static void road_fill(const npt_t *pts, int n, float half, uint16_t color)
+{
+    if (n < 2) return;
+    gpt_t ip[NAV_MAX_PTS], l[NAV_MAX_PTS], r[NAV_MAX_PTS];
+    for (int i = 0; i < n; i++) { ip[i].x = (float)pts[i].x; ip[i].y = (float)pts[i].y; }
+    int on = 0;
+    geo_fatten(ip, n, half, l, r, &on);
+    if (on < 2) return;
+    int xs[2*NAV_MAX_PTS], ys[2*NAV_MAX_PTS];
+    int k = 0;
+    for (int i = 0; i < on; i++)    { xs[k] = (int)l[i].x; ys[k] = (int)l[i].y; k++; }
+    for (int i = on - 1; i >= 0; i--) { xs[k] = (int)r[i].x; ys[k] = (int)r[i].y; k++; }
+    fb_fill_poly(xs, ys, k, color);
+}
+
+/* 边线：flow=true 流动虚线（相位 anim），否则静态实线 */
+static void road_edges(const npt_t *pts, int n, float half, bool flow, float anim)
+{
+    if (n < 2) return;
+    gpt_t ip[NAV_MAX_PTS], l[NAV_MAX_PTS], r[NAV_MAX_PTS];
+    for (int i = 0; i < n; i++) { ip[i].x = (float)pts[i].x; ip[i].y = (float)pts[i].y; }
+    int on = 0;
+    geo_fatten(ip, n, half, l, r, &on);
+    for (int i = 0; i + 1 < on; i++) {
+        if (flow) {
+            fb_dashed_line_off((int)l[i].x, (int)l[i].y, (int)l[i+1].x, (int)l[i+1].y, RGB565_WHITE, 8, 6, anim);
+            fb_dashed_line_off((int)r[i].x, (int)r[i].y, (int)r[i+1].x, (int)r[i+1].y, RGB565_WHITE, 8, 6, anim);
+        } else {
+            fb_line((int)l[i].x, (int)l[i].y, (int)l[i+1].x, (int)l[i+1].y, 0xBBBB);
+            fb_line((int)r[i].x, (int)r[i].y, (int)r[i+1].x, (int)r[i+1].y, 0xBBBB);
+        }
+    }
+}
+
+/* 绿路径（投影后双层描边） */
+static void road_path(const npt_t *pts, int n)
+{
+    if (n < 2) return;
+    gpt_t pr[NAV_MAX_PTS];
+    for (int i = 0; i < n; i++) { gpt_t g = { (float)pts[i].x, (float)pts[i].y }; pr[i] = geo_proj_pt(g); }
+    for (int pass = 0; pass < 2; pass++) {
+        for (int i = 0; i + 1 < n; i++) {
+            int x0 = (int)pr[i].x, y0 = (int)pr[i].y, x1 = (int)pr[i+1].x, y1 = (int)pr[i+1].y;
+            if (pass == 0) { fb_line(x0, y0, x1, y1, 0x0320); fb_line(x0, y0+1, x1, y1+1, 0x0320); }
+            else           { fb_line(x0, y0, x1, y1, PATH_GREEN); fb_line(x0+1, y0, x1+1, y1, PATH_GREEN); }
+        }
+    }
+}
+
+/* 方位向量（屏幕系，y 向下） */
+static void dir_vec(const char *name, float *vx, float *vy)
+{
+    float v0 = 0.0f, v1 = -1.0f;
+    if (!strcmp(name, "E"))       { v0 = 1.0f;  v1 = 0.0f; }
+    else if (!strcmp(name, "W"))  { v0 = -1.0f; v1 = 0.0f; }
+    else if (!strcmp(name, "N"))  { v0 = 0.0f;  v1 = -1.0f; }
+    else if (!strcmp(name, "S"))  { v0 = 0.0f;  v1 = 1.0f; }
+    else if (!strcmp(name, "NE")) { v0 = 0.707f;  v1 = -0.707f; }
+    else if (!strcmp(name, "NW")) { v0 = -0.707f; v1 = -0.707f; }
+    else if (!strcmp(name, "SE")) { v0 = 0.707f;  v1 = 0.707f; }
+    else if (!strcmp(name, "SW")) { v0 = -0.707f; v1 = 0.707f; }
+    *vx = v0; *vy = v1;
+}
+
+/* 沿方位延伸到屏幕边界（平面坐标） */
+static void road_to_edge(npt_t from, const char *dir, npt_t *out)
+{
+    float vx, vy;
+    dir_vec(dir, &vx, &vy);
+    float t = 1e9f;
+    if (vx > 0) t = fminf(t, ((float)EDGE_RIGHT - from.x) / vx);
+    if (vx < 0) t = fminf(t, ((float)EDGE_LEFT  - from.x) / vx);
+    if (vy > 0) t = fminf(t, ((float)EDGE_BOT   - from.y) / vy);
+    if (vy < 0) t = fminf(t, ((float)EDGE_TOP   - from.y) / vy);
+    if (t < 8.0f) t = 8.0f;
+    if (t > 600.0f) t = 600.0f;
+    out->x = (int16_t)(from.x + vx * t);
+    out->y = (int16_t)(from.y + vy * t);
+}
+
+/* 单条支路（到边）：fill + 边线 */
+static void arm_draw(npt_t from, const char *dir, float half, bool flow, float anim)
+{
+    npt_t seg[2];
+    seg[0] = from;
+    road_to_edge(from, dir, &seg[1]);
+    road_fill(seg, 2, half, ROAD_GRAY2);
+    road_edges(seg, 2, half, flow, anim);
+}
+
+static void draw_road(const nav_frame_t *f, float anim)
+{
+    const nav_road_t *rd = &f->road;
+    const npt_t *p = rd->pts;
+    int n = rd->pts_n;
+    float half = (rd->half > 0) ? (float)rd->half : 62.0f;
+    const char *type = rd->type;
+    int k;
+    npt_t C;
+    npt_t inS[NAV_MAX_PTS];
+    int inN;
+
+    if (!strcmp(type, "straight") || !strcmp(type, "curve")) {
+        if (n >= 2) { road_fill(p, n, half, ROAD_GRAY2); road_edges(p, n, half, true, anim); road_path(p, n); }
+        return;
+    }
+    if (!strcmp(type, "tjunc")) {
+        k = turn_vertex(p, n);
+        if (k <= 0) {
+            if (n >= 2) { road_fill(p, n, half, ROAD_GRAY2); road_edges(p, n, half, true, anim); road_path(p, n); }
+            return;
+        }
+        road_fill(p, k + 1, half, ROAD_GRAY2);        road_edges(p, k + 1, half, true, anim);
+        road_fill(p + k, n - k, TPL_SIDE, ROAD_GRAY2); road_edges(p + k, n - k, TPL_SIDE, true, anim);
+        road_path(p, n);
+        return;
+    }
+    if (!strcmp(type, "cross")) {
+        const char *toDir;
+        k = turn_vertex(p, n);
+        C = (k > 0) ? p[k] : p[n / 2];
+        inN = 0;
+        if (k > 0) { for (int i = 0; i <= k; i++) inS[inN++] = p[i]; }
+        else { inS[inN++] = p[0]; inS[inN++] = C; }
+        road_fill(inS, inN, half, ROAD_GRAY2);
+        road_edges(inS, inN, half, true, anim);
+        toDir = !strcmp(rd->dir, "left") ? "W" : (!strcmp(rd->dir, "right") ? "E" : "N");
+        arm_draw(C, "N", TPL_SIDE, !strcmp("N", toDir), anim);
+        arm_draw(C, "W", TPL_SIDE, !strcmp("W", toDir), anim);
+        arm_draw(C, "E", TPL_SIDE, !strcmp("E", toDir), anim);
+        road_path(p, n);
+        return;
+    }
+    if (!strcmp(type, "fork")) {
+        npt_t mainLine[2];
+        mainLine[0].x = (int16_t)(n ? p[0].x : 160);
+        mainLine[0].y = EDGE_BOT;
+        mainLine[1] = mainLine[0];
+        mainLine[1].y = EDGE_TOP;
+        road_fill(mainLine, 2, half, ROAD_GRAY2);
+        road_edges(mainLine, 2, half, false, 0.0f);
+        if (n >= 2) {
+            road_fill(p, n, TPL_SIDE - 6.0f, ROAD_GRAY2);
+            road_edges(p, n, TPL_SIDE - 6.0f, true, anim);
+            road_path(p, n);
+        }
+        return;
+    }
+    if (!strcmp(type, "multi")) {
+        struct { const char *d; int16_t x, y; } arms[5];
+        float tx, ty, tl;
+        const char *best = NULL;
+        float bd = 0.85f;
+        k = turn_vertex(p, n);
+        C = (k > 0) ? p[k] : p[n / 2];
+        inN = 0;
+        if (k > 0) { for (int i = 0; i <= k; i++) inS[inN++] = p[i]; }
+        else { inS[inN++] = p[0]; inS[inN++] = C; }
+        road_fill(inS, inN, half, ROAD_GRAY2);
+        road_edges(inS, inN, half, true, anim);
+        arms[0].d = "N";  arms[0].x = C.x;         arms[0].y = EDGE_TOP;
+        arms[1].d = "W";  arms[1].x = EDGE_LEFT;   arms[1].y = C.y;
+        arms[2].d = "E";  arms[2].x = EDGE_RIGHT;  arms[2].y = C.y;
+        arms[3].d = "NW"; arms[3].x = 110;         arms[3].y = EDGE_TOP;
+        arms[4].d = "SE"; arms[4].x = 236;         arms[4].y = 100;
+        tx = (n ? (float)(p[n-1].x - C.x) : 0.0f);
+        ty = (n ? (float)(p[n-1].y - C.y) : 0.0f);
+        tl = sqrtf(tx*tx + ty*ty);
+        if (tl > 1.0f) {
+            for (int i = 0; i < 5; i++) {
+                float vx, vy, dot;
+                dir_vec(arms[i].d, &vx, &vy);
+                dot = (tx*vx + ty*vy) / tl;
+                if (dot > bd) { bd = dot; best = arms[i].d; }
+            }
+        }
+        for (int i = 0; i < 5; i++) {
+            npt_t seg[2];
+            bool flow;
+            seg[0] = C;
+            seg[1].x = arms[i].x;
+            seg[1].y = arms[i].y;
+            flow = (best && !strcmp(arms[i].d, best));
+            road_fill(seg, 2, TPL_SIDE, ROAD_GRAY2);
+            road_edges(seg, 2, TPL_SIDE, flow, anim);
+        }
+        road_path(p, n);
+        return;
+    }
+    if (!strcmp(type, "roundabout")) {
+        float b, aIn, bIn, rw, sIn;
+        int cx = rd->cx, cy = rd->cy;
+        const char *target = NULL;
+        int ti;
+        npt_t lead[2];
+        geo_rbt_metrics((float)rd->r, &b, &aIn, &bIn, &rw, &sIn);
+        lead[0].x = 160; lead[0].y = 144;
+        lead[1].x = (int16_t)cx; lead[1].y = (int16_t)(cy + b);
+        road_fill(lead, 2, sIn, ROAD_GRAY2);
+        road_edges(lead, 2, sIn, true, anim);
+        fb_ellipse(cx, cy, rd->r, (int)b, ROAD_GRAY2);
+        fb_ellipse(cx, cy, (int)aIn, (int)bIn, RGB565_BLACK);
+        ti = 1;
+        if (!strncmp(rd->dir, "exit", 4)) ti = atoi(rd->dir + 4);
+        if (ti < 1) ti = 1;
+        if (rd->exits_n > 0) {
+            if (ti > rd->exits_n) ti = rd->exits_n;
+            target = rd->exits[ti - 1];
+        }
+        for (int i = 0; i < rd->exits_n; i++) {
+            float th = geo_azimuth_rad(rd->exits[i]);
+            npt_t ex, seg[2];
+            bool flow;
+            ex.x = (int16_t)(cx + (float)rd->r * cosf(th));
+            ex.y = (int16_t)(cy + b * sinf(th));
+            seg[0] = ex;
+            road_to_edge(ex, rd->exits[i], &seg[1]);
+            flow = (target && !strcmp(rd->exits[i], target));
+            road_fill(seg, 2, rw, ROAD_GRAY2);
+            road_edges(seg, 2, rw, flow, anim);
+        }
+        if (target) {
+            float thS = geo_azimuth_rad("S");
+            float thT = geo_azimuth_rad(target);
+            float sweep, aM, bM;
+            int spin = 1;
+            npt_t path[NAV_MAX_PTS];
+            int pn = 0;
+            if (rd->exits_n > 0) {
+                float d0 = geo_azimuth_rad(rd->exits[0]) - thS;
+                while (d0 >  3.1415927f) d0 -= 6.2831853f;
+                while (d0 < -3.1415927f) d0 += 6.2831853f;
+                spin = (d0 >= 0) ? 1 : -1;
+            }
+            sweep = geo_sweep_directed(thS, thT, spin);
+            path[pn].x = 160; path[pn].y = 144; pn++;
+            path[pn].x = (int16_t)cx; path[pn].y = (int16_t)(cy + b); pn++;
+            aM = ((float)rd->r + aIn) / 2.0f;
+            bM = (b + bIn) / 2.0f;
+            for (int i = 1; i <= 8 && pn < NAV_MAX_PTS; i++) {
+                float th = thS + sweep * (float)i / 8.0f;
+                path[pn].x = (int16_t)(cx + aM * cosf(th));
+                path[pn].y = (int16_t)(cy + bM * sinf(th));
+                pn++;
+            }
+            {
+                npt_t exT, outT;
+                exT.x = (int16_t)(cx + (float)rd->r * cosf(thT));
+                exT.y = (int16_t)(cy + b * sinf(thT));
+                road_to_edge(exT, target, &outT);
+                if (pn < NAV_MAX_PTS) { path[pn] = outT; pn++; }
+            }
+            road_path(path, pn);
+        }
+        return;
+    }
+    if (n >= 2) {
+        road_fill(p, n, half, ROAD_GRAY2);
+        road_edges(p, n, half, true, anim);
+        road_path(p, n);
+    }
+}
+
 static void draw_frame(const nav_frame_t *f, float anim)
 {
     if (!f || !f->valid) return;
@@ -136,7 +427,9 @@ static void draw_frame(const nav_frame_t *f, float anim)
     fb_line(0, 160, FB_W - 1, 160, RGB565_DGRAY);
     fb_line(220, 160, 220, FB_H - 1, RGB565_DGRAY);
 
-    if (f->center_n >= 2) {
+    if (f->road.present) {
+        draw_road(f, anim);                        /* M4：路况模板（road 字段驱动） */
+    } else if (f->center_n >= 2) {
         int qx[4], qy[4];
         quad_from_centerline(f, NAV_NEAR_HALF, NAV_FAR_HALF, qx, qy);
         fb_fill_quad(qx, qy, ROAD_GRAY);

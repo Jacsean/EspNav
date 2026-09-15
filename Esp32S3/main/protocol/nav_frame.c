@@ -58,6 +58,21 @@ bool nav_frame_on_json_line(const char *line, int len)
         s_nav.overview_dot_valid = true;
     }
     s_nav.has_road = jl_has_key(line, "road");
+    if (s_nav.has_road) {
+        nav_road_t *rd = &s_nav.road;
+        rd->present = true;
+        jl_get_str(line, "type", rd->type, sizeof(rd->type));
+        jl_get_str(line, "dir", rd->dir, sizeof(rd->dir));
+        rd->exits_n = jl_get_str_array(line, "exits", &rd->exits[0][0], 6, NAV_EXITS_MAX);
+        rd->pts_n   = jl_get_pts16(line, "pts", (int16_t *)rd->pts, NAV_MAX_PTS);
+        int v = 0;
+        rd->cx   = jl_get_int(line, "cx",   160, &v) ? (int16_t)v : 160;
+        rd->cy   = jl_get_int(line, "cy",    84, &v) ? (int16_t)v : 84;
+        rd->r    = jl_get_int(line, "r",     58, &v) ? (int16_t)v : 58;
+        rd->half = jl_get_int(line, "half",  62, &v) ? (int16_t)v : 62;
+        ESP_LOGI(TAG, "road: type=%s dir=%s exits=%d pts=%d half=%d",
+                 rd->type, rd->dir, rd->exits_n, rd->pts_n, (int)rd->half);
+    }
     s_nav.valid = true;
 
     if (strcmp(type, "NAV_FRAME") == 0) {
