@@ -145,7 +145,7 @@ void fb_fill_poly(const int *xs, const int *ys, int n, uint16_t color)
     for (int i = 1; i < n; i++) { if (ys[i] < ymin) ymin = ys[i]; if (ys[i] > ymax) ymax = ys[i]; }
     if (ymin < 0) ymin = 0;
     if (ymax > FB_H - 1) ymax = FB_H - 1;
-    int xbuf[64];
+    int xbuf[128];
     for (int y = ymin; y <= ymax; y++) {
         int cnt = 0;
         for (int i = 0; i < n; i++) {
@@ -154,7 +154,7 @@ void fb_fill_poly(const int *xs, const int *ys, int n, uint16_t color)
             if ((ya <= y && yb > y) || (yb <= y && ya > y)) {
                 float t = (float)(y - ya) / (float)(yb - ya);
                 int x = xs[i] + (int)(t * (float)(xs[j] - xs[i]));
-                if (cnt < 64) xbuf[cnt++] = x;
+                if (cnt < 128) xbuf[cnt++] = x;
             }
         }
         if (cnt < 2) continue;

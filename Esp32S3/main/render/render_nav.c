@@ -1,5 +1,6 @@
 #include "render_nav.h"
 #include "lcd_fb.h"
+#include "geo.h"      /* geo_* / gpt_t：M4 模板几何（此前缺失导致编译失败） */
 #include <math.h>
 #include "esp_log.h"
 #include "config.h"
@@ -164,7 +165,7 @@ static void road_fill(const npt_t *pts, int n, float half, uint16_t color)
     int on = 0;
     geo_fatten(ip, n, half, l, r, &on);
     if (on < 2) return;
-    int xs[2*NAV_MAX_PTS], ys[2*NAV_MAX_PTS];
+    int xs[128], ys[128];   /* geo_fatten 输出 <= 2*16+2 点 -> 多边形 <= 68 点 */
     int k = 0;
     for (int i = 0; i < on; i++)    { xs[k] = (int)l[i].x; ys[k] = (int)l[i].y; k++; }
     for (int i = on - 1; i >= 0; i--) { xs[k] = (int)r[i].x; ys[k] = (int)r[i].y; k++; }

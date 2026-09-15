@@ -1,0 +1,169 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""precheck.py - ESP32 firmware source pre-check (no compiler needed).
+
+Run after every code change, before flashing. Checks:
+  1) missing include: calls a function declared in a header that is not (indirectly) included
+  2) missing include: uses a typedef declared in a header that is not included
+  3) unbalanced braces / parens / brackets
+  4) broken string literals (odd number of quotes = escape damage)
+  5) static function defined but never used (-Werror=unused-function)
+
+Usage: python Esp32S3/tools/precheck.py [main_dir]
+Exit code: 0 = clean, 1 = problems found.
+"""
+import os
+import re
+import sys
+from collections import defaultdict
+
+ROOT = sys.argv[1] if len(sys.argv) > 1 else 'main'
+NL = chr(10)
+QD = chr(34)
+QS = chr(39)
+BS = chr(92)
+
+BUILTINS = set(("if for while switch return sizeof do else goto break continue "
+                "case default va_start va_end va_arg va_copy typeof alignof").split())
+
+
+def read(path):
+    with open(path, encoding='utf-8', errors='replace') as f:
+        return f.read()
+
+
+def strip_comments(src):
+    """Remove comments, keeping line count stable."""
+    src = re.sub(r'/\*.*?\*/', lambda m: NL * m.group(0).count(NL), src, flags=re.S)
+    src = re.sub(r'//[^\n]*', ' ', src)
+    return src
+
+
+def strip_literals(src):
+    """Remove string/char literals by hand (robust, no regex escaping issues)."""
+    out = []
+    i = 0
+    n = len(src)
+    while i < n:
+        c = src[i]
+        if c == QD or c == QS:
+            i += 1
+            while i < n and src[i] != c:
+                if src[i] == BS:
+                    i += 1
+                i += 1
+            i += 1
+            out.append(c + c)
+        else:
+            out.append(c)
+            i += 1
+    return ''.join(out)
+
+
+def parse_headers(hdr_paths):
+    func2hdr, type2hdr = {}, {}
+    for p in hdr_paths:
+        base = os.path.basename(p)
+        src = strip_comments(read(p))
+        for m in re.finditer(r'(?m)^[ \t]*(?:[A-Za-z_][\w \t\*]+?)[ \t]+\**(\w+)[ \t]*\([^;{]*?\)[ \t]*;', src):
+            func2hdr.setdefault(m.group(1), base)
+        for m in re.finditer(r'(?m)^[ \t]*#[ \t]*define[ \t]+(\w+)[ \t]*\(', src):
+            func2hdr.setdefault(m.group(1), base)
+        for m in re.finditer(r'typedef[ \t]+(?:struct|union|enum)\b[^;]*?\}[ \t]*(\w+)[ \t]*;', src, flags=re.S):
+            type2hdr.setdefault(m.group(1), base)
+        for m in re.finditer(r'typedef[ \t]+[^;{}]+?\b(\w+)[ \t]*;', src):
+            type2hdr.setdefault(m.group(1), base)
+    return func2hdr, type2hdr
+
+
+def includes_of(path, hdr_by_name):
+    seen, stack, out = set(), [path], set()
+    while stack:
+        cur = stack.pop()
+        if cur in seen or not os.path.exists(cur):
+            continue
+        seen.add(cur)
+        for m in re.finditer(r'#[ \t]*include[ \t]*"([^"]+)"', read(cur)):
+            name = os.path.basename(m.group(1))
+            out.add(name)
+            if name in hdr_by_name:
+                stack.append(hdr_by_name[name])
+    return out
+
+
+def check_balance(path, raw):
+    issues = []
+    body = strip_comments(raw)
+    lit = strip_literals(body)
+    for op, cl, label in (('{', '}', 'braces'), ('(', ')', 'parens'), ('[', ']', 'brackets')):
+        if lit.count(op) != lit.count(cl):
+            issues.append('%s unbalanced: %d vs %d' % (label, lit.count(op), lit.count(cl)))
+    for i, line in enumerate(body.split(NL), 1):
+        probe = strip_literals(line)
+        if probe.rstrip().endswith(BS):
+            continue
+        if probe.count(QD) % 2 == 1:
+            issues.append('line %d unbalanced quote: %s' % (i, line.strip()[:80]))
+    return issues
+
+
+def main():
+    if not os.path.isdir(ROOT):
+        print('dir not found: %s' % ROOT)
+        return 1
+    files = []
+    for dp, _, fns in os.walk(ROOT):
+        for fn in fns:
+            if fn.endswith(('.c', '.h')):
+                files.append(os.path.join(dp, fn).replace(BS, '/'))
+    hdr_paths = [f for f in files if f.endswith('.h')]
+    c_paths = [f for f in files if f.endswith('.c')]
+    hdr_by_name = {os.path.basename(p): p for p in hdr_paths}
+    func2hdr, type2hdr = parse_headers(hdr_paths)
+
+    problems = 0
+    for c in c_paths:
+        raw = read(c)
+        inc = includes_of(c, hdr_by_name)
+        src = strip_comments(raw)
+        defined = set(re.findall(r'(?m)^[ \t]*(?:static[ \t]+)?[A-Za-z_][\w \t\*]*?[ \t]+\**(\w+)[ \t]*\([^;]*\)[ \t]*\{', src))
+
+        missing = defaultdict(set)
+        for m in re.finditer(r'\b([A-Za-z_]\w*)[ \t]*\(', src):
+            fn = m.group(1)
+            if fn in BUILTINS or fn in defined:
+                continue
+            hdr = func2hdr.get(fn)
+            if hdr and hdr not in inc:
+                missing[hdr].add(fn)
+        for hdr, fns in sorted(missing.items()):
+            print('[missing include] %s: #include "%s"  (uses: %s)' % (c, hdr, ', '.join(sorted(fns))))
+            problems += 1
+
+        tmiss = defaultdict(set)
+        for m in re.finditer(r'\b([A-Za-z_]\w*_t)\b', src):
+            ty = m.group(1)
+            hdr = type2hdr.get(ty)
+            if hdr and hdr not in inc:
+                tmiss[hdr].add(ty)
+        for hdr, tys in sorted(tmiss.items()):
+            print('[missing include] %s: #include "%s"  (types: %s)' % (c, hdr, ', '.join(sorted(tys))))
+            problems += 1
+
+        for msg in check_balance(c, raw):
+            print('[syntax] %s: %s' % (c, msg))
+            problems += 1
+
+        for m in re.finditer(r'(?m)^[ \t]*static[ \t]+[\w \t\*]+?[ \t]+\**(\w+)[ \t]*\([^;]*\)[ \t]*\{', src):
+            fn = m.group(1)
+            if len(re.findall(r'\b%s\b' % re.escape(fn), src)) < 2:
+                print('[unused] %s: static %s never used (-Werror=unused-function)' % (c, fn))
+                problems += 1
+
+    print('----')
+    print('checked %d .c / %d .h, problems: %d' % (len(c_paths), len(hdr_paths), problems))
+    return 1 if problems else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
