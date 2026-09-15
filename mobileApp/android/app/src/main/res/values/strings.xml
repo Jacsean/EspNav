@@ -1,0 +1,25 @@
+<resources>
+    <string name="app_name">EspNav 控制器</string>
+
+    <string name="label_host">设备地址</string>
+    <string name="label_port">端口</string>
+    <string name="hint_host">192.168.4.1</string>
+
+    <string name="btn_connect">连接</string>
+    <string name="btn_disconnect">断开</string>
+    <string name="btn_send_once">发送一帧</string>
+    <string name="btn_mock_start">开始模拟导航</string>
+    <string name="btn_mock_stop">停止模拟</string>
+    <string name="btn_ping">PING</string>
+    <string name="btn_get_config">读配置</string>
+    <string name="btn_clear">清屏</string>
+
+    <string name="label_brightness">背光亮度</string>
+    <string name="label_dash_speed">虚线速度</string>
+    <string name="label_anim">流动动画</string>
+
+    <string name="label_log">通信日志</string>
+    <string name="label_status">状态：未连接</string>
+
+    <string name="tip_hotspot">提示：手机需先连接热点 ESPNav-AP（密码 espnav1234）</string>
+</resources>
