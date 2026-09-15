@@ -81,6 +81,26 @@
                 android:text="@string/btn_disconnect" />
         </LinearLayout>
 
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnQuickConnect"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/btn_quick_connect" />
+
+            <Button
+                android:id="@+id/btnOpenProv"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/btn_open_prov" />
+        </LinearLayout>
+
         <!-- 导航帧操作 -->
         <LinearLayout
             android:layout_width="match_parent"

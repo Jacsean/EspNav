@@ -1,5 +1,7 @@
 package com.espnav.app
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.SeekBar
@@ -28,6 +30,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private lateinit var client: EspNavClient
     private lateinit var mock: MockNavigator
     private var mockJob: Job? = null
+    private val prefs by lazy { getSharedPreferences("espnav", MODE_PRIVATE) }
+    private val pendingCandidates = ArrayDeque<String>()
     private val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -39,11 +43,13 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         client.listener = this
         mock = MockNavigator()
 
-        binding.etHost.setText("192.168.4.1")
+        binding.etHost.setText(prefs.getString(KEY_LAST_IP, null) ?: DEFAULT_HOST)
         binding.etPort.setText("8899")
         binding.btnDisconnect.isEnabled = false
 
         binding.btnConnect.setOnClickListener { doConnect() }
+        binding.btnQuickConnect.setOnClickListener { quickConnect() }
+        binding.btnOpenProv.setOnClickListener { openProvPage() }
         binding.btnDisconnect.setOnClickListener {
             stopMock()
             client.disconnect("手动断开")
@@ -86,6 +92,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     // ---------------- 网络回调（都在主线程） ----------------
 
     override fun onConnected(addr: String) {
+        prefs.edit().putString(KEY_LAST_IP, addr.substringBefore(':')).apply()   /* 记住可用地址 */
         setStatus("已连接 $addr")
         binding.btnConnect.isEnabled = false
         binding.btnDisconnect.isEnabled = true
@@ -109,6 +116,41 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     // ---------------- 操作 ----------------
+
+    /** 一键连接：依次尝试“上次成功的地址”和 192.168.4.1；4.5 秒未连上就换下一个 */
+    private fun quickConnect() {
+        val list = LinkedHashSet<String>()
+        prefs.getString(KEY_LAST_IP, null)?.takeIf { it.isNotBlank() }?.let { list.add(it) }
+        list.add(binding.etHost.text.toString().trim().ifBlank { DEFAULT_HOST })
+        list.add(DEFAULT_HOST)
+        pendingCandidates.clear()
+        pendingCandidates.addAll(list)
+        log("一键连接：候选地址 ${list.joinToString(" -> ")}")
+        tryNextCandidate()
+    }
+
+    private fun tryNextCandidate() {
+        val c = pendingCandidates.removeFirstOrNull()
+        if (c == null) {
+            log("一键连接失败：请确认手机已连上热点 ESPNav-AP（密码 espnav1234）")
+            log("或在浏览器打开 http://192.168.4.1 完成配网后重试")
+            return
+        }
+        binding.etHost.setText(c)
+        doConnect()
+        lifecycleScope.launch {
+            delay(4500)
+            if (!client.isConnected) tryNextCandidate()
+        }
+    }
+
+    private fun openProvPage() {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("http://" + DEFAULT_HOST)))
+        } catch (e: Exception) {
+            log("打不开浏览器：${e.message}")
+        }
+    }
 
     private fun doConnect() {
         val host = binding.etHost.text.toString().trim().ifBlank { "192.168.4.1" }
@@ -171,6 +213,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     companion object {
+        private const val DEFAULT_HOST = "192.168.4.1"
+        private const val KEY_LAST_IP = "last_ip"
         private const val FRAME_INTERVAL_MS = 200L   // 5 Hz（协议上限 10fps）
         private const val MAX_LOG_LINES = 200
     }

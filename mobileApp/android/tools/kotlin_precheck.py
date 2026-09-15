@@ -50,10 +50,42 @@ def strip_literals(s):
 
 
 def strip_comments(s):
-    s = re.sub(re.escape('/' + '*') + '.*?' + re.escape('*' + '/'),
-               lambda m: NL * m.group(0).count(NL), s, flags=re.S)
-    s = re.sub(re.escape('/' + '/') + '[^' + NL + ']*', ' ', s)
-    return s
+    """状态机剥注释（正确跳过字符串/字符常量内的 // 与 /*），保留换行稳定行号"""
+    out = []
+    i = 0
+    n = len(s)
+    while i < n:
+        c = s[i]
+        if c == Q or c == SQ:
+            q = c
+            out.append(c)
+            i += 1
+            while i < n:
+                ch = s[i]
+                out.append(ch)
+                if ch == BS and i + 1 < n:
+                    out.append(s[i + 1])
+                    i += 2
+                    continue
+                i += 1
+                if ch == q:
+                    break
+            continue
+        if c == chr(47) and i + 1 < n and s[i + 1] == chr(47):
+            while i < n and s[i] != NL:
+                i += 1
+            continue
+        if c == chr(47) and i + 1 < n and s[i + 1] == chr(42):
+            i += 2
+            while i + 1 < n and not (s[i] == chr(42) and s[i + 1] == chr(47)):
+                if s[i] == NL:
+                    out.append(NL)
+                i += 1
+            i += 2
+            continue
+        out.append(c)
+        i += 1
+    return str().join(out)
 
 
 def check_balance(path, src):
