@@ -1,0 +1,4 @@
+# 固件侧工具缓存与构建产物
+__pycache__/
+build/
+sdkconfig.old
