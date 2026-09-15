@@ -49,3 +49,9 @@
 - **原因**：`quandong-s3-dev` 是 xiaozhi 生态板，官方仓库已有板级配置。
 - **解决方案**：以 `78/xiaozhi-esp32` → `main/boards/quandong-s3-dev/{config.h, quandong_s3_dev_board.cc}` 为权威来源（引脚、40MHz、MADCTL=0xA0、INVON、vendor 序列）。
 - **预防措施**：拿到实物先找官方/厂商板级配置（开源生态常见），不要凭"同类板"猜测。
+
+## F9. 编译失败：unknown type name 'gpt_t' / 一批 geo_* 函数未声明
+- **现象**：M4 模板渲染加入后整包编译失败，报 `gpt_t` 未知、`geo_fatten`/`geo_proj_pt`/`geo_rbt_metrics`/`geo_azimuth_rad`/`geo_sweep_directed` 隐式声明。
+- **原因**：`render_nav.c` **漏了 `#include "geo.h"`**（新增代码使用了 geo 模块的几何算法与类型，但未包含其头文件）；所有后续报错均为连锁反应。
+- **解决方案**：补 `#include "geo.h"`。同时修复顺带发现的越界隐患：`fb_fill_poly` 交点缓冲 `xbuf[64]`、`road_fill` 坐标数组 `xs[2*NAV_MAX_PTS]`(=32) 均小于实际可能点数（geo_fatten 对 16 点输入输出可达 2*16+2=34 点 -> 多边形 68 点），已统一放大到 **128**。
+- **预防措施**：新增代码后**先跑 `python Esp32S3/tools/precheck.py main`**（本档案新增的静态预检脚本，可直接报出"缺 include/类型不可见"），再交用户编译；同时按"代码质量门"做人工 review（重点是缓冲尺寸与点数上限）。
