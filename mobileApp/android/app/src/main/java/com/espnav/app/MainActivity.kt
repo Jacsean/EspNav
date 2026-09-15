@@ -8,6 +8,7 @@ import android.widget.SeekBar
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.espnav.app.data.MockNavigator
+import com.espnav.app.data.NavStateMapper
 import com.espnav.app.databinding.ActivityMainBinding
 import com.espnav.app.net.EspNavClient
 import com.espnav.app.protocol.InMsg
@@ -58,7 +59,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         binding.btnGetConfig.setOnClickListener { send(OutMsg.getConfig()) }
         binding.btnClear.setOnClickListener { send(OutMsg.clearScreen()) }
         binding.btnSendOnce.setOnClickListener {
-            val f = mock.next()
+            val f = NavStateMapper.toFrame(mock.next())
             send(OutMsg.navFrame(f))
             binding.tvStage.text = "单帧：${mock.stageName()} 剩余 ${f.turnDist} m"
         }
@@ -168,7 +169,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         mock.reset()
         mockJob = lifecycleScope.launch {
             while (isActive) {
-                val f = mock.next()
+                val f = NavStateMapper.toFrame(mock.next())
                 client.queue(OutMsg.navFrame(f))
                 binding.tvStage.text =
                     "模拟中：${mock.stageName()}  剩余 ${f.turnDist} m  进度 ${f.progressPct}%"
