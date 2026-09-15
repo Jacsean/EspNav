@@ -19,6 +19,12 @@
 4. 若 IDE 提示 Gradle/AGP 需要升级：改 `build.gradle` 里的 `com.android.application` 版本号
    （与 `app/build.gradle` 的 `compileSdk` 一起升，例如 7.4.2 → 8.1.2 / compileSdk 34），再 Sync
 
+### 方式 C：直接用已构建好的 APK（本项目已验证）
+本项目已实际编译通过并产出 APK：
+- 仓库内副本：`mobileApp/android/espnav-debug.apk`
+- 标准输出路径：`mobileApp/android/app/build/outputs/apk/debug/app-debug.apk`
+拷到手机点击安装（需允许"安装未知来源应用"）即可，无需 USB 调试。
+
 ## 联调步骤（真机）
 1. 给 ESP32 上电（固件已就绪），日志应出现 `AP_START: 热点就绪 -> SSID=ESPNav-AP`
 2. 手机 **WiFi 连接热点 `ESPNav-AP`**（密码 `espnav1234`）

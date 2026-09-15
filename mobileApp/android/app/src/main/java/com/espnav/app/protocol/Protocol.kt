@@ -23,7 +23,7 @@ data class RoadSpec(
         put("type", type)
         if (dir != null) put("dir", dir)
         if (exits != null) put("exits", JSONArray(exits))
-        if (pts != null) put("pts", Json.pts(pts!!))
+        if (pts != null) put("pts", Json.pts(pts))   // 已 smart-cast，无需 !!
         if (half != null) put("half", half)
         if (cx != null) put("cx", cx)
         if (cy != null) put("cy", cy)
