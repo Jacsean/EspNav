@@ -9,3 +9,5 @@ void render_nav_tick(float dt);
 /* 立即用当前缓存帧渲染一次（收帧时调用，保证帧必上屏） */
 void render_nav_draw_now(void);
 void render_nav_frame(const nav_frame_t *f);   /* 立即渲染一帧（保留，便于调试） */
+/* CLEAR_SCREEN / 链路断开：请求黑屏待机（实际清屏由显示任务执行，SPI 只在该任务访问） */
+void render_nav_clear(void);

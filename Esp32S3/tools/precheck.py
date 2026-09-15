@@ -107,6 +107,27 @@ def check_balance(path, raw):
     return issues
 
 
+# ---- 系统头缺失检查（预检项 6）：用到 C 库函数但未 include 对应系统头 ----
+SYSHDR = {
+    'snprintf':     ('stdio.h',  ['sprintf', 'printf', 'vsnprintf', 'snprintf']),
+    'strstr':       ('string.h', ['strlen', 'strncmp', 'strcmp', 'memcpy', 'memset', 'strncpy', 'strchr']),
+    'cosf':         ('math.h',   ['sinf', 'sqrtf', 'acosf', 'fminf', 'fmaxf', 'atan2f', 'powf']),
+    'atoi':         ('stdlib.h', ['strtol', 'malloc', 'free']),
+}
+
+
+def check_sys_headers(path, src):
+    issues = []
+    inc = set(re.findall(r'#include[ 	]*[<"]([^">]+)[">]', src))
+    for sym, (hdr, alts) in SYSHDR.items():
+        for x in [sym] + alts:
+            if re.search('(^|[^A-Za-z0-9_])' + re.escape(x) + '[ 	]*[(]', src):
+                if hdr not in inc:
+                    issues.append('uses %s but misses #include <%s>' % (x, hdr))
+                break
+    return issues
+
+
 def main():
     if not os.path.isdir(ROOT):
         print('dir not found: %s' % ROOT)
@@ -148,6 +169,10 @@ def main():
                 tmiss[hdr].add(ty)
         for hdr, tys in sorted(tmiss.items()):
             print('[missing include] %s: #include "%s"  (types: %s)' % (c, hdr, ', '.join(sorted(tys))))
+            problems += 1
+
+        for msg in check_sys_headers(c, raw):
+            print('[missing sysheader] %s: %s' % (c, msg))
             problems += 1
 
         for msg in check_balance(c, raw):

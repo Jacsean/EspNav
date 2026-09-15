@@ -23,6 +23,11 @@ static const char *TAG = "render_nav";
 #define ROAD_GRAY     0x73AE  /* #777777 -> RGB565 */
 #define PATH_GREEN    0x07E0
 
+void render_nav_clear(void)
+{
+    s_blank_req = true;      /* 由显示任务执行清屏，避免跨任务并发访问 SPI */
+}
+
 void render_nav_init(void)
 {
     fb_init();
@@ -86,6 +91,7 @@ static void quad_from_centerline(const nav_frame_t *f, int nearHalf, int farHalf
 
 static nav_frame_t s_cur;
 static bool s_have = false;
+static bool s_blank_req = false;   /* CLEAR_SCREEN/断线清屏请求（显示任务消费） */
 static float s_anim = 0.0f;
 
 void render_nav_set_frame(const nav_frame_t *f)
@@ -494,10 +500,20 @@ static void draw_frame(const nav_frame_t *f, float anim)
 /* 显示任务周期调用：推进虚线动画并重绘（dash_speed 来自 SET_CONFIG，默认 60 px/s） */
 void render_nav_tick(float dt)
 {
+    if (s_blank_req) {                       /* 黑屏待机：只在本任务清屏（SPI 仅显示任务访问） */
+        s_blank_req = false;
+        s_have = false;
+        fb_clear(RGB565_BLACK);
+        fb_flush();
+        ESP_LOGI(TAG, "screen cleared -> blank standby");
+        return;
+    }
     if (!s_have) return;
     const espnav_config_t *cfg = config_get();
-    s_anim += (float)cfg->dash_speed * dt;
-    if (s_anim > 100000.0f) s_anim = 0.0f;
+    if (cfg->anim_enable) {                  /* anim_enable=false => 静态虚线（不推进相位） */
+        s_anim += (float)cfg->dash_speed * dt;
+        if (s_anim > 100000.0f) s_anim = 0.0f;
+    }
     draw_frame(&s_cur, s_anim);
 }
 

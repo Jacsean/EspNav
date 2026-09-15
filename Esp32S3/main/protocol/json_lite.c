@@ -1,5 +1,6 @@
 #include "json_lite.h"
 #include <string.h>
+#include <stdio.h>   /* snprintf（jl_get_bool 的键匹配） */
 #include <stdlib.h>
 #include <ctype.h>
 
@@ -124,4 +125,30 @@ int jl_get_str_array(const char *json, const char *key, char *out, int outw, int
         n++;
     }
     return n;
+}
+
+/* 定位 "key" 之后的值起点（跳过空白/冒号） */
+static const char *jl_find_value(const char *json, const char *key)
+{
+    char pat[80];
+    char q = 0x22;
+    if (!json || !key) return NULL;
+    if (strlen(key) + 4 >= sizeof(pat)) return NULL;
+    snprintf(pat, sizeof(pat), "%c%s%c", q, key, q);
+    const char *p = strstr(json, pat);
+    if (!p) return NULL;
+    p += strlen(pat);
+    while (*p == 0x20 || *p == 0x3A || *p == 0x09 || *p == 0x0A || *p == 0x0D) p++;
+    return p;
+}
+
+bool jl_get_bool(const char *json, const char *key, bool *out)
+{
+    const char *p = jl_find_value(json, key);
+    if (!p) return false;
+    if (!strncmp(p, "true", 4))  { if (out) *out = true;  return true; }
+    if (!strncmp(p, "false", 5)) { if (out) *out = false; return true; }
+    if (*p == 0x31)              { if (out) *out = true;  return true; }
+    if (*p == 0x30)              { if (out) *out = false; return true; }
+    return false;
 }

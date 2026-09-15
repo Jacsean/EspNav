@@ -13,3 +13,4 @@ int  jl_get_pts16(const char *json, const char *key, int16_t *out_xy, int max);
 bool jl_get_pair(const char *json, const char *key, int *x, int *y);
 /* 解析 "key": ["W","N","E"]（字符串数组）；out 为 [max][outw] ；返回元素数 */
 int  jl_get_str_array(const char *json, const char *key, char *out, int outw, int max);
+bool jl_get_bool(const char *json, const char *key, bool *out);

@@ -5,6 +5,8 @@
  *   node send_frames.js --road all                 # 依次演示全部路况模板
  *   node send_frames.js --road crossRight          # 只发某一种模板
  *   node send_frames.js --file frames.jsonl        # 每行一个完整 JSON 帧
+ *   node send_frames.js --config                   # M3 验证：PING/GET_CONFIG/SET_CONFIG/CLEAR_SCREEN
+ *                                                    #   依次：亮度 30->100、虚线 80->20->40、anim 开关、清屏
  *   （可选 --host 192.168.4.1 --port 8899）
  * 真机语义：车标 pos 固定；两侧虚线滚动由渲染端按 dash_speed 驱动。
  */
@@ -20,6 +22,7 @@ const HOST = arg('host', '192.168.4.1');
 const PORT = parseInt(arg('port', '8899'), 10);
 const FILE = arg('file', null);
 const ROAD = arg('road', null);
+const CONFIG_TEST = process.argv.includes('--config');
 
 /* 模板样例（参数与 nav_sim_v2.html / 几何规格 V0.3 一致；近端 y=144） */
 const ROAD_SAMPLES = {
@@ -97,6 +100,27 @@ function roadList() {
 
 const sock = net.connect(PORT, HOST, () => {
   console.log('[ok] connected ' + HOST + ':' + PORT);
+  if (CONFIG_TEST) {
+    const steps = [
+      { msg_type: 'PING',        payload: { ts: Math.floor(Date.now() / 1000) } },
+      { msg_type: 'GET_CONFIG',  payload: {} },
+      { msg_type: 'SET_CONFIG',  payload: { lcd_brightness: 30, dash_speed: 80, anim_enable: true, popup_timeout: 5 } },
+      { msg_type: 'GET_CONFIG',  payload: {} },
+      { msg_type: 'SET_CONFIG',  payload: { lcd_brightness: 100, dash_speed: 20, anim_enable: false } },
+      { msg_type: 'GET_CONFIG',  payload: {} },
+      { msg_type: 'SET_CONFIG',  payload: { anim_enable: true, dash_speed: 40 } },
+      { msg_type: 'CLEAR_SCREEN', payload: {} },
+    ];
+    let i = 0;
+    const t = setInterval(() => {
+      if (i >= steps.length) { clearInterval(t); sock.end(); return; }
+      const st = steps[i];
+      sock.write(JSON.stringify(st) + String.fromCharCode(10));
+      console.log('[tx] ' + JSON.stringify(st));
+      i++;
+    }, 1500);
+    return;
+  }
   if (FILE) {
     const lines = fs.readFileSync(FILE, 'utf8').split(/\r?\n/).filter(Boolean);
     let i = 0;
