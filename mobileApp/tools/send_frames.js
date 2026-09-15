@@ -40,6 +40,27 @@ const ROAD_HINTS = {
   multi:'多岔路口走左侧支路', forkRight:'靠右驶出匝道 400米',
 };
 
+/* 行程图轨迹（小地图局部坐标 0..40；dot 沿线推进，肉眼可见变化） */
+const OV_TRACKS = {
+  straight:   [[8,6],[14,12],[20,18],[26,24],[32,30],[38,36]],
+  curveL:     [[8,8],[14,10],[20,14],[26,20],[30,28],[34,36]],
+  curveR:     [[8,8],[14,12],[18,18],[22,26],[26,33],[30,37]],
+  tLeft:      [[8,6],[16,12],[24,18],[24,26],[24,34],[24,38]],
+  crossRight: [[8,6],[16,12],[24,18],[32,20],[36,20],[38,20]],
+  rbt2:       [[8,6],[16,12],[24,18],[26,14],[28,10],[30,8]],
+  rbt3:       [[8,6],[16,12],[24,18],[30,16],[34,14],[38,14]],
+  multi:      [[8,6],[16,12],[24,18],[22,24],[18,30],[16,36]],
+  forkRight:  [[8,6],[16,12],[24,18],[28,22],[34,28],[38,34]],
+  strip:      [[8,6],[14,12],[20,18],[26,24],[32,30],[38,36]],
+};
+/* step 越大 -> 走过的轨迹越长、黄点越靠前（每一帧都不同） */
+function ovFor(key, step) {
+  const tr = OV_TRACKS[key] || OV_TRACKS.strip;
+  const k = Math.max(1, Math.min(tr.length, step));
+  const ov = tr.slice(0, k);
+  return { overview: ov, overview_dot: ov[ov.length - 1] };
+}
+
 function frameObj(payload, type = 'NAV_FRAME') {
   return JSON.stringify({ msg_type: type, payload: payload }) + '\n';
 }
@@ -50,24 +71,21 @@ function basePayload(hint, key, idx) {
     centerLine: [[160,144],[160,120],[160,90],[160,60],[160,34]],
     pastCenter: [[160,144],[160,120]],
     routeCenter: [[160,120],[160,90],[160,60],[160,34]],
-    pos: [160, 110],
-    overview: [[8,6],[22,19],[46,14],[62,26]],
-    overview_dot: [22,19]
+    pos: [160, 110]
   };
 }
-function stripPayload(turnDist, hint) {
+function stripPayload(turnDist, hint, step) {
   const center = [[160,144],[160,118],[160,86],[160,54],[160,30]];
   const pc = 1 + Math.floor((500 - turnDist) / 200);
-  return {
+  const base = {
     heading: (turnDist * 3) % 360, turn_dist: turnDist, hint: hint,
     total_dist: 8200, progress_pct: 34, elapsed_min: 28, eta_time: '14:27',
     centerLine: center,
     pastCenter: center.slice(0, Math.max(2, Math.min(4, pc + 1))),
     routeCenter: center.slice(Math.max(1, pc)),
-    pos: [160, 110],
-    overview: [[8,6],[22,19],[46,14],[62,26]],
-    overview_dot: [22,19]
+    pos: [160, 110]
   };
+  return Object.assign(base, ovFor('strip', step || 1));
 }
 
 function roadList() {
@@ -94,16 +112,18 @@ const sock = net.connect(PORT, HOST, () => {
     const keys = roadList();
     let i = 0, t;
     const send = () => {
-      const k = keys[i % keys.length];
+      const k = keys[Math.floor(i / 3) % keys.length];
+      const step = (i % 3) + 1;                    /* 每模板 3 帧：行程图逐帧推进 */
       const pl = basePayload(ROAD_HINTS[k] || k, k, i);
       pl.road = ROAD_SAMPLES[k];
+      Object.assign(pl, ovFor(k, step));
       sock.write(frameObj(pl));
-      console.log('[tx] road=' + k + ' hint=' + pl.hint);
+      console.log('[tx] road=' + k + ' step=' + step + ' dot=' + JSON.stringify(pl.overview_dot));
       i++;
-      if (i >= keys.length * 2) { clearInterval(t); sock.end(); }
+      if (i >= keys.length * 3) { clearInterval(t); sock.end(); }
     };
     send();
-    t = setInterval(send, 1500);
+    t = setInterval(send, 700);
     return;
   }
   /* 默认：条带 demo */
@@ -112,7 +132,7 @@ const sock = net.connect(PORT, HOST, () => {
     n++;
     if (n <= 10) {
       const turnDist = 500 - n * 40;
-      sock.write(frameObj(stripPayload(turnDist, '前方' + turnDist + '米直行')));
+      sock.write(frameObj(stripPayload(turnDist, '前方' + turnDist + '米直行', n)));
       console.log('[tx] strip frame#' + n + ' turn_dist=' + turnDist);
     } else if (n === 11) {
       sock.write(frameObj({ ts: Math.floor(Date.now() / 1000) }, 'PING'));
