@@ -113,7 +113,7 @@ REQUIRED_IMPORTS = {
     'Locale':            'java.util.Locale',
 }
 
-PRE = '(^|[^A-Za-z0-9_.])'
+PRE = '(^|[^A-Za-z0-9_])'   # 允许 .isActive / scope.launch 这类扩展调用，禁止 fooIsActive
 POST = '($|[^A-Za-z0-9_])'
 
 
