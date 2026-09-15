@@ -5,7 +5,8 @@
  *   node send_frames.js --road all                 # 依次演示全部路况模板
  *   node send_frames.js --road crossRight          # 只发某一种模板
  *   node send_frames.js --file frames.jsonl        # 每行一个完整 JSON 帧
- *   node send_frames.js --config                   # M3 验证：PING/GET_CONFIG/SET_CONFIG/CLEAR_SCREEN
+ *   node send_frames.js --config2                  # M3 逐项慢速验证（每步 4s，幅度大，带观察提示）——推荐
+ *   node send_frames.js --config                   # M3 快速验证：PING/GET_CONFIG/SET_CONFIG/CLEAR_SCREEN
  *                                                    #   依次：亮度 30->100、虚线 80->20->40、anim 开关、清屏
  *   （可选 --host 192.168.4.1 --port 8899）
  * 真机语义：车标 pos 固定；两侧虚线滚动由渲染端按 dash_speed 驱动。
@@ -23,6 +24,7 @@ const PORT = parseInt(arg('port', '8899'), 10);
 const FILE = arg('file', null);
 const ROAD = arg('road', null);
 const CONFIG_TEST = process.argv.includes('--config');
+const CONFIG2 = process.argv.includes('--config2');
 
 /* 模板样例（参数与 nav_sim_v2.html / 几何规格 V0.3 一致；近端 y=144） */
 const ROAD_SAMPLES = {
@@ -100,6 +102,36 @@ function roadList() {
 
 const sock = net.connect(PORT, HOST, () => {
   console.log('[ok] connected ' + HOST + ':' + PORT);
+  if (CONFIG2) {
+    /* 每步 4 秒、幅度大、带观察提示：便于肉眼逐项确认“哪个变化对应哪一步” */
+    const steps = [
+      ['① 背光调到最暗（应明显变暗）',   { msg_type: 'SET_CONFIG', payload: { lcd_brightness: 10 } }],
+      ['② 背光恢复最亮（应明显变亮）',   { msg_type: 'SET_CONFIG', payload: { lcd_brightness: 100 } }],
+      ['③ 虚线最慢（应几乎不动）',       { msg_type: 'SET_CONFIG', payload: { dash_speed: 5 } }],
+      ['④ 虚线最快（应明显加快）',       { msg_type: 'SET_CONFIG', payload: { dash_speed: 120 } }],
+      ['⑤ 动画关闭（虚线应完全静止）',   { msg_type: 'SET_CONFIG', payload: { anim_enable: false } }],
+      ['⑥ 动画开启（虚线恢复滚动）',     { msg_type: 'SET_CONFIG', payload: { anim_enable: true, dash_speed: 40 } }],
+      ['⑦ 清屏（应变为全黑待机）',       { msg_type: 'CLEAR_SCREEN', payload: {} }],
+      ['⑧ 恢复画面（重新出现导航图）',   'RESUME'],
+      ['⑨ 心跳（控制台应收到 PONG）',    { msg_type: 'PING', payload: { ts: 12345 } }],
+      ['⑩ 读配置（应收到 DEV_STATUS）',  { msg_type: 'GET_CONFIG', payload: {} }],
+    ];
+    let i = 0;
+    const run = () => {
+      if (i >= steps.length) { sock.end(); return; }
+      const [tip, item] = steps[i];
+      console.log('---- ' + tip);
+      if (item === 'RESUME') {
+        sock.write(frameObj(stripPayload(460, '前方460米直行', 3)));
+      } else {
+        sock.write(JSON.stringify(item) + String.fromCharCode(10));
+      }
+      i++;
+      setTimeout(run, 4000);
+    };
+    setTimeout(run, 500);
+    return;
+  }
   if (CONFIG_TEST) {
     const steps = [
       { msg_type: 'PING',        payload: { ts: Math.floor(Date.now() / 1000) } },
