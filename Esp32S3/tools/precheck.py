@@ -128,6 +128,44 @@ def check_sys_headers(path, src):
     return issues
 
 
+# ---- 预检项 7：使用先于声明（模块级 static 变量 / 文件内 static 函数）----
+def check_decl_order(path, src):
+    issues = []
+    lines = src.split(NL)
+    var_line = {}
+    for i, l in enumerate(lines):
+        m = re.match(r'static[ 	]+[\w 	\*]+?[\* 	]+(\w+)[ 	]*(\[[^\]]*\])?[ 	]*(=|;)', l)
+        if m and '(' not in l.split('=')[0]:
+            var_line.setdefault(m.group(1), i)
+    func_line = {}
+    for m in re.finditer(r'(?m)^[ 	]*(?:static[ 	]+)?[A-Za-z_][\w 	\*]*?[ 	]+\**(\w+)[ 	]*\([^;]*\)[ 	]*\{', src):
+        func_line.setdefault(m.group(1), src[:m.start()].count(NL))
+    for name, vline in sorted(var_line.items()):
+        for m in re.finditer('(^|[^A-Za-z0-9_.>])' + re.escape(name) + r'', src):
+            u = src[:m.start()].count(NL)
+            if u < vline:
+                issues.append('uses static %s (line %d) before its definition (line %d)' % (name, u + 1, vline + 1))
+                break
+    for name, fline in sorted(func_line.items()):
+        if fline < len(lines) and not re.match(r'static[ 	]', lines[fline]):
+            continue
+        for m in re.finditer('(^|[^A-Za-z0-9_.>])' + re.escape(name) + r'[ 	]*[(]', src):
+            u = src[:m.start()].count(NL)
+            if u < fline:
+                issues.append('calls static %s (line %d) before its definition (line %d) - add a prototype' % (name, u + 1, fline + 1))
+                break
+    return issues
+
+
+# ---- 预检项 8：控制字符（TAB/LF/CR 除外）----
+def check_control_chars(path, raw):
+    allowed = (chr(9), chr(10), chr(13))
+    ctl = sorted(set(ch for ch in raw if ord(ch) < 32 and ch not in allowed))
+    if ctl:
+        return ['contains control chars: ' + ' '.join('0x%02X' % ord(c) for c in ctl)]
+    return []
+
+
 def main():
     if not os.path.isdir(ROOT):
         print('dir not found: %s' % ROOT)
@@ -169,6 +207,14 @@ def main():
                 tmiss[hdr].add(ty)
         for hdr, tys in sorted(tmiss.items()):
             print('[missing include] %s: #include "%s"  (types: %s)' % (c, hdr, ', '.join(sorted(tys))))
+            problems += 1
+
+        for msg in check_control_chars(c, raw):
+            print('[control-char] %s: %s' % (c, msg))
+            problems += 1
+
+        for msg in check_decl_order(c, src):
+            print('[decl-order] %s: %s' % (c, msg))
             problems += 1
 
         for msg in check_sys_headers(c, raw):

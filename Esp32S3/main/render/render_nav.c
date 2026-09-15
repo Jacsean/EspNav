@@ -11,6 +11,13 @@
 
 static const char *TAG = "render_nav";
 
+/* ---- 模块级状态（统一在文件顶部定义，任何函数体内的使用都不会“先于声明”）---- */
+static nav_frame_t s_cur;            /* 当前导航帧 */
+static bool        s_have = false;   /* 是否已有可渲染帧 */
+static bool        s_blank_req = false;  /* CLEAR_SCREEN/断线清屏请求（显示任务消费） */
+static float       s_anim = 0.0f;    /* 虚线相位 */
+
+
 /* 临时二分开关：1=渲染文字层；0=跳过文字（用于定位黑屏/崩溃是否由文字渲染引起） */
 #define RENDER_TEXT 1   /* 文字渲染已恢复（黑屏根因=CS 控制，与文字无关） */
 
@@ -89,10 +96,6 @@ static void quad_from_centerline(const nav_frame_t *f, int nearHalf, int farHalf
     qx[3] = x1 + (int)(nx * farHalf);  qy[3] = y1 + (int)(ny * farHalf);
 }
 
-static nav_frame_t s_cur;
-static bool s_have = false;
-static bool s_blank_req = false;   /* CLEAR_SCREEN/断线清屏请求（显示任务消费） */
-static float s_anim = 0.0f;
 
 void render_nav_set_frame(const nav_frame_t *f)
 {
