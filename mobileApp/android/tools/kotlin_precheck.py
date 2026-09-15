@@ -92,6 +92,41 @@ def check_bare_isactive(path, src):
     return issues
 
 
+# ---- 预检项 3：必需 import（用到某符号但没有 import 其声明处 -> Unresolved reference）----
+REQUIRED_IMPORTS = {
+    'isActive':          'kotlinx.coroutines.isActive',
+    'coroutineContext':  'kotlin.coroutines.coroutineContext',
+    'launch':            'kotlinx.coroutines.launch',
+    'delay':             'kotlinx.coroutines.delay',
+    'withContext':       'kotlinx.coroutines.withContext',
+    'Dispatchers':       'kotlinx.coroutines.Dispatchers',
+    'Channel':           'kotlinx.coroutines.channels.Channel',
+    'Job':               'kotlinx.coroutines.Job',
+    'lifecycleScope':    'androidx.lifecycle.lifecycleScope',
+    'Log':               'android.util.Log',
+    'JSONObject':        'org.json.JSONObject',
+    'JSONArray':         'org.json.JSONArray',
+    'AppCompatActivity': 'androidx.appcompat.app.AppCompatActivity',
+    'SeekBar':           'android.widget.SeekBar',
+    'View':              'android.view.View',
+    'SimpleDateFormat':  'java.text.SimpleDateFormat',
+    'Locale':            'java.util.Locale',
+}
+
+PRE = '(^|[^A-Za-z0-9_.])'
+POST = '($|[^A-Za-z0-9_])'
+
+
+def check_required_imports(path, src):
+    issues = []
+    body = strip_literals(strip_comments(src))
+    imports = set(re.findall(r'(?m)^[ 	]*import[ 	]+([\w.]+)', src))
+    for sym, fq in sorted(REQUIRED_IMPORTS.items()):
+        if re.search(PRE + re.escape(sym) + POST, body) and fq not in imports:
+            issues.append('uses %s but misses "import %s" (Unresolved reference)' % (sym, fq))
+    return issues
+
+
 def main():
     kt_files, xml_files = [], []
     for dp, _, fns in os.walk(ROOT):
@@ -113,6 +148,10 @@ def main():
         for msg in check_balance(p, src):
             print('[syntax] %s: %s' % (p, msg))
             problems += 1
+        for msg in check_required_imports(p, src):
+            print('[import] %s: %s' % (p, msg))
+            problems += 1
+
         for msg in check_bare_isactive(p, src):
             print('[coroutine] %s: %s' % (p, msg))
             problems += 1
