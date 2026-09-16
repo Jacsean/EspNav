@@ -436,6 +436,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private var previewLine: com.amap.api.maps.model.Polyline? = null
     private var previewSource: AmapNavSource? = null
     private var mapReady = false
+    private var mapCenteredOnce = false
     private var savedBundle: Bundle? = null
     private var startMarker: com.amap.api.maps.model.Marker? = null
     private var endMarker: com.amap.api.maps.model.Marker? = null
@@ -515,6 +516,21 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             st.radiusFillColor(0x2200aa66)
             am.myLocationStyle = st
             am.isMyLocationEnabled = true
+            /* 首次拿到定位后：以当前位置为中心，并缩放到骑行合理范围（方圆约 20~30 公里） */
+            am.setOnMyLocationChangeListener { loc ->
+                if (loc != null && !mapCenteredOnce) {
+                    mapCenteredOnce = true
+                    runCatching {
+                        am.moveCamera(
+                            com.amap.api.maps.CameraUpdateFactory.newLatLngZoom(
+                                com.amap.api.maps.model.LatLng(loc.latitude, loc.longitude),
+                                DEFAULT_ZOOM
+                            )
+                        )
+                    }
+                    log("地图已定位到当前位置（缩放级别 " + DEFAULT_ZOOM + "，约方圆 20~30 公里）")
+                }
+            }
             am.setOnMapClickListener { ll -> askSetPoint(ll) }
             am.setOnMapLongClickListener { ll -> askSetPoint(ll) }   /* 长按也可选点（更灵敏） */
             mapReady = true
@@ -701,6 +717,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         private const val DEFAULT_HOST = "192.168.4.1"
         private const val REQ_LOCATION = 1001
         private const val REQ_NOTIFY = 1002
+        /** 地图默认缩放级别：11 ≈ 方圆 20~30 公里（适合骑行选点） */
+        private const val DEFAULT_ZOOM = 11f
         private const val MAX_RECONNECT = 5
         private const val RECONNECT_DELAY_MS = 3000L
         /** 默认测试起终点（骑行；emulate=true 为模拟行进，室内也可测） */
