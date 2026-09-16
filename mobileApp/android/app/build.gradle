@@ -45,12 +45,18 @@ android {
     buildFeatures {
         viewBinding true
     }
+
+    // 只打包 arm64-v8a（目标手机为 arm64），显著减小 APK 体积
+    defaultConfig {
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+    }
 }
 
 dependencies {
-    // 高德导航 SDK（AMapNavi）没有官方 maven：从高德官网下载 aar/so 后放到 app/libs/，
-    // 再启用下面这行（当前注释掉，保证在没有 SDK 时也能正常编译）：
-    // implementation fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
+    // 高德组合 SDK（地图+导航+搜索+定位）aar，放在 app/libs/
+    implementation fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
 
     implementation 'androidx.core:core-ktx:1.9.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'

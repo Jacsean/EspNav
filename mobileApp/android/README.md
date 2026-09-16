@@ -42,6 +42,13 @@
    - **流动动画**：关闭后虚线静止
 6. 断开连接（或退出 App）→ 屏幕自动清屏（固件协议 §6 行为）
 
+## 高德导航 SDK（P3，体积大不入库，需手动放置）
+1. 到高德开放平台下载 **Android 导航 SDK**（含地图/导航/搜索/定位的组合 aar 亦可）
+2. 把 `*.aar` 放到 **`app/libs/`**（该目录已在 `.gitignore` 中，不会进版本库）
+3. 在 `local.properties` 写一行 Key（同样不入库）：`amap.key=<你的Key>`
+4. 高德控制台需登记：包名 `com.espnav.app` + debug SHA1（`gradlew signingReport` 可查）
+5. `app/build.gradle` 已启用 `fileTree(dir: 'libs', include: ['*.jar','*.aar'])`，仅打包 `arm64-v8a`
+
 ## 目录结构
 ```
 mobileApp/android/

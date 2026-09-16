@@ -5,3 +5,7 @@ build/
 *.iml
 __pycache__/
 *.apk
+
+# 高德 SDK 体积大，不入版本库（需从高德官网下载后放入 app/libs/）
+app/libs/*.aar
+app/libs/*.zip
