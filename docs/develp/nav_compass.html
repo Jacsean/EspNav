@@ -77,7 +77,7 @@ function drawRoute(){
     g.beginPath(); g.moveTo(cx-3,ay+6); g.lineTo(cx,ay+2); g.lineTo(cx+3,ay+6); g.stroke();
     g.fillText('北', cx-g.measureText('北').width/2, ay+13);
   } else if (northStyle === 'B') {                // 右上角“北” + 十字线
-    const nx=ax+aw-18, ny=ay+16;
+    const nx=ax+aw-18, ny=ay+26;                 // 十字线下移一个网格(10px)，避开“北”字
     g.fillText('北', nx, ay+2);
     g.beginPath(); g.moveTo(nx+8,ny-9); g.lineTo(nx+8,ny+9); g.stroke();   // 竖
     g.beginPath(); g.moveTo(nx-1,ny);   g.lineTo(nx+17,ny); g.stroke();    // 横
