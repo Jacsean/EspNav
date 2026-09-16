@@ -83,12 +83,12 @@ class AmapNavSource(
     var logSink: ((String) -> Unit)? = null
 
     private fun log(msg: String) {
-        log(msg)
+        Log.i(TAG, msg)
         logSink?.invoke(msg)
     }
 
     private fun logE(msg: String) {
-        logE(msg)
+        Log.e(TAG, msg)
         logSink?.invoke("! " + msg)
     }
 

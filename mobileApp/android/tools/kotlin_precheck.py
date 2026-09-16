@@ -163,6 +163,32 @@ def check_required_imports(path, src):
     return issues
 
 
+# ---- 预检项：函数体内调用自身（无限递归 / 文本替换误伤，会直接栈溢出崩溃）----
+def check_self_recursion(path, src):
+    issues = []
+    body = strip_literals(strip_comments(src))
+    lines = body.split(NL)
+    for i, l in enumerate(lines):
+        m = re.match(r'\s*(?:private\s+|public\s+|internal\s+|override\s+|suspend\s+)*fun\s+(\w+)\s*\(', l)
+        if not m:
+            continue
+        name = m.group(1)
+        # 用大括号计数找到函数体范围
+        depth = 0
+        started = False
+        for j in range(i, min(i + 400, len(lines))):
+            depth += lines[j].count('{') - lines[j].count('}')
+            if not started and '{' in lines[j]:
+                started = True
+            if started and j > i and j <= i + 3:      # 只看函数体开头几行：这里自调用必然无限递归
+                if re.match(r'\s*(?:return\s+)?' + re.escape(name) + r'\s*\(', lines[j]):
+                    issues.append('line %d: function %s calls itself at the very beginning (unbounded recursion / bad refactor)' % (j + 1, name))
+                    break
+            if started and depth <= 0:
+                break
+    return issues
+
+
 def main():
     kt_files, xml_files = [], []
     for dp, _, fns in os.walk(ROOT):
@@ -181,6 +207,10 @@ def main():
     problems = 0
     for p in kt_files:
         src = read(p)
+        for msg in check_self_recursion(p, src):
+            print('[recursion] %s: %s' % (p, msg))
+            problems += 1
+
         for msg in check_balance(p, src):
             print('[syntax] %s: %s' % (p, msg))
             problems += 1
