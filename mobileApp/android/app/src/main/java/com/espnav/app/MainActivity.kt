@@ -12,6 +12,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import android.Manifest
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.espnav.app.data.AmapNavSource
@@ -183,6 +185,13 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             log("未连接，无法开始导航")
             return
         }
+        if (!hasInternet()) {
+            log("⚠ 手机当前【没有外网】：你连的是 ESPNav-AP（ESP32 热点，无外网），")
+            log("  高德导航必须联网才能算路/校验 Key —— 请先配网：让 ESP32 连你手机的热点")
+            log("  步骤：手机开热点(2.4GHz) → 手机连 ESPNav-AP → 浏览器 http://192.168.4.1 填热点并保存")
+            log("  配好后手机切回自己的热点，App 用「一键连接」连 ESP32 的 IP，再点本按钮")
+            return
+        }
         if (!hasLocationPermission()) {
             log("需要定位权限，请在弹窗中允许")
             ActivityCompat.requestPermissions(
@@ -202,6 +211,15 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         src.logSink = { msg -> runOnUiThread { log("高德: " + msg) } }
         launchNav(src, "高德骑行导航")
     }
+
+    /** 是否有可用的外网（高德 SDK 需要联网算路与校验 Key） */
+    private fun hasInternet(): Boolean = runCatching {
+        val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        val net = cm.activeNetwork ?: return@runCatching false
+        val caps = cm.getNetworkCapabilities(net) ?: return@runCatching false
+        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }.getOrDefault(false)
 
     private fun hasLocationPermission(): Boolean =
         ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
