@@ -15,7 +15,8 @@ static const char *TAG = "render_nav";
 /* ---- 模块级状态（统一在文件顶部定义，任何函数体内的使用都不会“先于声明”）---- */
 static nav_frame_t s_cur;            /* 当前导航帧 */
 static bool        s_have = false;   /* 是否已有可渲染帧 */
-static bool        s_blank_req = false;  /* CLEAR_SCREEN 清屏请求（显示任务消费） */
+static bool        s_blank_req = false;
+static bool  s_hold_blank = false;   /* CLEAR_SCREEN 后保持黑屏，直到收到新导航帧（否则会被占位版式立刻覆盖） */  /* CLEAR_SCREEN 清屏请求（显示任务消费） */
 static bool        s_link_lost = false;  /* 链路断开：保留画面 + 中部“信号中断”提示 */
 static float       s_anim = 0.0f;    /* 虚线相位 */
 
@@ -35,6 +36,7 @@ static float       s_anim = 0.0f;    /* 虚线相位 */
 void render_nav_clear(void)
 {
     s_blank_req = true;      /* CLEAR_SCREEN：由显示任务执行清屏 */
+    s_hold_blank = true;
 }
 
 void render_nav_link_lost(void)
@@ -116,6 +118,7 @@ void render_nav_set_frame(const nav_frame_t *f)
     if (!f || !f->valid) return;
     s_cur = *f;
     s_frame_count++;
+    s_hold_blank = false;
     s_have = true;
     s_link_lost = false;     /* 收到新帧 -> 恢复实时画面 */
 }
@@ -649,6 +652,7 @@ void render_nav_tick(float dt)
         ESP_LOGI(TAG, "screen cleared -> blank standby");
         return;
     }
+    if (s_hold_blank) return;                /* CLEAR_SCREEN 后保持黑屏，直到收到新导航帧 */
     /* 已连接但还没有导航数据：画“导航版式 + 中央提示”，而不是停在开机画面 */
     if (!s_have) {
         nav_frame_t empty;
