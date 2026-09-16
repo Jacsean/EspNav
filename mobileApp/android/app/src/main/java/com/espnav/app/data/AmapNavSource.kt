@@ -14,6 +14,9 @@ import com.amap.api.navi.model.NaviLatLng
 import com.amap.api.services.core.LatLonPoint
 import com.amap.api.services.geocoder.GeocodeQuery
 import com.amap.api.services.geocoder.GeocodeSearch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * 高德导航数据源（AMapNavi 11.2.100）——骑行模式。
@@ -36,6 +39,8 @@ class AmapNavSource(
         private const val TAG = "AmapNavSource"
         /** toAddress 为空时使用的自动目的地：当前位置北向 N 米 */
         private const val AUTO_DEST_METERS = 2000
+        /** 路径点采样上限（协议单帧点数上限 16） */
+        private const val MAX_PATH_PTS = 16
     }
 
     private var navi: AMapNavi? = null
@@ -47,6 +52,16 @@ class AmapNavSource(
 
     @Volatile
     private var lastOrigin: GeoPoint? = null
+
+    /** 高德给出的真实路径（经纬度，已降采样）；用于屏幕路形、绿色路径线与小地图 */
+    @Volatile
+    private var pathCoords: List<GeoPoint> = emptyList()
+
+    /** 真实全程（米），取自 AMapNaviPath.allLength */
+    @Volatile
+    private var totalMeters: Int = 0
+
+    private val etaFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
 
     override val displayName: String
         get() = if (emulate) "高德骑行(模拟行进)" else "高德骑行(实时)"
@@ -136,6 +151,20 @@ class AmapNavSource(
     // ---------------- 高德回调 -> NavState ----------------
 
     override fun onCalculateRouteSuccess(result: AMapCalcRouteResult?) {
+        // 取真实路径（坐标列表）与全程距离
+        try {
+            val path = navi?.naviPath
+            if (path != null) {
+                totalMeters = path.allLength
+                val raw = path.coordList ?: emptyList()
+                pathCoords = downsample(raw.map { GeoPoint(it.latitude, it.longitude) }, MAX_PATH_PTS)
+                state = state.copy(totalDistMeters = totalMeters)
+                Log.i(TAG, "路径点 " + raw.size + " -> 采样 " + pathCoords.size +
+                    "；全程 " + totalMeters + " 米，预计 " + path.allTime + " 秒")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "读取路径失败：" + e.message)
+        }
         Log.i(TAG, "算路成功，启动导航（模拟行进=" + emulate + "）")
         try {
             navi?.startNavi(if (emulate) NaviType.EMULATOR else NaviType.GPS)
@@ -161,6 +190,35 @@ class AmapNavSource(
             routeRequested = true
             if (toAddress.isNotBlank()) geocodeAndRoute() else calculateAutoDest()
         }
+        refreshPathProjection()
+    }
+
+    /** 等间隔降采样（保留首尾），控制发帧体积 */
+    private fun downsample(pts: List<GeoPoint>, maxN: Int): List<GeoPoint> {
+        if (pts.size <= maxN || maxN < 2) return pts
+        val out = ArrayList<GeoPoint>(maxN)
+        for (i in 0 until maxN) {
+            out.add(pts[(i.toDouble() * (pts.size - 1) / (maxN - 1)).toInt()])
+        }
+        return out
+    }
+
+    /**
+     * 把真实路径投影成：① 车头朝上的屏幕坐标（画路面/绿线）② 北向上的小地图局部坐标。
+     * 位置/朝向更新时调用。
+     */
+    private fun refreshPathProjection() {
+        if (pathCoords.isEmpty()) return
+        val origin = lastOrigin ?: pathCoords.first()
+        // 屏幕：车头朝上
+        val screen = NavStateMapper.project(pathCoords, origin, state.headingDeg, pxPerMeter = 0.9)
+        // 小地图：北向上（不旋转），缩放到局部坐标
+        val northUp = NavStateMapper.project(pathCoords, origin, 0, pxPerMeter = 0.55, anchorY = 120)
+        state = state.copy(
+            remainPath = screen,
+            passedPath = screen.take(2),
+            overviewPath = NavStateMapper.miniMap(northUp)
+        )
     }
 
     /** toAddress 为空时的兜底：当前位置 -> 北向 N 米 */
@@ -182,8 +240,17 @@ class AmapNavSource(
             currentRoad = i.currentRoadName ?: "",
             nextRoad = i.nextRoadName ?: "",
             speedKmh = if (i.currentSpeed > 0) i.currentSpeed else state.speedKmh,  // NaviInfo 单位 km/h
-            elapsedSec = state.elapsedSec + 1
+            elapsedSec = state.elapsedSec + 1,
+            etaText = etaTextOf(i.pathRetainTime)
         )
+    }
+
+    /** 剩余秒 -> 预计到达时刻（HH:mm） */
+    private fun etaTextOf(remainSeconds: Int): String {
+        if (remainSeconds <= 0) return state.etaText
+        return runCatching {
+            etaFmt.format(Date(System.currentTimeMillis() + remainSeconds * 1000L))
+        }.getOrDefault(state.etaText)
     }
 
     override fun onArriveDestination() {
