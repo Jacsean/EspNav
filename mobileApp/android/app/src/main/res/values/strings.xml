@@ -24,6 +24,7 @@
     <string name="label_anim">流动动画</string>
 
     <string name="label_log">通信日志</string>
+    <string name="btn_copy_log">复制日志</string>
     <string name="label_status">状态：未连接</string>
 
     <string name="tip_hotspot">提示：手机需先连接热点 ESPNav-AP（密码 espnav1234）</string>

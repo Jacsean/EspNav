@@ -1,8 +1,11 @@
 package com.espnav.app
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import android.view.View
 import android.widget.SeekBar
 import androidx.appcompat.app.AppCompatActivity
@@ -73,6 +76,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         binding.btnMockStart.setOnClickListener { startMock() }
         binding.btnMockStop.setOnClickListener { stopMock() }
         binding.btnAmapNav.setOnClickListener { startAmapNav() }
+        binding.btnCopyLog.setOnClickListener { copyLog() }
 
         binding.seekBrightness.progress = 80
         binding.seekDashSpeed.progress = 40
@@ -262,6 +266,16 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         }
     }
 
+    /** 把全部日志复制到剪贴板（便于直接粘贴反馈） */
+    private fun copyLog() {
+        runCatching {
+            val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("espnav-log", binding.tvLog.text.toString()))
+            Toast.makeText(this, "日志已复制到剪贴板", Toast.LENGTH_SHORT).show()
+            log("日志已复制到剪贴板（可直接粘贴反馈）")
+        }.onFailure { log("复制日志失败：" + it.message) }
+    }
+
     private fun setStatus(text: String) {
         binding.tvStatus.text = text
     }
@@ -270,7 +284,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         binding.tvLog.append(timeFmt.format(Date()) + "  " + msg + "\n")
         if (binding.tvLog.lineCount > MAX_LOG_LINES) {
             val all = binding.tvLog.text.toString()
-            binding.tvLog.text = all.substring(all.length / 3)
+            binding.tvLog.text = all.substring(all.length / 3)   // 超限时丢弃最早 1/3
         }
         binding.svLog.post { binding.svLog.fullScroll(View.FOCUS_DOWN) }
     }
@@ -283,6 +297,6 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         private const val TO_ADDRESS = "北京亦庄同济南路地铁站"
         private const val KEY_LAST_IP = "last_ip"
         private const val FRAME_INTERVAL_MS = 200L   // 5 Hz（协议上限 10fps）
-        private const val MAX_LOG_LINES = 200
+        private const val MAX_LOG_LINES = 1000
     }
 }
