@@ -31,5 +31,5 @@ static void display_task(void *arg)
 void display_task_start(void)
 {
     ESP_LOGI(TAG, "starting ...");
-    xTaskCreate(display_task, "nav_display", 8192, NULL, 5, NULL);   /* 8KB：字体/文字渲染需要 */
+    xTaskCreate(display_task, "nav_display", 12288, NULL, 5, NULL);   /* 8KB：字体/文字渲染需要 */
 }

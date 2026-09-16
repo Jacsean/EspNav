@@ -46,6 +46,11 @@ android {
         viewBinding true
     }
 
+    // 精简：只保留中文资源（高德 SDK 带大量多语言资源，去掉可显著减小 APK）
+    defaultConfig {
+        resourceConfigurations += ['zh']
+    }
+
     // 只打包 arm64-v8a（目标手机为 arm64），显著减小 APK 体积
     defaultConfig {
         ndk {
