@@ -23,7 +23,14 @@
     <canvas id="scr" width="640" height="480"></canvas>
     <div class="ctl">
       <label>车头方位：<input id="hd" type="range" min="0" max="359" value="45"> <span id="hdv">45°</span></label><br>
-      <label><input id="auto" type="checkbox" checked> 自动旋转</label>
+      <label><input id="auto" type="checkbox" checked> 自动旋转</label><br>
+      <label>行程图“北”标注：
+        <select id="ns">
+          <option value="A">A 顶部居中＋指北竖线</option>
+          <option value="B">B 右上角“北”＋十字线</option>
+          <option value="C">C 右上角 箭头↑＋“北”</option>
+        </select>
+      </label>
     </div>
     <p class="tip">320×240 放大 2 倍。除罗盘外全部保持原样：路面、两条暗色分隔线、行程图（含暗色网格）、字体、底部四行位置均不变。<br><b>本文件为唯一的效果预览文件</b>（不再一个想法建一个新 html）。</p>
   </div>
@@ -42,7 +49,45 @@
 const S=2, W=320, H=240, CX=160, CAR_Y=110, NEAR_Y=144;
 const cv=document.getElementById('scr'), g=cv.getContext('2d');
 const DIRS8=['北','东北','东','东南','南','西南','西','西北'];
+let northStyle='A';   // 行程图“北”标注风格
 const FONT='16px SimHei, "Microsoft YaHei"';
+
+
+/* 行程图：网格/路径/黄点保持原样；“北”的标注按 northStyle 切换
+   A: 顶部居中“北” + 指北短竖线     B: 右上角“北” + 下方十字线
+   C: 右上角 箭头↑ + “北”            */
+function drawRoute(){
+  const ax=220, ay=160, aw=100, ah=80;
+  g.fillStyle='#000'; g.fillRect(ax,ay,aw,ah);
+  g.strokeStyle='#383c38'; g.lineWidth=1;
+  for(let x2=ax;x2<ax+aw;x2+=10){ g.beginPath(); g.moveTo(x2,ay); g.lineTo(x2,ay+ah); g.stroke(); }
+  for(let y2=ay;y2<ay+ah;y2+=10){ g.beginPath(); g.moveTo(ax,y2); g.lineTo(ax+aw,y2); g.stroke(); }
+
+  const rp=[[8,6],[22,19],[46,14],[62,26]];
+  g.strokeStyle='#00e676'; g.lineWidth=2; g.beginPath();
+  rp.forEach((p,i)=>{ const sx=ax+8+p[0], sy=ay+8+(40-p[1]); i?g.lineTo(sx,sy):g.moveTo(sx,sy); });
+  g.stroke();
+  const lp=rp[rp.length-1];
+  g.fillStyle='#ffe000'; g.fillRect(ax+8+lp[0]-2, ay+8+(40-lp[1])-2, 5,5);
+
+  g.fillStyle='#00e676'; g.strokeStyle='#00e676'; g.lineWidth=1;
+  if (northStyle === 'A') {                       // 顶部居中 + 指北竖线
+    const cx=ax+aw/2;
+    g.beginPath(); g.moveTo(cx,ay+2); g.lineTo(cx,ay+12); g.stroke();
+    g.beginPath(); g.moveTo(cx-3,ay+6); g.lineTo(cx,ay+2); g.lineTo(cx+3,ay+6); g.stroke();
+    g.fillText('北', cx-g.measureText('北').width/2, ay+13);
+  } else if (northStyle === 'B') {                // 右上角“北” + 十字线
+    const nx=ax+aw-18, ny=ay+16;
+    g.fillText('北', nx, ay+2);
+    g.beginPath(); g.moveTo(nx+8,ny-9); g.lineTo(nx+8,ny+9); g.stroke();   // 竖
+    g.beginPath(); g.moveTo(nx-1,ny);   g.lineTo(nx+17,ny); g.stroke();    // 横
+  } else {                                        // 右上角 箭头↑ + “北”
+    const nx=ax+aw-26;
+    g.beginPath(); g.moveTo(nx+6,ay+18); g.lineTo(nx+6,ay+4); g.stroke();
+    g.beginPath(); g.moveTo(nx+2,ay+8); g.lineTo(nx+6,ay+4); g.lineTo(nx+10,ay+8); g.stroke();
+    g.fillText('北', nx+16, ay+4);
+  }
+}
 
 function draw(heading){
   g.setTransform(1,0,0,1,0,0); g.fillStyle='#000'; g.fillRect(0,0,cv.width,cv.height);
@@ -62,19 +107,8 @@ function draw(heading){
   g.beginPath(); g.moveTo(0,160); g.lineTo(319,160); g.stroke();
   g.beginPath(); g.moveTo(220,160); g.lineTo(220,239); g.stroke();
 
-  /* ---------- ③ 行程图（右下 220,160 100×80，网格 10px，原样）---------- */
-  const ax=220, ay=160, aw=100, ah=80;
-  g.fillStyle='#000'; g.fillRect(ax,ay,aw,ah);
-  g.strokeStyle='#383c38'; g.lineWidth=1;
-  for(let x2=ax;x2<ax+aw;x2+=10){ g.beginPath(); g.moveTo(x2,ay); g.lineTo(x2,ay+ah); g.stroke(); }
-  for(let y2=ay;y2<ay+ah;y2+=10){ g.beginPath(); g.moveTo(ax,y2); g.lineTo(ax+aw,y2); g.stroke(); }
-  const rp=[[8,6],[22,19],[46,14],[62,26]];
-  g.strokeStyle='#00e676'; g.lineWidth=2; g.beginPath();
-  rp.forEach((p,i)=>{ const sx=ax+8+p[0], sy=ay+8+(40-p[1]); i?g.lineTo(sx,sy):g.moveTo(sx,sy); });
-  g.stroke();
-  const lp=rp[rp.length-1];
-  g.fillStyle='#ffe000'; g.fillRect(ax+8+lp[0]-2, ay+8+(40-lp[1])-2, 5,5);
-  g.fillStyle='#00e676'; g.fillText('北', ax+80, ay+2);
+  /* ---------- ③ 行程图（右下 220,160 100×80，网格 10px）---------- */
+  drawRoute();
 
   /* ---------- ③ 顶部罗盘带（唯一改动项）----------
      刻度统一 4px；主方位位置用中文（替代长刻度）；中心无箭头、无中轴线 */
@@ -120,6 +154,7 @@ function draw(heading){
 const hd=document.getElementById('hd'), hdv=document.getElementById('hdv');
 function render(){ const h=parseInt(hd.value,10); hdv.textContent=h+'°'; draw(h); }
 hd.addEventListener('input',render);
+document.getElementById('ns').addEventListener('change',e=>{ northStyle=e.target.value; render(); });
 let t=45;
 setInterval(()=>{ if(document.getElementById('auto').checked){ t=(t+1)%360; hd.value=t; render(); } },60);
 render();
