@@ -4,6 +4,7 @@
 #include <math.h>
 #include "esp_log.h"
 #include "config.h"
+#include "wifi_sta.h"      /* 屏幕显示网络状态（AP / STA 已连接） */
 #include "font.h"
 #include <stdio.h>
 #include <string.h>
@@ -105,12 +106,26 @@ void render_nav_set_frame(const nav_frame_t *f)
 }
 
 /* 罗盘（顶部右侧）：8 方位标签随 heading 平移 + 中央红色车头箭头（车头朝上） */
+/* 顶部网络状态行：STA 已连接 <ip> / STA 未连接 AP:ESPNav-AP
+ * 用途：不用看串口也能确认 ESP32 当前是"只开热点"还是"已连上手机热点"。 */
+static void draw_net_status(void)
+{
+    static char buf[48];
+    if (wifi_sta_is_connected()) {
+        const char *ip = wifi_sta_ip_str();
+        snprintf(buf, sizeof(buf), "STA 已连接 %s", (ip && ip[0]) ? ip : "?");
+    } else {
+        snprintf(buf, sizeof(buf), "STA 未连接 AP:ESPNav-AP");
+    }
+    font_draw_text(4, 2, buf, 0x7BEF);         /* 浅灰：不抢导航信息 */
+}
+
 static void draw_compass(const nav_frame_t *f)
 {
-    static const char *labels[8] = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
+    static const char *labels[4] = { "北", "东", "南", "西" };   /* 中文方位（字库已含） */
     const int bx = 235, spread = 75, y = 4;
-    for (int i = 0; i < 8; i++) {
-        int off = (((((i * 45) - f->heading + 360) % 360) - 180) * spread) / 180;
+    for (int i = 0; i < 4; i++) {
+        int off = (((((i * 90) - f->heading + 360) % 360) - 180) * spread) / 180;
         int tx = bx + off - font_text_width(labels[i]) / 2;
         if (tx > bx - spread && tx < bx + spread && tx > -20 && tx < 312) {
             font_draw_text(tx, y, labels[i], PATH_GREEN);
@@ -462,7 +477,8 @@ static void draw_frame(const nav_frame_t *f, float anim)
     if (f->pos_valid) fb_triangle(f->pos.x, f->pos.y, 14, RGB565_YELLOW);
 
 #if RENDER_TEXT
-    /* 罗盘 + 行程图（不依赖 RENDER_TEXT 开关） */
+    /* 顶部网络状态 + 罗盘 + 行程图（不依赖 RENDER_TEXT 开关） */
+    draw_net_status();
     draw_compass(f);
     draw_overview(f);
 
@@ -470,10 +486,10 @@ static void draw_frame(const nav_frame_t *f, float anim)
     {
         static char buf[64];                 /* static：避免显示任务栈压力 */
         font_clip_utf8(f->hint, 9 * 16, buf, sizeof(buf));      /* hint ≤9 全角（协议 §6.7） */
-        font_draw_text(4, 2, buf, PATH_GREEN);
+        font_draw_text(4, 22, buf, PATH_GREEN);                 /* 下移一行：让顶部留给网络状态 */
 
         snprintf(buf, sizeof(buf), "距离：%d m", (int)f->turn_dist);
-        font_draw_text(4, 22, buf, PATH_GREEN);
+        font_draw_text(4, 42, buf, PATH_GREEN);                 /* 下移一行 */
 
         int km = (int)(f->total_dist / 1000);
         int frac = (int)((f->total_dist % 1000) / 100);
