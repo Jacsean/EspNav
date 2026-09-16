@@ -244,7 +244,7 @@ def check_color_macros(root):
             src = open(fp, encoding='utf-8', errors='replace').read()
             defined |= set(re.findall(r'#define\s+(RGB565_\w+)', src))
             body = strip_literals(strip_comments(src))
-            for m in set(re.findall(r'(RGB565_[A-Z0-9_]+)', body)):
+            for m in set(re.findall(r'(RGB565_[A-Z0-9_]+)', body)):
                 used.setdefault(m, fp)
     return ['%s: undefined color macro %s' % (fp, m) for m, fp in sorted(used.items()) if m not in defined]
 
