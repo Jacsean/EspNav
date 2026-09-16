@@ -30,7 +30,10 @@ void frame_parser_feed(frame_parser_t *fp, const uint8_t *data, size_t len,
             /* 去行尾 CR/空格后回调（不含换行符） */
             size_t n = fp->len - 1;
             while (n > 0 && (fp->buf[n-1] == CR || fp->buf[n-1] == 0x20)) n--;
-            if (n > 0) cb((const char *)fp->buf, n, ctx);
+            if (n > 0 && n < sizeof(fp->buf)) {
+                fp->buf[n] = 0;      /* 关键：给回调的字符串补 NUL 结尾（json_lite 按 NUL 扫描） */
+                cb((const char *)fp->buf, n, ctx);
+            }
             fp->len = 0;
         }
     }

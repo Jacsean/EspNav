@@ -85,9 +85,10 @@ void protocol_handle(const char *line, int len, proto_send_fn send, void *ctx)
     if (!line || len <= 0) return;
     if (!jl_get_str(line, "msg_type", mt, sizeof(mt))) {
         s_err++;                                     /* 非法帧计数（协议 §4.1 err） */
-        ESP_LOGW(TAG, "no msg_type -> err=%lu", (unsigned long)s_err);
+        ESP_LOGW(TAG, "RX len=%d no msg_type -> err=%lu | %.60s", len, (unsigned long)s_err, line);
         return;
     }
+    ESP_LOGI(TAG, "RX len=%d type=%s", len, mt);     /* 探针：每条收到的报文都留痕（NUL 已由 frame_parser 补齐） */
 
     s_t_msg = esp_timer_get_time();                  /* 任何合法报文都算“App 在”（BYE 除外，见上） */
 
