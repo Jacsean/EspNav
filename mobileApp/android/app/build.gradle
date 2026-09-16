@@ -3,6 +3,14 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+// 高德 Key 从 local.properties 读取（该文件不入版本库；未配置时用占位符，Key 不会进仓库）
+def localProps = new Properties()
+def localPropsFile = rootProject.file('local.properties')
+if (localPropsFile.exists()) {
+    localPropsFile.withInputStream { localProps.load(it) }
+}
+def amapKey = localProps.getProperty('amap.key', 'PUT_YOUR_AMAP_KEY_HERE')
+
 android {
     namespace 'com.espnav.app'
     compileSdk 33
@@ -13,6 +21,9 @@ android {
         targetSdk 33
         versionCode 1
         versionName "1.0"
+
+        // 注入 AndroidManifest 里的 com.amap.api.v2.apikey
+        manifestPlaceholders = [AMAP_KEY: amapKey]
     }
 
     buildTypes {
@@ -37,6 +48,10 @@ android {
 }
 
 dependencies {
+    // 高德导航 SDK（AMapNavi）没有官方 maven：从高德官网下载 aar/so 后放到 app/libs/，
+    // 再启用下面这行（当前注释掉，保证在没有 SDK 时也能正常编译）：
+    // implementation fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
+
     implementation 'androidx.core:core-ktx:1.9.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.9.0'
