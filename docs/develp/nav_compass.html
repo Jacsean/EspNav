@@ -24,6 +24,27 @@
     <div class="ctl">
       <label>车头方位：<input id="hd" type="range" min="0" max="359" value="45"> <span id="hdv">45°</span></label><br>
       <label><input id="auto" type="checkbox" checked> 自动旋转</label><br>
+      <label>预览画面：
+        <select id="screen">
+          <option value="nav">导航工作画面</option>
+          <option value="boot">开机画面</option>
+        </select>
+      </label><br>
+      <label>开机画面方案：
+        <select id="bootStyle">
+          <option value="A">A 简洁版</option>
+          <option value="B">B 科技版</option>
+          <option value="C">C 实用版</option>
+        </select>
+      </label><br>
+      <label>开机阶段：
+        <select id="stage">
+          <option value="0">① 系统启动中</option>
+          <option value="1">② 正在连接 WiFi</option>
+          <option value="2">③ WiFi已连·等待App</option>
+          <option value="3">④ 已连接→进入导航</option>
+        </select>
+      </label><br>
       <label><input id="demoLong" type="checkbox" checked> 演示长文本滚动（路名滚动，30px/s）</label><br>
       <label><input id="showLost" type="checkbox"> 显示断线提示条（信号中断）</label><br>
       <label>行程图“北”标注：
@@ -133,7 +154,58 @@ function drawRoute(){
   }
 }
 
-function draw(heading, anim){
+
+/* ---------------- 开机画面（3 方案 × 4 阶段；仅用 16px 字库，固件可直接实现）---------------- */
+let screen='nav', bootStyle='A', bootStage=0;
+function bootCenter(text, y, color){
+  g.fillStyle = color;
+  g.fillText(text, (320 - g.measureText(text).width) / 2, y);
+}
+function drawBoot(){
+  g.setTransform(1,0,0,1,0,0); g.fillStyle='#000'; g.fillRect(0,0,cv.width,cv.height);
+  g.setTransform(S,0,0,S,0,0); g.imageSmoothingEnabled=false;
+  g.font=FONT; g.textBaseline='top';
+
+  const title = 'EspNav';
+  const stText = ['系统启动中…','正在连接 WiFi…','WiFi 已连接，等待手机…','连接成功，进入导航'][bootStage];
+  const stSub  = ['','热点：ESPNav-AP','IP 192.168.43.117','请打开手机 App'][bootStage];
+  const tip    = '热点 ESPNav-AP   密码 espnav1234';
+  const prog   = [0.25, 0.5, 0.8, 1.0][bootStage];
+
+  if (bootStyle === 'A') {                       /* A 简洁版 */
+    bootCenter(title, 62, '#00e676');
+    bootCenter('外置导航屏 · 骑行版', 86, '#7bef');
+    g.strokeStyle='#00e676'; g.strokeRect(60, 130, 200, 16);
+    g.fillStyle='#00e676'; g.fillRect(62, 132, Math.round(196 * prog), 12);
+    bootCenter(stText, 162, '#ffffff');
+    bootCenter(stSub || tip, 190, '#7bef');
+  } else if (bootStyle === 'B') {                /* B 科技版：暗网格 + 四角 + 扫描线 */
+    g.strokeStyle='#101810'; g.lineWidth=1;
+    for (let x=0; x<320; x+=16){ g.beginPath(); g.moveTo(x,0); g.lineTo(x,239); g.stroke(); }
+    for (let y=0; y<240; y+=16){ g.beginPath(); g.moveTo(0,y); g.lineTo(319,y); g.stroke(); }
+    g.strokeStyle='#00e676';
+    [[8,8,1,1],[304,8,-1,1],[8,224,1,-1],[304,224,-1,-1]].forEach(c=>{
+      g.beginPath(); g.moveTo(c[0]+c[2]*14,c[1]); g.lineTo(c[0],c[1]); g.lineTo(c[0],c[1]+c[3]*14); g.stroke();
+    });
+    bootCenter(title, 76, '#00e676');
+    bootCenter('NAVIGATION DISPLAY', 102, '#7bef');
+    const sy = 128 + Math.round(28 * Math.abs(Math.sin(anim / 40)));
+    g.strokeStyle='#00e676'; g.beginPath(); g.moveTo(80, sy); g.lineTo(240, sy); g.stroke();
+    bootCenter(stText, 182, '#ffffff');
+    bootCenter(stSub || tip, 206, '#7bef');
+  } else {                                       /* C 实用版 */
+    g.fillStyle='#00e676'; g.fillText('EspNav v1.0.0.1', 8, 20);
+    g.strokeStyle='#383c38'; g.beginPath(); g.moveTo(0,42); g.lineTo(319,42); g.stroke();
+    bootCenter(stText, 92, '#ffffff');
+    bootCenter(stSub, 118, '#00e676');
+    bootCenter('手机连热点后打开 App', 156, '#7bef');
+    let dots = '';
+    for (let i=0; i<3; i++) dots += (Math.floor(anim / 30) % 3 > i) ? '● ' : '○ ';
+    bootCenter(dots.trim(), 200, '#00e676');
+  }
+}
+
+function drawNav(heading, anim){
   g.setTransform(1,0,0,1,0,0); g.fillStyle='#000'; g.fillRect(0,0,cv.width,cv.height);
   g.setTransform(S,0,0,S,0,0); g.imageSmoothingEnabled=false;
   g.font=FONT; g.textBaseline='top';
@@ -220,6 +292,9 @@ function loop(now){
   anim += 40 * dt;
   if (document.getElementById('auto').checked){ t=(t+1)%360; hd.value=t; }
   demoLong = document.getElementById('demoLong').checked;
+  screen = document.getElementById('screen').value;
+  bootStyle = document.getElementById('bootStyle').value;
+  bootStage = parseInt(document.getElementById('stage').value, 10);
   showLost = document.getElementById('showLost').checked;
   render();
   requestAnimationFrame(loop);
