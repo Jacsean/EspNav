@@ -8,7 +8,7 @@
     <string name="btn_connect">连接</string>
     <string name="btn_quick_connect">一键连接</string>
     <string name="btn_open_prov">打开配网页</string>
-    <string name="btn_amap_nav">高德导航</string>
+    <string name="btn_amap_nav">高德骑行导航</string>
     <string name="btn_disconnect">断开</string>
     <string name="btn_send_once">发送一帧</string>
     <string name="btn_mock_start">开始模拟导航</string>

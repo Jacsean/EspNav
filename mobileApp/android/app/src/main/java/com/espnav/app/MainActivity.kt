@@ -189,7 +189,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             )
             return
         }
-        launchNav(AmapNavSource(applicationContext, 0.0, 0.0, autoDestMeters = 2000), "高德导航")
+        launchNav(AmapNavSource(applicationContext, FROM_ADDRESS, TO_ADDRESS, "北京", emulate = true), "高德骑行导航")
     }
 
     private fun hasLocationPermission(): Boolean =
@@ -271,6 +271,9 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     companion object {
         private const val DEFAULT_HOST = "192.168.4.1"
         private const val REQ_LOCATION = 1001
+        /** 默认测试起终点（骑行；emulate=true 为模拟行进，室内也可测） */
+        private const val FROM_ADDRESS = "北京亦庄泰河三街1号"
+        private const val TO_ADDRESS = "北京亦庄同济南路地铁站"
         private const val KEY_LAST_IP = "last_ip"
         private const val FRAME_INTERVAL_MS = 200L   // 5 Hz（协议上限 10fps）
         private const val MAX_LOG_LINES = 200

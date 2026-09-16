@@ -6,57 +6,57 @@ import com.amap.api.maps.MapsInitializer
 import com.amap.api.navi.AMapNavi
 import com.amap.api.navi.SimpleNaviListener
 import com.amap.api.navi.enums.IconType
+import com.amap.api.navi.enums.NaviType
 import com.amap.api.navi.model.AMapCalcRouteResult
 import com.amap.api.navi.model.AMapNaviLocation
 import com.amap.api.navi.model.NaviInfo
 import com.amap.api.navi.model.NaviLatLng
+import com.amap.api.services.core.LatLonPoint
+import com.amap.api.services.geocoder.GeocodeQuery
+import com.amap.api.services.geocoder.GeocodeSearch
 
 /**
- * 高德导航数据源（AMapNavi 11.2.100）。
+ * 高德导航数据源（AMapNavi 11.2.100）——骑行模式。
  *
- * 职责：初始化 SDK → 起终点算路 → 启动导航 → 把导航回调转成统一的 [NavState]。
- * 屏幕端与协议层完全不感知高德的存在（见 [NavSource] / [NavStateMapper]）。
- *
- * 说明：起终点先用"当前位置 → 指定目的地"（目的地由界面传入），后续可换成地址搜索选点。
+ * 起终点支持两种方式：
+ *  1. 地址文本（用高德地理编码 GeocodeSearch 解析成坐标）—— 默认使用（例如泰河三街1号 -> 同济南路地铁站）
+ *  2. 起点留空 = 使用当前定位
+ * 默认 [emulate] = true（NaviType.EMULATOR，模拟行进）：**室内也能看到屏幕随路线推进**；
+ * 改为 false 则是实时 GPS 导航（需在室外行驶）。
  */
 class AmapNavSource(
     private val context: Context,
-    private val destLat: Double,
-    private val destLon: Double,
-    /** >0 时忽略 destLat/destLon，改用“当前位置北向前方 N 米”作为目的地（用于快速验证链路） */
-    private val autoDestMeters: Int = 0
+    private val fromAddress: String,
+    private val toAddress: String,
+    private val city: String = "北京",
+    private val emulate: Boolean = true
 ) : NavSource, SimpleNaviListener() {
 
     companion object {
         private const val TAG = "AmapNavSource"
-
-        /** 算路策略：0 = 高德默认（驾车）。骑行可后续改为对应策略常量。 */
-        private const val ROUTE_STRATEGY_DEFAULT = 0
-
-        /** 导航启动模式：1 = GPS 实时导航（高德 AMapNavi 常用取值） */
-        private const val NAVI_MODE_GPS = 1
+        /** toAddress 为空时使用的自动目的地：当前位置北向 N 米 */
+        private const val AUTO_DEST_METERS = 2000
     }
 
     private var navi: AMapNavi? = null
     private var started = false
     private var routeRequested = false
 
-    /** 导航回调缓存的最新状态（[latest] 直接返回它，不推进） */
     @Volatile
     private var state: NavState = NavState(turnType = TurnType.UNKNOWN)
 
-    /** 最近一次定位（用作路径投影原点） */
     @Volatile
     private var lastOrigin: GeoPoint? = null
 
-    override val displayName: String get() = "高德导航"
+    override val displayName: String
+        get() = if (emulate) "高德骑行(模拟行进)" else "高德骑行(实时)"
 
     // ---------------- 生命周期 ----------------
 
     override fun start() {
         if (started) return
         try {
-            // 合规：必须在初始化与定位前声明隐私政策（否则 SDK 拒绝工作）
+            // 合规：必须在初始化/定位前声明隐私政策
             MapsInitializer.updatePrivacyShow(context, true, true)
             MapsInitializer.updatePrivacyAgree(context, true)
 
@@ -64,9 +64,10 @@ class AmapNavSource(
             navi = n
             n.addAMapNaviListener(this)
             started = true
-            Log.i(TAG, "AMapNavi 初始化完成，等待 onInitNaviSuccess 后算路")
+            Log.i(TAG, "AMapNavi 初始化完成 起点=" + fromAddress.ifBlank { "当前定位" } +
+                " 终点=" + toAddress + " 模拟行进=" + emulate)
         } catch (e: Exception) {
-            Log.e(TAG, "初始化失败：${e.message}")
+            Log.e(TAG, "初始化失败：" + e.message)
         }
     }
 
@@ -75,7 +76,7 @@ class AmapNavSource(
             navi?.stopNavi()
             navi?.removeAMapNaviListener(this)
         } catch (e: Exception) {
-            Log.w(TAG, "stop 异常：${e.message}")
+            Log.w(TAG, "stop 异常：" + e.message)
         } finally {
             started = false
         }
@@ -83,51 +84,68 @@ class AmapNavSource(
 
     override fun latest(): NavState = state
 
-    /** 发起“当前位置 -> 目的地”算路；目的地可为自动生成（前方 N 米） */
-    fun calculateRoute(from: GeoPoint?) {
-        val n = navi ?: return
-        val start = from ?: lastOrigin
-        if (start == null) {
-            Log.w(TAG, "尚无定位，无法算路")
-            return
-        }
-        val dLat: Double
-        val dLon: Double
-        if (destLat == 0.0 && destLon == 0.0 && autoDestMeters > 0) {
-            dLat = start.lat + autoDestMeters / 111_320.0     // 北向偏移
-            dLon = start.lon
-            Log.i(TAG, "使用自动目的地：当前位置北向 ${autoDestMeters} 米")
-        } else {
-            dLat = destLat
-            dLon = destLon
-        }
-        val fromPts = listOf(NaviLatLng(start.lat, start.lon))
-        val toPts = listOf(NaviLatLng(dLat, dLon))
-        val ok = n.calculateDriveRoute(fromPts, toPts, null, ROUTE_STRATEGY_DEFAULT)
-        Log.i(TAG, "发起算路: ($start) -> ($dLat,$dLon) result=$ok")
-    }
-
-    // ---------------- 高德回调 -> NavState ----------------
+    // ---------------- 算路 ----------------
 
     override fun onInitNaviSuccess() {
-        Log.i(TAG, "onInitNaviSuccess：SDK 就绪（等待首个定位后自动算路）")
+        Log.i(TAG, "onInitNaviSuccess：SDK 就绪")
+        if (toAddress.isNotBlank()) {
+            geocodeAndRoute()
+        } else {
+            Log.i(TAG, "终点为空：等待定位后使用自动目的地（北向 " + AUTO_DEST_METERS + " 米）")
+        }
     }
 
     override fun onInitNaviFailure() {
         Log.e(TAG, "onInitNaviFailure：初始化失败（检查 Key / 包名 / SHA1 / 网络）")
     }
 
+    /** 地址 -> 坐标 -> 骑行算路（网络请求放在后台线程） */
+    private fun geocodeAndRoute() {
+        Thread {
+            try {
+                val searcher = GeocodeSearch(context)
+                val to = geocode(searcher, toAddress)
+                if (to == null) {
+                    Log.e(TAG, "终点地址解析失败：" + toAddress)
+                    return@Thread
+                }
+                val from = if (fromAddress.isBlank()) null else geocode(searcher, fromAddress)
+                val start = from ?: lastOrigin?.let { NaviLatLng(it.lat, it.lon) }
+                if (start == null) {
+                    Log.w(TAG, "起点未解析且暂无定位，等待下次定位后重试")
+                    routeRequested = false
+                    return@Thread
+                }
+                val ok = navi?.calculateRideRoute(start, to) ?: false
+                Log.i(TAG, "发起骑行算路 result=" + ok + " 起点=" + fromAddress.ifBlank { "当前定位" } +
+                    " 终点=" + toAddress)
+            } catch (e: Exception) {
+                Log.e(TAG, "地理编码/算路异常：" + e.message)
+            }
+        }.start()
+    }
+
+    private fun geocode(searcher: GeocodeSearch, address: String): NaviLatLng? {
+        val list = searcher.getFromLocationName(GeocodeQuery(address, city)) ?: return null
+        val first = list.firstOrNull() ?: return null
+        val p: LatLonPoint = first.latLonPoint ?: return null
+        Log.i(TAG, "地址解析：" + address + " -> (" + p.latitude + ", " + p.longitude + ") " + first.formatAddress)
+        return NaviLatLng(p.latitude, p.longitude)
+    }
+
+    // ---------------- 高德回调 -> NavState ----------------
+
     override fun onCalculateRouteSuccess(result: AMapCalcRouteResult?) {
-        Log.i(TAG, "算路成功，启动导航")
+        Log.i(TAG, "算路成功，启动导航（模拟行进=" + emulate + "）")
         try {
-            navi?.startNavi(NAVI_MODE_GPS)
+            navi?.startNavi(if (emulate) NaviType.EMULATOR else NaviType.GPS)
         } catch (e: Exception) {
-            Log.e(TAG, "startNavi 失败：${e.message}")
+            Log.e(TAG, "startNavi 失败：" + e.message)
         }
     }
 
     override fun onCalculateRouteFailure(errorCode: Int) {
-        Log.e(TAG, "算路失败 errorCode=$errorCode（Key/网络/起终点是否合法）")
+        Log.e(TAG, "算路失败 errorCode=" + errorCode + "（网络/起终点/Key 权限）")
     }
 
     override fun onLocationChange(loc: AMapNaviLocation?) {
@@ -136,12 +154,22 @@ class AmapNavSource(
         if (c != null) lastOrigin = GeoPoint(c.latitude, c.longitude)
         state = state.copy(
             headingDeg = l.bearing.toInt(),
-            speedKmh = (l.speed * 3.6f).toInt()          // 高德 Location.speed 为 m/s
+            speedKmh = (l.speed * 3.6f).toInt()          // Location.speed 单位 m/s
         )
-        if (!routeRequested && c != null) {              // 首个定位到达 -> 自动算路
+        // 起点用当前定位且尚未算路：拿到首个定位后开始算路
+        if (!routeRequested && fromAddress.isBlank() && c != null) {
             routeRequested = true
-            calculateRoute(lastOrigin)
+            if (toAddress.isNotBlank()) geocodeAndRoute() else calculateAutoDest()
         }
+    }
+
+    /** toAddress 为空时的兜底：当前位置 -> 北向 N 米 */
+    private fun calculateAutoDest() {
+        val n = navi ?: return
+        val o = lastOrigin ?: return
+        val to = NaviLatLng(o.lat + AUTO_DEST_METERS / 111_320.0, o.lon)
+        val ok = n.calculateRideRoute(NaviLatLng(o.lat, o.lon), to)
+        Log.i(TAG, "自动目的地算路 result=" + ok)
     }
 
     override fun onNaviInfoUpdate(info: NaviInfo?) {
@@ -150,13 +178,11 @@ class AmapNavSource(
             turnType = mapIcon(i.iconType),
             turnDistMeters = i.curStepRetainDistance,
             remainDistMeters = i.pathRetainDistance,
-            totalDistMeters = if (state.totalDistMeters > 0) state.totalDistMeters
-            else i.pathRetainDistance,
+            totalDistMeters = if (state.totalDistMeters > 0) state.totalDistMeters else i.pathRetainDistance,
             currentRoad = i.currentRoadName ?: "",
             nextRoad = i.nextRoadName ?: "",
-            speedKmh = if (i.currentSpeed > 0) i.currentSpeed else state.speedKmh,   // NaviInfo 速度单位已是 km/h
-            elapsedSec = state.elapsedSec + 1,
-            etaText = state.etaText
+            speedKmh = if (i.currentSpeed > 0) i.currentSpeed else state.speedKmh,  // NaviInfo 单位 km/h
+            elapsedSec = state.elapsedSec + 1
         )
     }
 
@@ -166,7 +192,7 @@ class AmapNavSource(
     }
 
     override fun onEndEmulatorNavi() {
-        Log.i(TAG, "模拟导航结束")
+        Log.i(TAG, "模拟行进结束")
     }
 
     /** 高德转向图标 -> 统一 TurnType */
