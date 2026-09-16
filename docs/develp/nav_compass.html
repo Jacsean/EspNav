@@ -27,7 +27,7 @@
       <label>行程图“北”标注：
         <select id="ns">
           <option value="A">A 顶部居中＋指北竖线</option>
-          <option value="B">B 右上角“北”＋十字线</option>
+          <option value="B" selected>B 右上角“北”＋十字线（已确认）</option>
           <option value="C">C 右上角 箭头↑＋“北”</option>
         </select>
       </label>
@@ -49,7 +49,7 @@
 const S=2, W=320, H=240, CX=160, CAR_Y=110, NEAR_Y=144;
 const cv=document.getElementById('scr'), g=cv.getContext('2d');
 const DIRS8=['北','东北','东','东南','南','西南','西','西北'];
-let northStyle='A';   // 行程图“北”标注风格
+let northStyle='B';   // 行程图“北”标注风格（已确认 B：右上角“北”+十字线）
 const FONT='16px SimHei, "Microsoft YaHei"';
 
 
