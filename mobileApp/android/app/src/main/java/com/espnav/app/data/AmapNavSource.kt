@@ -32,13 +32,18 @@ class AmapNavSource(
     private val fromAddress: String,
     private val toAddress: String,
     private val city: String = "北京",
-    private val emulate: Boolean = true
+    private val emulate: Boolean = true,
+    /** 地图选点直接给定的起终点（非空时优先使用，跳过地址解析） */
+    private val fixedFrom: GeoPoint? = null,
+    private val fixedTo: GeoPoint? = null
 ) : NavSource, SimpleNaviListener() {
 
     companion object {
         private const val TAG = "AmapNavSource"
         /** toAddress 为空时使用的自动目的地：当前位置北向 N 米 */
         private const val AUTO_DEST_METERS = 2000
+        /** 算路策略：0 = 高德默认 */
+        private const val ROUTE_STRATEGY_DEFAULT = 0
         /** 路径点采样上限（协议单帧点数上限 16） */
         private const val MAX_PATH_PTS = 16
         /** 主视图显示“前方多少米”的路径（决定路面/绿线的缩放） */
@@ -118,7 +123,10 @@ class AmapNavSource(
 
     override fun onInitNaviSuccess() {
         log("onInitNaviSuccess：SDK 就绪")
-        if (toAddress.isNotBlank()) {
+        if (fixedTo != null) {
+            log("使用地图选点坐标算路：起点=" + (fixedFrom?.toString() ?: "当前定位") + " 终点=" + fixedTo)
+            calculateRoute(fixedFrom)
+        } else if (toAddress.isNotBlank()) {
             geocodeAndRoute()
         } else {
             log("终点为空：等待定位后使用自动目的地（北向 " + AUTO_DEST_METERS + " 米）")
@@ -130,6 +138,29 @@ class AmapNavSource(
     }
 
     /** 地址 -> 坐标 -> 骑行算路（网络请求放在后台线程） */
+    /** 发起“当前位置 -> 目的地”算路；目的地优先级：地图选点 > 地址解析 > 自动目的地 */
+    /** 发起算路：起点=给定点或当前定位，终点=地图选点坐标（fixedTo） */
+    fun calculateRoute(from: GeoPoint?) {
+        val n = navi ?: return
+        val start = from ?: lastOrigin
+        if (start == null) {
+            log("尚无定位，无法算路")
+            return
+        }
+        val to = fixedTo
+        if (to == null) {
+            log("无目的地坐标：请先在地图上选终点，或使用地址输入")
+            return
+        }
+        val ok = n.calculateDriveRoute(
+            listOf(NaviLatLng(start.lat, start.lon)),
+            listOf(NaviLatLng(to.lat, to.lon)),
+            null,
+            ROUTE_STRATEGY_DEFAULT
+        )
+        log("发起算路 result=" + ok + " 终点=(" + to.lat + ", " + to.lon + ")")
+    }
+
     private fun geocodeAndRoute() {
         Thread {
             try {

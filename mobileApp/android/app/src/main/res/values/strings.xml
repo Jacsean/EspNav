@@ -28,4 +28,9 @@
     <string name="label_status">状态：未连接</string>
 
     <string name="tip_hotspot">提示：手机需先连接热点 ESPNav-AP（密码 espnav1234）</string>
+    <string name="tab_connect">连接</string>
+    <string name="tab_nav">导航</string>
+    <string name="tip_map_pick">点一下地图即可设置起点/终点（会弹出选择）</string>
+    <string name="btn_use_map_nav">用此起终点导航</string>
+    <string name="btn_map_clear">清除标记</string>
 </resources>

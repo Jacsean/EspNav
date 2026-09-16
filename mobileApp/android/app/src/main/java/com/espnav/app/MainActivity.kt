@@ -55,6 +55,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         setContentView(binding.root)
 
         installCrashHandler()
+        setupTabs()
 
         client = EspNavClient(lifecycleScope)
         client.listener = this
@@ -107,6 +108,21 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             runCatching { crashFile.renameTo(java.io.File(filesDir, "crash.old.log")) }
         }
         log("就绪：请先连接热点 ESPNav-AP，再点“连接”")
+    }
+
+    override fun onResume() {
+        super.onResume()
+        runCatching { binding.mapView.onResume() }
+    }
+
+    override fun onPause() {
+        runCatching { binding.mapView.onPause() }
+        super.onPause()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        runCatching { binding.mapView.onSaveInstanceState(outState) }
     }
 
     override fun onDestroy() {
@@ -344,6 +360,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         mockJob?.cancel()
         mockJob = null
         runCatching { navSource.stop() }
+        runCatching { binding.mapView.onDestroy() }
     }
 
     private fun send(json: String) {
@@ -376,6 +393,164 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             }
             def?.uncaughtException(t, e)      // 仍交给系统（会显示"应用已停止"）
         }
+    }
+
+    // ---------------- Tab 与地图（Tab2 导航） ----------------
+
+    private var aMap: com.amap.api.maps.AMap? = null
+    private var startMarker: com.amap.api.maps.model.Marker? = null
+    private var endMarker: com.amap.api.maps.model.Marker? = null
+    private var startLatLng: com.amap.api.maps.model.LatLng? = null
+    private var endLatLng: com.amap.api.maps.model.LatLng? = null
+
+    private fun setupTabs() {
+        val tab = binding.tabMain
+        tab.addTab(tab.newTab().setText(R.string.tab_connect))
+        tab.addTab(tab.newTab().setText(R.string.tab_nav))
+        tab.addOnTabSelectedListener(object :
+            com.google.android.material.tabs.TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(t: com.google.android.material.tabs.TabLayout.Tab) {
+                val nav = t.position == 1
+                binding.pageConnect.visibility = if (nav) View.GONE else View.VISIBLE
+                binding.pageNav.visibility = if (nav) View.VISIBLE else View.GONE
+                if (nav) {
+                    ensureMap()
+                } else {
+                    runCatching { binding.mapView.onPause() }
+                }
+            }
+
+            override fun onTabUnselected(t: com.google.android.material.tabs.TabLayout.Tab) = Unit
+            override fun onTabReselected(t: com.google.android.material.tabs.TabLayout.Tab) = Unit
+        })
+
+        binding.btnUseMapNav.setOnClickListener {
+            val s0 = startLatLng
+            val e0 = endLatLng
+            if (s0 == null || e0 == null) {
+                log("请先在地图上选择起点和终点（点地图 -> 设为起点/终点）")
+                return@setOnClickListener
+            }
+            startNavWithPoints(s0.latitude, s0.longitude, e0.latitude, e0.longitude)
+        }
+        binding.btnMapClear.setOnClickListener {
+            startMarker?.remove()
+            endMarker?.remove()
+            startMarker = null
+            endMarker = null
+            startLatLng = null
+            endLatLng = null
+            log("已清除地图标记")
+        }
+    }
+
+    private fun ensureMap() {
+        if (aMap != null) {
+            runCatching { binding.mapView.onResume() }
+            return
+        }
+        try {
+            com.amap.api.maps.MapsInitializer.updatePrivacyShow(applicationContext, true, true)
+            com.amap.api.maps.MapsInitializer.updatePrivacyAgree(applicationContext, true)
+            binding.mapView.onCreate(null)
+            val am = binding.mapView.map ?: throw IllegalStateException("map 对象为空")
+            aMap = am
+            am.uiSettings.isMyLocationButtonEnabled = true
+            am.uiSettings.isZoomControlsEnabled = true
+            val st = com.amap.api.maps.model.MyLocationStyle()
+            st.myLocationType(com.amap.api.maps.model.MyLocationStyle.LOCATION_TYPE_SHOW)
+            st.strokeColor(0xFF000000.toInt())
+            st.radiusFillColor(0x2200aa66)
+            am.myLocationStyle = st
+            am.isMyLocationEnabled = true
+            am.setOnMapClickListener { ll -> askSetPoint(ll) }
+            log("地图就绪：点地图可设置起点/终点")
+        } catch (t: Throwable) {
+            log("! 地图初始化失败：" + t.message)
+            log("  若是鉴权失败，请到高德控制台为该应用增加 Android 地图 SDK 类型的 Key")
+        }
+    }
+
+    private fun askSetPoint(ll: com.amap.api.maps.model.LatLng) {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(String.format(java.util.Locale.US, "%.5f, %.5f", ll.latitude, ll.longitude))
+            .setItems(arrayOf("设为起点", "设为终点")) { _, which ->
+                if (which == 0) {
+                    startLatLng = ll
+                    setMarker(true)
+                    reverseGeocode(ll, true)
+                } else {
+                    endLatLng = ll
+                    setMarker(false)
+                    reverseGeocode(ll, false)
+                }
+            }
+            .show()
+    }
+
+    private fun setMarker(isStart: Boolean) {
+        val am = aMap ?: return
+        val ll = (if (isStart) startLatLng else endLatLng) ?: return
+        val opt = com.amap.api.maps.model.MarkerOptions().position(ll)
+            .title(if (isStart) "起点" else "终点")
+        if (isStart) {
+            startMarker?.remove()
+            startMarker = am.addMarker(opt)
+        } else {
+            endMarker?.remove()
+            endMarker = am.addMarker(opt)
+        }
+        am.moveCamera(com.amap.api.maps.CameraUpdateFactory.newLatLngZoom(ll, 16f))
+    }
+
+    /** 逆地理编码：坐标 -> 地址，回填输入框 */
+    private fun reverseGeocode(ll: com.amap.api.maps.model.LatLng, isStart: Boolean) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val addr = runCatching {
+                val gs = com.amap.api.services.geocoder.GeocodeSearch(applicationContext)
+                val q = com.amap.api.services.geocoder.RegeocodeQuery(
+                    com.amap.api.services.core.LatLonPoint(ll.latitude, ll.longitude),
+                    200f,
+                    com.amap.api.services.geocoder.GeocodeSearch.AMAP   // 高德坐标类型
+                )
+                gs.getFromLocation(q)?.formatAddress ?: ""
+            }.getOrDefault("")
+            withContext(Dispatchers.Main) {
+                val text = addr.ifEmpty {
+                    String.format(java.util.Locale.US, "%.5f,%.5f", ll.latitude, ll.longitude)
+                }
+                if (isStart) binding.etFrom.setText(text) else binding.etTo.setText(text)
+                log((if (isStart) "起点" else "终点") + "：" + text)
+            }
+        }
+    }
+
+    /** 用地图选的坐标直接导航（比地址解析更准） */
+    private fun startNavWithPoints(fromLat: Double, fromLon: Double, toLat: Double, toLon: Double) {
+        if (!client.isConnected) {
+            log("未连接，无法开始导航")
+            return
+        }
+        if (!hasInternet()) {
+            log("手机当前无外网：高德导航需要联网算路，请先配网")
+            return
+        }
+        if (!hasLocationPermission()) {
+            log("需要定位权限，请允许后重试")
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+                REQ_LOCATION
+            )
+            return
+        }
+        val src = AmapNavSource(
+            applicationContext, "", "", "北京", emulate = true,
+            fixedFrom = com.espnav.app.data.GeoPoint(fromLat, fromLon),
+            fixedTo = com.espnav.app.data.GeoPoint(toLat, toLon)
+        )
+        src.logSink = { msg -> runOnUiThread { log("高德: " + msg) } }
+        launchNav(src, "高德骑行导航(地图选点)")
     }
 
     /** 把全部日志复制到剪贴板（便于直接粘贴反馈） */
