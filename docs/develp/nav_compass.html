@@ -40,7 +40,7 @@
       <label>连接状态（状态机演示）：
         <select id="conn">
           <option value="ok">已连接·有导航数据 → 导航画面(实时内容)</option>
-          <option value="idle">已连接·无导航数据 → 导航版式 + 等待导航数据</option>
+          <option value="idle">已连接·无导航数据 → 导航版式 + 请在App开始导航</option>
           <option value="wait">未连接/已断开 → 开机画面(等待手机App连接)</option>
         </select>
       </label><br>
@@ -324,7 +324,7 @@ function render(){ const h=parseInt(hd.value,10); hdv.textContent=h+'°';
   if (conn === 'wait') { bootStage = 2; drawBoot(); }                 /* 未连接/已断开：开机画面 */
   else if (conn === 'idle') {                                        /* 已连接·暂无导航数据 */
     drawNav(h, anim);
-    centerTip('等待导航数据');
+    centerTip('请在App开始导航');
   } else if (screen === 'nav') { drawNav(h, anim); }
   else { drawBoot(); }
 }

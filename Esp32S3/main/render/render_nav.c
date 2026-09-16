@@ -652,7 +652,7 @@ void render_nav_tick(float dt)
     /* 已连接但还没有导航数据：画“导航版式 + 中央提示”，而不是停在开机画面 */
     if (!s_have) {
         nav_frame_t empty;
-        const char *tip = "等待导航数据";
+        const char *tip = "请在App开始导航";
         int w;
         memset(&empty, 0, sizeof(empty));
         empty.valid = true;                  /* 用空帧驱动版式（路面/罗盘/行程图都在） */
