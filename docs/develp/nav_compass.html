@@ -25,7 +25,7 @@
       <label>车头方位：<input id="hd" type="range" min="0" max="359" value="45"> <span id="hdv">45°</span></label><br>
       <label><input id="auto" type="checkbox" checked> 自动旋转</label><br>
       <label>预览画面：
-        <select id="screen">
+        <select id="screenSel">
           <option value="nav">导航工作画面</option>
           <option value="boot">开机画面</option>
         </select>
@@ -282,7 +282,7 @@ function drawNav(heading, anim){
 
 const hd=document.getElementById('hd'), hdv=document.getElementById('hdv');
 let dt=1/60, anim=0;
-function render(){ const h=parseInt(hd.value,10); hdv.textContent=h+'°'; draw(h, anim); }
+function render(){ const h=parseInt(hd.value,10); hdv.textContent=h+'°'; if (screen === 'nav') drawNav(h, anim); else drawBoot(); }
 hd.addEventListener('input',render);
 document.getElementById('ns').addEventListener('change',e=>{ northStyle=e.target.value; render(); });
 let t=45, last=performance.now();
@@ -292,7 +292,7 @@ function loop(now){
   anim += 40 * dt;
   if (document.getElementById('auto').checked){ t=(t+1)%360; hd.value=t; }
   demoLong = document.getElementById('demoLong').checked;
-  screen = document.getElementById('screen').value;
+  screen = document.getElementById('screenSel').value;
   bootStyle = document.getElementById('bootStyle').value;
   bootStage = parseInt(document.getElementById('stage').value, 10);
   showLost = document.getElementById('showLost').checked;
