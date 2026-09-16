@@ -2,6 +2,8 @@
     <string name="app_name">EspNav 控制器</string>
 
     <string name="label_host">设备地址</string>
+    <string name="label_from">起点</string>
+    <string name="label_to">终点</string>
     <string name="label_port">端口</string>
     <string name="hint_host">192.168.4.1</string>
 

@@ -51,6 +51,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
         binding.etHost.setText(prefs.getString(KEY_LAST_IP, null) ?: DEFAULT_HOST)
         binding.etPort.setText("8899")
+        binding.etFrom.setText(FROM_ADDRESS)
+        binding.etTo.setText(TO_ADDRESS)
         binding.btnDisconnect.isEnabled = false
 
         binding.btnConnect.setOnClickListener { doConnect() }
@@ -189,7 +191,12 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             )
             return
         }
-        launchNav(AmapNavSource(applicationContext, FROM_ADDRESS, TO_ADDRESS, "北京", emulate = true), "高德骑行导航")
+        val from = binding.etFrom.text.toString().trim().ifBlank { FROM_ADDRESS }
+        val to = binding.etTo.text.toString().trim().ifBlank { TO_ADDRESS }
+        val src = AmapNavSource(applicationContext, from, to, "北京", emulate = true)
+        // 把高德内部日志转发到界面日志区（便于真机诊断）
+        src.logSink = { msg -> runOnUiThread { log("高德: " + msg) } }
+        launchNav(src, "高德骑行导航")
     }
 
     private fun hasLocationPermission(): Boolean =

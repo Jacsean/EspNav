@@ -170,6 +170,26 @@ object NavStateMapper {
         }
     }
 
+    /**
+     * 经纬度路径 -> 小地图局部坐标（0..40，y 向上；固件绘制时做 40-y 翻转）。
+     * 按路径包围盒**自适应缩放**并居中，保证整条路线都能画进小地图（北在上）。
+     */
+    fun miniMapFromGeo(pts: List<GeoPoint>): List<Pair<Int, Int>> {
+        if (pts.isEmpty()) return emptyList()
+        val latMin = pts.minOf { it.lat }
+        val latMax = pts.maxOf { it.lat }
+        val lonMin = pts.minOf { it.lon }
+        val lonMax = pts.maxOf { it.lon }
+        val latSpan = (latMax - latMin).coerceAtLeast(1e-6)
+        val lonSpan = (lonMax - lonMin).coerceAtLeast(1e-6)
+        val scale = (OV_SPAN - 4.0) / maxOf(latSpan, lonSpan)     // 留 2 单位边距
+        return pts.map { p ->
+            val x = ((p.lon - lonMin) * scale + 2.0).roundToInt().coerceIn(0, OV_SPAN)
+            val y = ((p.lat - latMin) * scale + 2.0).roundToInt().coerceIn(0, OV_SPAN)  // 北在上
+            x to y
+        }
+    }
+
     /** 屏幕路径 -> 小地图局部坐标（0..40，y 向上；固件绘制时会做 40-y 翻转） */
     fun miniMap(pts: List<Pair<Int, Int>>): List<Pair<Int, Int>> =
         pts.take(16).map { (x, y) ->
