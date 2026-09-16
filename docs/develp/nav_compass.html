@@ -37,6 +37,13 @@
           <option value="C">C 实用版</option>
         </select>
       </label><br>
+      <label>连接状态（状态机演示）：
+        <select id="conn">
+          <option value="ok">已连接 → 导航画面</option>
+          <option value="lost">刚断开 → 信号中断提示条</option>
+          <option value="wait">断开超3秒 → 回开机画面(等待手机)</option>
+        </select>
+      </label><br>
       <label>开机阶段：
         <select id="stage">
           <option value="0">① 系统启动中</option>
@@ -73,7 +80,7 @@ const S=2, W=320, H=240, CX=160, CAR_Y=110, NEAR_Y=144;
 const cv=document.getElementById('scr'), g=cv.getContext('2d');
 const DIRS8=['北','东北','东','东南','南','西南','西','西北'];
 let northStyle='B';
-let demoLong=true, showLost=false;   // 行程图“北”标注风格（已确认 B：右上角“北”+十字线）
+let demoLong=true, showLost=false, conn='ok';   // 行程图“北”标注风格（已确认 B：右上角“北”+十字线）
 const FONT='16px SimHei, "Microsoft YaHei"';
 
 
@@ -205,6 +212,12 @@ function drawBoot(){
   }
 }
 
+function drawLostBanner(){
+  const t2 = '信号中断';
+  const w2 = g.measureText(t2).width;
+  g.fillStyle='#000'; g.fillRect(0, 56, 319, 56 + 26 - 1);
+  g.fillStyle='#f80000'; g.fillText(t2, (320 - w2) / 2, 56 + 5);
+}
 function drawNav(heading, anim){
   g.setTransform(1,0,0,1,0,0); g.fillStyle='#000'; g.fillRect(0,0,cv.width,cv.height);
   g.setTransform(S,0,0,S,0,0); g.imageSmoothingEnabled=false;
@@ -282,7 +295,12 @@ function drawNav(heading, anim){
 
 const hd=document.getElementById('hd'), hdv=document.getElementById('hdv');
 let dt=1/60, anim=0;
-function render(){ const h=parseInt(hd.value,10); hdv.textContent=h+'°'; if (screen === 'nav') drawNav(h, anim); else drawBoot(); }
+function render(){ const h=parseInt(hd.value,10); hdv.textContent=h+'°';
+  if (conn === 'lost') { drawNav(h, anim); drawLostBanner(); }        /* 断线3秒内：保留画面+提示条 */
+  else if (conn === 'wait') { bootStage = 2; drawBoot(); }             /* 断开>3秒：回开机画面等待手机 */
+  else if (screen === 'nav') { drawNav(h, anim); }
+  else { drawBoot(); }
+}
 hd.addEventListener('input',render);
 document.getElementById('ns').addEventListener('change',e=>{ northStyle=e.target.value; render(); });
 let t=45, last=performance.now();
@@ -295,6 +313,7 @@ function loop(now){
   screen = document.getElementById('screenSel').value;
   bootStyle = document.getElementById('bootStyle').value;
   bootStage = parseInt(document.getElementById('stage').value, 10);
+  conn = document.getElementById('conn').value;
   showLost = document.getElementById('showLost').checked;
   render();
   requestAnimationFrame(loop);
