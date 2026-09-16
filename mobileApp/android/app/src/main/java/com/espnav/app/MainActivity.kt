@@ -59,11 +59,11 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
         savedBundle = savedInstanceState
         installCrashHandler()
-        refreshActionStates()          /* 启动即按“未连接”置灰相关操作 */
         setupTabs()
 
         client = EspNavClient(lifecycleScope)
         client.listener = this
+        refreshActionStates()          /* 必须放在 client 初始化之后：内部会读 client.isConnected */
 
         binding.etHost.setText(prefs.getString(KEY_LAST_IP, null) ?: DEFAULT_HOST)
         binding.etPort.setText("8899")
@@ -492,6 +492,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     /** 刷新“起点/终点是否已选”的显眼状态行 */
     /** 按连接状态刷新所有操作可用性：未连接时除“连接/一键连接/配网页/复制日志”外一律置灰 */
     private fun refreshActionStates() {
+        if (!::client.isInitialized) return        /* 防御：client 未初始化时不动作（避免启动即崩） */
         val on = client.isConnected
         binding.btnConnect.isEnabled = !on
         binding.btnQuickConnect.isEnabled = !on
