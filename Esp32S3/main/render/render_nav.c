@@ -696,4 +696,5 @@ void render_nav_boot(int stage, const char *sub)
         w = font_text_width(sub);
         font_draw_text((FB_W - w) / 2, 206, sub, 0x7BEF);
     }
+    fb_flush();          /* 关键：fb_* 只写内存帧缓冲，必须 flush 才推送到 LCD */
 }
