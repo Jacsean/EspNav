@@ -76,3 +76,10 @@
 - **解决方案**：**写代码/脚本一律使用文件工具（write_file / edit_file）直接落盘**，不再经 shell 传递含转义的文本；必须用 shell 时，用 `chr(92)`/`chr(10)` 等**构造字符**而非书写转义序列。
 - **预防措施**：① 修复后立即补静态检查（本次新增"**双引号字符串未闭合**"检查：逐行统计未转义双引号奇偶、跳过字符字面量，已用出错历史版本反证有效、确认 `softap_prov.c` 的 `'"'` 不误报）；② 任何"写入源码"的动作，落盘后必须跑 `tools/precheck.py`；③ 同类事故连续两次即视为**流程缺陷**（而非操作失误），必须新增自动化检查项。
 
+## F13. APK 启动即闪退：lateinit 属性在初始化之前被访问
+- **现象**：安装新 APK 后一启动就闪退，无法进入主页面。
+- **原因**：新增的 `refreshActionStates()` 被插入到 `onCreate` 中 `client = EspNavClient(...)` **之前**（第 62 行 vs 第 65 行），而该函数第一行就读 `client.isConnected`（`private lateinit var client`）→ `UninitializedPropertyAccessException`，启动即崩。
+- **解决方案**：① 调用移到 `client` 初始化**之后**；② 函数内加守卫 `if (!::client.isInitialized) return`（顺序再被调乱也不会崩）。
+- **预防措施**：① `onCreate` 中新增的刷新/初始化调用，一律放在**其依赖字段初始化之后**（推荐顺序：inflate → `savedBundle` → 崩溃捕获 → **依赖对象（client 等）** → 监听器 → **状态刷新**）；② 读取 `lateinit` 字段的辅助函数，首行加 `isInitialized` 守卫；③ **交付 APK 前必须真机启动一次**——仅靠静态预检覆盖不到"运行时初始化顺序"这一类问题，本次即为反例。
+
+
