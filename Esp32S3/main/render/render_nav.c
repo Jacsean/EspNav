@@ -216,6 +216,19 @@ static void draw_compass(const nav_frame_t *f)
 
 /* 行程图（右下 overview）：网格 + 路径 + 当前位置点
  * 协议 §3.1 第 5 条：坐标为相对小地图左上角像素坐标；渲染端内边距 8、y 翻转(40-y)。 */
+/* 行程图专用小号“北”字（8px 点阵；罗盘主方位仍用 16px 字库） */
+static const uint8_t NORTH8[8] = { 0x08, 0x08, 0x6C, 0x08, 0x08, 0x69, 0x06, 0x00 };
+
+static void draw_north8(int x, int y)
+{
+    for (int r = 0; r < 8; r++) {
+        uint8_t bits = NORTH8[r];
+        for (int c = 0; c < 8; c++) {
+            if (bits & (0x80 >> c)) fb_pixel(x + c, y + r, PATH_GREEN);
+        }
+    }
+}
+
 static void draw_overview(const nav_frame_t *f)
 {
     const int ax = 220, ay = 160, aw = 100, ah = 80;
@@ -231,13 +244,14 @@ static void draw_overview(const nav_frame_t *f)
         int dx = ax + 8 + f->overview_dot.x, dy = ay + 8 + (40 - f->overview_dot.y);
         fb_fill_rect(dx - 2, dy - 2, dx + 2, dy + 2, RGB565_YELLOW);
     }
-    font_draw_text(ax + 80, ay + 2, "北", PATH_GREEN);   /* 右上角北字 */
-    {   /* 十字线：下移一个网格(10px)避开北字；竖线上端加向上小箭头指向北 */
-        const int vx = ax + 88;                     /* 北字中心 */
-        const int ny = ay + 26;                     /* 十字中心（原 ay+16，下移 10px） */
-        fb_line(vx, ay + 20, vx, ny + 9, PATH_GREEN);              /* 竖线（上端留箭头位） */
-        fb_line(vx - 3, ay + 24, vx, ay + 19, PATH_GREEN);         /* 箭头左斜 */
-        fb_line(vx + 3, ay + 24, vx, ay + 19, PATH_GREEN);         /* 箭头右斜 */
+    draw_north8(ax + 80, ay + 2);                        /* 右上角小号“北”（8px 点阵） */
+    {   /* 十字线：位于“北”字下方；竖线上端带向上小箭头指向北 */
+        const int vx = ax + 84;                     /* 8px 北字中心 = 80 + 4 */
+        const int yTop = ay + 13;                   /* 北字(ay+2..ay+9) 下方 3px 起 */
+        const int ny = ay + 26;                     /* 十字中心（一个网格处） */
+        fb_line(vx, yTop + 4, vx, ny + 9, PATH_GREEN);             /* 竖线（上端留箭头位） */
+        fb_line(vx - 3, yTop + 5, vx, yTop, PATH_GREEN);           /* 箭头左斜 */
+        fb_line(vx + 3, yTop + 5, vx, yTop, PATH_GREEN);           /* 箭头右斜 */
         fb_line(vx - 9, ny, vx + 9, ny, PATH_GREEN);               /* 横线 */
     }
 }
