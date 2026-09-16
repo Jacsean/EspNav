@@ -15,6 +15,6 @@ uint32_t protocol_err_count(void);
 void     protocol_err_reset(void);
 
 /* 应用层链路阶段（只看“收到什么报文”，不看 TCP 连接状态 —— 判定依据唯一）：
- *   1 = 等待 App（10 秒内无任何报文）  2 = 已连接·等待导航数据  3 = 导航中（10 秒内有 NAV_FRAME） */
+ *   1 = 等待 App（5 秒内无任何报文）  2 = 已连接（有报文；是否有导航数据由渲染侧决定内容） */
 int  protocol_link_stage(void);
 void protocol_link_reset(void);

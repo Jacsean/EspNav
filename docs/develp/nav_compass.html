@@ -39,9 +39,9 @@
       </label><br>
       <label>连接状态（状态机演示）：
         <select id="conn">
-          <option value="ok">已连接 → 导航画面</option>
-          <option value="lost">刚断开 → 信号中断提示条</option>
-          <option value="wait">断开超3秒 → 回开机画面(等待手机)</option>
+          <option value="ok">已连接·有导航数据 → 导航画面(实时内容)</option>
+          <option value="idle">已连接·无导航数据 → 导航版式 + 等待导航数据</option>
+          <option value="wait">未连接/已断开 → 开机画面(等待手机App连接)</option>
         </select>
       </label><br>
       <label>开机阶段：
@@ -229,6 +229,14 @@ function drawBoot(){
   }
 }
 
+function centerTip(text){
+  const fs = g.font;
+  g.font = '16px SimHei, "Microsoft YaHei"';
+  const w = g.measureText(text).width;
+  g.fillStyle = '#00ffff';                 /* 亮青，透明底（不叠黑块） */
+  g.fillText(text, (320 - w) / 2, 150);
+  g.font = fs;
+}
 function drawLostBanner(){
   const t2 = '信号中断';
   const w2 = g.measureText(t2).width;
@@ -313,9 +321,11 @@ function drawNav(heading, anim){
 const hd=document.getElementById('hd'), hdv=document.getElementById('hdv');
 let dt=1/60, anim=0;
 function render(){ const h=parseInt(hd.value,10); hdv.textContent=h+'°';
-  if (conn === 'lost') { drawNav(h, anim); drawLostBanner(); }        /* 断线3秒内：保留画面+提示条 */
-  else if (conn === 'wait') { bootStage = 2; drawBoot(); }             /* 断开>3秒：回开机画面等待手机 */
-  else if (screen === 'nav') { drawNav(h, anim); }
+  if (conn === 'wait') { bootStage = 2; drawBoot(); }                 /* 未连接/已断开：开机画面 */
+  else if (conn === 'idle') {                                        /* 已连接·暂无导航数据 */
+    drawNav(h, anim);
+    centerTip('等待导航数据');
+  } else if (screen === 'nav') { drawNav(h, anim); }
   else { drawBoot(); }
 }
 hd.addEventListener('input',render);

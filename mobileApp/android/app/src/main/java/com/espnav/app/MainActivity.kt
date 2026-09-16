@@ -76,6 +76,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         binding.btnOpenProv.setOnClickListener { openProvPage() }
         binding.btnDisconnect.setOnClickListener {
             stopMock()
+            send(OutMsg.bye())
             client.disconnect("手动断开")
         }
         binding.btnPing.setOnClickListener { send(OutMsg.ping(System.currentTimeMillis() / 1000)) }
@@ -135,6 +136,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     override fun onDestroy() {
         stopMock()
+        send(OutMsg.bye())
         client.disconnect("页面关闭")
         super.onDestroy()
     }

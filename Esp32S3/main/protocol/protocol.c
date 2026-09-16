@@ -13,16 +13,16 @@ static const char *TAG = "proto";
 static uint32_t s_err = 0;
 
 /* 应用层链路状态：只看“收到什么报文”（依据唯一，不依赖 TCP 连接是否抖动） */
-#define LINK_TIMEOUT_US (10LL * 1000000LL)      /* 10 秒无任何报文 => App 不在了 */
+#define LINK_TIMEOUT_US (5LL * 1000000LL)       /* 5 秒无任何报文 => App 不在了（异常断开兜底） */
 static int64_t s_t_msg = 0;                     /* 最近收到任意报文的时刻 */
 static int64_t s_t_nav = 0;                     /* 最近收到 NAV_FRAME 的时刻 */
 
+/* 简化后的 2 阶段：只要“App 的报文还在”就算已连接（有没有导航数据由渲染侧决定显示内容） */
 int protocol_link_stage(void)
 {
     int64_t now = esp_timer_get_time();
-    if (s_t_msg == 0 || (now - s_t_msg) > LINK_TIMEOUT_US) return 1;
-    if (s_t_nav == 0 || (now - s_t_nav) > LINK_TIMEOUT_US) return 2;
-    return 3;
+    if (s_t_msg == 0 || (now - s_t_msg) > LINK_TIMEOUT_US) return 1;   /* 1 = 等待 App */
+    return 2;                                                          /* 2 = 已连接 */
 }
 
 void protocol_link_reset(void)
@@ -89,8 +89,13 @@ void protocol_handle(const char *line, int len, proto_send_fn send, void *ctx)
         return;
     }
 
-    s_t_msg = esp_timer_get_time();                  /* 任何合法报文都算“App 在” */
+    s_t_msg = esp_timer_get_time();                  /* 任何合法报文都算“App 在”（BYE 除外，见上） */
 
+    if (!strcmp(mt, "BYE")) {                        /* 主动断开：立即回“等待 App” */
+        protocol_link_reset();
+        ESP_LOGI(TAG, "RX BYE -> 立即回到“等待手机App连接”");
+        return;
+    }
     if (!strcmp(mt, "HELLO")) {                      /* 握手：App 上线声明 */
         const espnav_config_t *c = config_get();
         char hb[128];

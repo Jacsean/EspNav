@@ -649,7 +649,22 @@ void render_nav_tick(float dt)
         ESP_LOGI(TAG, "screen cleared -> blank standby");
         return;
     }
-    if (!s_have) return;
+    /* 已连接但还没有导航数据：画“导航版式 + 中央提示”，而不是停在开机画面 */
+    if (!s_have) {
+        nav_frame_t empty;
+        const char *tip = "等待导航数据";
+        int w;
+        memset(&empty, 0, sizeof(empty));
+        empty.valid = true;                  /* 用空帧驱动版式（路面/罗盘/行程图都在） */
+        empty.heading = 0;
+        empty.pos.x = NAV_CX; empty.pos.y = 110; empty.pos_valid = true;
+        s_anim += dt * 40.0f;                /* 虚线仍流动 */
+        draw_frame(&empty, s_anim);
+        w = font_text_width(tip);
+        font_draw_text((FB_W - w) / 2, 150, tip, RGB565_CYAN);
+        fb_flush();
+        return;
+    }
     const espnav_config_t *cfg = config_get();
     if (cfg->anim_enable) {                  /* anim_enable=false => 静态虚线（不推进相位） */
         s_anim += (float)cfg->dash_speed * dt;
