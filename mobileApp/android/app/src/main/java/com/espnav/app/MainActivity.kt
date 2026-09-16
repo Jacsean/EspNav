@@ -164,6 +164,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         binding.btnConnect.isEnabled = false
         binding.btnDisconnect.isEnabled = true
         log("已连接 $addr")
+        send(OutMsg.hello())                 /* 握手：告知 ESP32 “App 已上线” */
     }
 
     override fun onDisconnected(reason: String) {

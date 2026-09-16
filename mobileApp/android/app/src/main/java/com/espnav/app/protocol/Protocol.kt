@@ -93,6 +93,10 @@ object Json {
 object OutMsg {
     fun navFrame(frame: NavFrame): String = frame.toJsonLine()
 
+    /** 握手：App 上线声明（ESP 收到后回 HELLO_ACK，据此进入“已连接”阶段） */
+    fun hello(): String =
+        Json.obj("msg_type" to "HELLO", "payload" to JSONObject()).toString()
+
     fun ping(ts: Long): String =
         Json.obj("msg_type" to "PING", "payload" to Json.obj("ts" to ts)).toString()
 

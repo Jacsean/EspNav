@@ -677,7 +677,8 @@ void render_nav_frame(const nav_frame_t *f)
 void render_nav_boot(int stage, const char *sub)
 {
     static float anim = 0.0f;
-    static const char *st_text[3] = { "系统启动中", "正在连接 WiFi", "WiFi已连接手机热点" };
+    static const char *st_text[4] = { "系统启动中", "正在连接 WiFi", "等待手机App连接",
+                                      "已连接 - 等待导航数据" };
     const uint16_t GRID = 0x10C2;                 /* 极暗绿灰 */
     int i, w, y;
     char line[48];
@@ -710,12 +711,12 @@ void render_nav_boot(int stage, const char *sub)
 
     /* 状态行 */
     if (stage < 0) stage = 0;
-    if (stage > 2) stage = 2;
+    if (stage > 3) stage = 3;
     snprintf(line, sizeof(line), "%s", st_text[stage]);
     w = font_text_width(line);
     font_draw_text((FB_W - w) / 2, 182, line, RGB565_WHITE);
     {
-        const char *line2 = (stage == 2) ? "等待手机App连接" : sub;   /* 阶段2 固定提示语 */
+        const char *line2 = sub;                                     /* 副行由调用方给出 */
         if (line2 && line2[0]) {
             w = font_text_width(line2);
             font_draw_text((FB_W - w) / 2, 206, line2, 0x7BEF);

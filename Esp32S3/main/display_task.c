@@ -7,6 +7,7 @@
 #include "render/render_nav.h"
 #include "comm/wifi_sta.h"
 #include "comm/tcp_server.h"
+#include "protocol/protocol.h"
 
 static const char *TAG = "display_task";
 
@@ -20,11 +21,8 @@ static void display_task(void *arg)
     (void)arg;
     ESP_LOGI(TAG, "display task running (开机画面>=5s -> 连接后进入导航；断线立即回开机画面)");
     int64_t last = esp_timer_get_time();
-    int64_t boot_t0 = last;
-    int64_t last_frame_t = last;        /* 最近一次收到导航帧的时刻 */
-    int64_t last_active_t = last;       /* 最近一次“有活跃连接”的时刻 */
-    uint32_t last_frames = 0;
-    bool boot = true;
+    int64_t nav_t0 = 0;                  /* 首次进入“导航中”的时刻（用于最短 5 秒） */
+    bool nav_on = false;
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(33));                  /* 目标 30fps（实际受 SPI 传输限制） */
         int64_t now = esp_timer_get_time();
@@ -32,44 +30,33 @@ static void display_task(void *arg)
         last = now;
         if (dt > 0.5f) dt = 0.5f;
 
-        int64_t el = (now - boot_t0) / 1000000;         /* 距进入开机画面的秒数 */
-        uint32_t fr = render_nav_frame_count();
-        if (fr != last_frames) { last_frames = fr; last_frame_t = now; }
-        /* 双条件（都带宽限，避免扫描/重连的短暂抖动导致闪屏）：
-         * conn_ok = 5 秒内有活跃连接；frames_ok = 收到过帧且 30 秒内有新帧 */
-        if (tcp_server_has_client()) last_active_t = now;
-        bool conn_ok   = (now - last_active_t) < (int64_t)LINK_GRACE_S * 1000000;
-        bool frames_ok = (fr > 0) && ((now - last_frame_t) < (int64_t)FRAME_GRACE_S * 1000000);
-        bool active = conn_ok && frames_ok;
+        /* 阶段判定唯一依据：最近收到什么报文（见 protocol_link_stage） */
+        int stage = protocol_link_stage();          /* 1 等待App / 2 已连等待导航 / 3 导航中 */
 
-        if (boot) {                                     /* 开机画面：能工作且满 5 秒才切；或超时兜底 */
-            if ((active && el >= BOOT_MIN_S) || el > BOOT_TIMEOUT_S) {
-                boot = false;
-                if (fr == 0) render_nav_demo();         /* 兜底切换且无数据：显示样例画面，避免黑屏 */
-                ESP_LOGI(TAG, "boot -> nav (frames=%lu, elapsed=%llds)",
-                         (unsigned long)fr, (long long)el);
+        if (stage < 3) {                            /* 非导航阶段：显示开机画面 */
+            nav_on = false;
+            nav_t0 = 0;
+            char sub[32];
+            if (stage == 1) {
+                if (wifi_sta_is_connected()) snprintf(sub, sizeof(sub), "IP %s", wifi_sta_ip_str());
+                else                         snprintf(sub, sizeof(sub), "热点 ESPNav-AP");
             } else {
-                char sub[32];
-                int stage = (el < 1) ? 0 : (wifi_sta_is_connected() ? 2 : 1);
-                if (stage == 2)      snprintf(sub, sizeof(sub), "IP %s", wifi_sta_ip_str());
-                else if (stage == 1) snprintf(sub, sizeof(sub), "热点 ESPNav-AP");
-                else                 sub[0] = 0;
-                render_nav_boot(stage, sub);
-                continue;
+                sub[0] = 0;                         /* 阶段 2：主行已说明，无副行 */
             }
-        } else if (!active) {                           /* 判定“不能工作”（已含宽限）才回开机画面 */
-            boot = true;
-            boot_t0 = now;
-            ESP_LOGW(TAG, "not workable (conn_ok=%d frames_ok=%d) -> back to boot screen",
-                     (int)conn_ok, (int)frames_ok);
+            render_nav_boot((stage == 1) ? 2 : 3, sub);   /* 画面: 2=等待手机App连接 3=已连接-等待导航数据 */
             continue;
         }
-        render_nav_tick(dt);
-        static uint32_t n = 0;
-        n++;
-        if (n == 1 || (n % 150) == 0) {
-            ESP_LOGI(TAG, "render tick #%lu (dt=%.3fs)", (unsigned long)n, dt);
+        /* 阶段 3：导航中 —— 先保证开机画面显示满最短时间，再切导航画面 */
+        if (!nav_on) {
+            if (nav_t0 == 0) nav_t0 = now;
+            if ((now - nav_t0) < (int64_t)BOOT_MIN_S * 1000000) {
+                render_nav_boot(3, "");
+                continue;
+            }
+            nav_on = true;
+            ESP_LOGI(TAG, "boot -> nav (link stage=3, 已显示满 %ds)", BOOT_MIN_S);
         }
+        render_nav_tick(dt);
     }
 }
 

@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "json_lite.h"
 #include "nav_frame.h"
 #include "config.h"
@@ -10,6 +11,25 @@
 
 static const char *TAG = "proto";
 static uint32_t s_err = 0;
+
+/* 应用层链路状态：只看“收到什么报文”（依据唯一，不依赖 TCP 连接是否抖动） */
+#define LINK_TIMEOUT_US (10LL * 1000000LL)      /* 10 秒无任何报文 => App 不在了 */
+static int64_t s_t_msg = 0;                     /* 最近收到任意报文的时刻 */
+static int64_t s_t_nav = 0;                     /* 最近收到 NAV_FRAME 的时刻 */
+
+int protocol_link_stage(void)
+{
+    int64_t now = esp_timer_get_time();
+    if (s_t_msg == 0 || (now - s_t_msg) > LINK_TIMEOUT_US) return 1;
+    if (s_t_nav == 0 || (now - s_t_nav) > LINK_TIMEOUT_US) return 2;
+    return 3;
+}
+
+void protocol_link_reset(void)
+{
+    s_t_msg = 0;
+    s_t_nav = 0;
+}
 
 uint32_t protocol_err_count(void) { return s_err; }
 void     protocol_err_reset(void) { s_err = 0; }
@@ -69,7 +89,21 @@ void protocol_handle(const char *line, int len, proto_send_fn send, void *ctx)
         return;
     }
 
+    s_t_msg = esp_timer_get_time();                  /* 任何合法报文都算“App 在” */
+
+    if (!strcmp(mt, "HELLO")) {                      /* 握手：App 上线声明 */
+        const espnav_config_t *c = config_get();
+        char hb[128];
+        snprintf(hb, sizeof(hb),
+                 "{\"msg_type\":\"HELLO_ACK\",\"payload\":{\"firmware_ver\":\"%s\"}}
+",
+                 c->firmware_ver);
+        if (send) send(hb, ctx);
+        ESP_LOGI(TAG, "RX HELLO -> TX HELLO_ACK ver=%s", c->firmware_ver);
+        return;
+    }
     if (!strcmp(mt, "NAV_FRAME")) {                  /* 仅缓存，渲染由显示任务完成 */
+        s_t_nav = s_t_msg;
         nav_frame_on_json_line(line, len);
         return;
     }
