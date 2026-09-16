@@ -25,24 +25,11 @@ object NavStateMapper {
     const val TPL_SIDE_HALF = 35
     const val OV_SPAN = 40           // 小地图局部坐标跨度
 
-    /** 固件字库支持的汉字（font_data.c 子集）。提示语只用这些字 + ASCII，避免屏幕出现方块。 */
-    private const val SUPPORTED_HANZI =
-        "前方米直行左右转路口弯道岛第出驶多岔走侧支靠匝道十字继续掉头进入离开距" +
-            "离到达预计全程已完成耗时信号中断微短信张三来电未接方向北南东西环主辅并" +
-            "线段起点终剩余分钟小时公设置亮度动画速度弹窗消息关闭清除暂无数据连接成" +
-            "功失败重试等待初始化错误状态电量充电导航开始结束取消确认返回菜单首页图" +
-            "路线规划偏航重算拥堵缓行事故施工限速拍照测速服务区收费站桥梁隧道高速国" +
-            "道省县乡上下一二三四五六七八九十百千万零地点老记得准时过来个取件码稍后" +
-            "发材料明天早晚上"
-
-    /** 去掉字库不支持的汉字（宁可提示更短，也不要在屏幕上显示方块） */
-    fun safe(text: String): String {
-        val sb = StringBuilder()
-        for (ch in text) {
-            if (ch.code < 128 || SUPPORTED_HANZI.indexOf(ch) >= 0) sb.append(ch)
-        }
-        return sb.toString().trim()
-    }
+    /**
+     * 文本清洗：固件字库已覆盖 **GB2312 全部 6763 汉字 + ASCII**（2026-09 扩容后），
+     * 因此不再需要按汉字过滤；这里只剔除控制字符，避免异常内容影响渲染。
+     */
+    fun safe(text: String): String = text.filter { it.code >= 0x20 }
 
     // ---------------- 提示语 ----------------
 

@@ -59,6 +59,18 @@ def pack(rows, w):
 FONT_ZH = r'C:\Windows\Fonts\simhei.ttf'      # 黑体（16px 清晰）
 FONT_ASCII = r'C:\Windows\Fonts\consola.ttf'  # Consolas（半角）
 
+def gb2312_hanzi():
+    """GB2312 全部汉字（一级 3755 + 二级 3008 = 6763 字）"""
+    out = []
+    for hi in range(0xB0, 0xF8):          # 汉字区：区 16..87
+        for lo in range(0xA1, 0xFF):
+            try:
+                out.append(bytes([hi, lo]).decode('gb2312'))
+            except UnicodeDecodeError:
+                pass
+    return out
+
+
 glyphs = []   # (cp, w, data)
 # ASCII 8x16
 for cp in range(0x20, 0x7F):
@@ -66,13 +78,21 @@ for cp in range(0x20, 0x7F):
     glyphs.append((cp, 8, pack(rows, 8)))
 # 符号 + 汉字 16x16
 seen = set()
-for ch in SYMBOLS + HANZI:
+_all16 = SYMBOLS + HANZI + "".join(gb2312_hanzi())
+_skipped = 0
+for idx, ch in enumerate(_all16):
     cp = ord(ch)
     if cp in seen:
         continue
     seen.add(cp)
     rows = render_glyph(ch, 16, 16, FONT_ZH, 16)
+    if not any(rows):                      # 字体里没有该字形 -> 跳过（避免存入空白数据）
+        _skipped += 1
+        continue
     glyphs.append((cp, 16, pack(rows, 16)))
+    if (idx + 1) % 1000 == 0:
+        print('  渲染进度 %d/%d（已跳过空白 %d）' % (idx + 1, len(_all16), _skipped))
+print('  GB2312 全集渲染完成，空白字形跳过 %d 个' % _skipped)
 
 glyphs.sort(key=lambda g: g[0])
 
