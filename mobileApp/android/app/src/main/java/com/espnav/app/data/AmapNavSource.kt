@@ -64,6 +64,13 @@ class AmapNavSource(
     @Volatile
     private var pathCoords: List<GeoPoint> = emptyList()
 
+    /** 全量路径坐标（供地图画线预览，不降采样） */
+    @Volatile
+    private var pathAllCoords: List<GeoPoint> = emptyList()
+
+    /** 预览模式回调：算路成功但**不启动导航**，把路线交给界面预览确认 */
+    var onRouteReady: ((lengthMeters: Int, timeSec: Int, coords: List<GeoPoint>) -> Unit)? = null
+
     /** 真实全程（米），取自 AMapNaviPath.allLength */
     @Volatile
     private var totalMeters: Int = 0
@@ -197,30 +204,44 @@ class AmapNavSource(
     // ---------------- 高德回调 -> NavState ----------------
 
     override fun onCalculateRouteSuccess(result: AMapCalcRouteResult?) {
-        try {   // onCalculateRouteSuccess 加固
-        // 取真实路径（坐标列表）与全程距离
         try {
             val path = navi?.naviPath
+            var len = 0
+            var sec = 0
             if (path != null) {
-                totalMeters = path.allLength
+                len = path.allLength
+                sec = path.allTime
+                totalMeters = len
                 val raw = path.coordList ?: emptyList()
-                pathCoords = downsample(raw.map { GeoPoint(it.latitude, it.longitude) }, MAX_PATH_PTS)
-                state = state.copy(totalDistMeters = totalMeters)
+                pathAllCoords = raw.map { GeoPoint(it.latitude, it.longitude) }
+                pathCoords = downsample(pathAllCoords, MAX_PATH_PTS)
+                state = state.copy(totalDistMeters = len)
                 log("路径点 " + raw.size + " -> 采样 " + pathCoords.size +
-                    "；全程 " + totalMeters + " 米，预计 " + path.allTime + " 秒")
+                    "；全程 " + len + " 米，预计 " + sec + " 秒")
             }
-        } catch (e: Exception) {
-            log("读取路径失败：" + e.message)
+            val cb = onRouteReady
+            if (cb != null) {
+                log("预览模式：路线已算出，等待确认后再启动导航")
+                cb(len, sec, pathAllCoords)
+            } else {
+                startNavigation()
+            }
+        } catch (t: Throwable) {
+            logE("onCalculateRouteSuccess 异常：" + t.message)
         }
-        log("算路成功，启动导航（模拟行进=" + emulate + "）")
+    }
+
+    /** 确认后真正启动导航（预览模式由界面调用；非预览模式在算路成功时自动调用） */
+    fun startNavigation() {
         try {
             val ok = navi?.startNavi(if (emulate) NaviType.EMULATOR else NaviType.GPS) ?: false
             log("startNavi 返回 " + ok + "（模拟行进=" + emulate + "）")
-            if (!ok) logE("导航启动失败：检查高德 Key 是否绑定包名 com.espnav.app / SHA1，且类型为 Android 导航 SDK")
+            if (!ok) {
+                logE("导航启动失败：检查高德 Key 是否绑定包名 com.espnav.app / SHA1，且类型为 Android 导航 SDK")
+            }
         } catch (e: Exception) {
             logE("startNavi 异常：" + e.message)
         }
-        } catch (t: Throwable) { logE("onCalculateRouteSuccess 异常：" + t.message) }
     }
 
     override fun onCalculateRouteFailure(errorCode: Int) {

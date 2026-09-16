@@ -429,6 +429,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     // ---------------- Tab 与地图（Tab2 导航） ----------------
 
     private var aMap: com.amap.api.maps.AMap? = null
+    private var previewLine: com.amap.api.maps.model.Polyline? = null
+    private var previewSource: AmapNavSource? = null
     private var startMarker: com.amap.api.maps.model.Marker? = null
     private var endMarker: com.amap.api.maps.model.Marker? = null
     private var startLatLng: com.amap.api.maps.model.LatLng? = null
@@ -455,15 +457,9 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             override fun onTabReselected(t: com.google.android.material.tabs.TabLayout.Tab) = Unit
         })
 
-        binding.btnUseMapNav.setOnClickListener {
-            val s0 = startLatLng
-            val e0 = endLatLng
-            if (s0 == null || e0 == null) {
-                log("请先在地图上选择起点和终点（点地图 -> 设为起点/终点）")
-                return@setOnClickListener
-            }
-            startNavWithPoints(s0.latitude, s0.longitude, e0.latitude, e0.longitude)
-        }
+        binding.btnUseMapNav.setOnClickListener { previewRoute() }
+        binding.btnStartNav.setOnClickListener { startConfirmedNav() }
+        binding.btnGiveUp.setOnClickListener { giveUpPreview() }
         binding.btnMapClear.setOnClickListener {
             startMarker?.remove()
             endMarker?.remove()
@@ -556,14 +552,16 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         }
     }
 
-    /** 用地图选的坐标直接导航（比地址解析更准） */
-    private fun startNavWithPoints(fromLat: Double, fromLon: Double, toLat: Double, toLon: Double) {
-        if (!client.isConnected) {
-            log("未连接，无法开始导航")
+    /** ① 预览路线：只算路、不与 ESP32 同步；成功后在地图上画线等待确认 */
+    private fun previewRoute() {
+        val s0 = startLatLng
+        val e0 = endLatLng
+        if (s0 == null || e0 == null) {
+            log("请先在地图上选择起点和终点（点地图 -> 设为起点/终点）")
             return
         }
         if (!hasInternet()) {
-            log("手机当前无外网：高德导航需要联网算路，请先配网")
+            log("手机当前无外网：高德算路需要联网，请先配网")
             return
         }
         if (!hasLocationPermission()) {
@@ -575,13 +573,76 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             )
             return
         }
+        previewSource?.stop()
         val src = AmapNavSource(
             applicationContext, "", "", "北京", emulate = true,
-            fixedFrom = com.espnav.app.data.GeoPoint(fromLat, fromLon),
-            fixedTo = com.espnav.app.data.GeoPoint(toLat, toLon)
+            fixedFrom = com.espnav.app.data.GeoPoint(s0.latitude, s0.longitude),
+            fixedTo = com.espnav.app.data.GeoPoint(e0.latitude, e0.longitude)
         )
         src.logSink = { msg -> runOnUiThread { log("高德: " + msg) } }
+        src.onRouteReady = { len, sec, coords -> runOnUiThread { showRoutePreview(len, sec, coords) } }
+        previewSource = src
+        binding.tvRouteInfo.text = "正在算路…"
+        binding.btnStartNav.visibility = View.GONE
+        binding.btnGiveUp.visibility = View.GONE
+        src.start()
+        log("正在算路（预览模式，不会发送到 ESP32）…")
+    }
+
+    /** 预览成功：地图画蓝色路线 + 显示全程/时间 + 出现「开始导航/放弃」 */
+    private fun showRoutePreview(len: Int, sec: Int, coords: List<com.espnav.app.data.GeoPoint>) {
+        val am = aMap ?: return
+        runCatching { previewLine?.remove() }
+        val pts = coords.map { com.amap.api.maps.model.LatLng(it.lat, it.lon) }
+        if (pts.isNotEmpty()) {
+            previewLine = am.addPolyline(
+                com.amap.api.maps.model.PolylineOptions()
+                    .addAll(pts)
+                    .width(12f)
+                    .color(0xCC1E88E5.toInt())
+            )
+            runCatching {
+                val b = com.amap.api.maps.model.LatLngBounds.builder()
+                pts.forEach { b.include(it) }
+                am.moveCamera(com.amap.api.maps.CameraUpdateFactory.newLatLngBounds(b.build(), 60))
+            }
+        }
+        val info = String.format(java.util.Locale.US, "全程 %.1f km · 预计 %d 分钟", len / 1000.0, sec / 60)
+        binding.tvRouteInfo.text = info
+        binding.btnStartNav.visibility = View.VISIBLE
+        binding.btnGiveUp.visibility = View.VISIBLE
+        log("路线预览：" + info + " → 确认请点「开始导航」")
+    }
+
+    /** ② 确认后：启动导航并与 ESP32 同步 */
+    private fun startConfirmedNav() {
+        val src = previewSource
+        if (src == null) {
+            log("请先点「预览路线」")
+            return
+        }
+        if (!client.isConnected) {
+            log("未连接，无法开始导航")
+            return
+        }
+        src.onRouteReady = null
+        src.startNavigation()
         launchNav(src, "高德骑行导航(地图选点)")
+        binding.btnStartNav.visibility = View.GONE
+        binding.btnGiveUp.visibility = View.GONE
+        log("已确认路线，开始与 ESP32 同步导航数据")
+    }
+
+    /** 放弃预览：移除折线、停止数据源 */
+    private fun giveUpPreview() {
+        runCatching { previewLine?.remove() }
+        previewLine = null
+        previewSource?.stop()
+        previewSource = null
+        binding.tvRouteInfo.text = getString(R.string.tip_route_info)
+        binding.btnStartNav.visibility = View.GONE
+        binding.btnGiveUp.visibility = View.GONE
+        log("已放弃本次路线预览")
     }
 
     /** 把全部日志复制到剪贴板（便于直接粘贴反馈） */

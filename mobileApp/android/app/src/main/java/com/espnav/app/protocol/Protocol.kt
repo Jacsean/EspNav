@@ -47,6 +47,8 @@ data class NavFrame(
     val overview: List<Pair<Int, Int>> = emptyList(),
     val overviewDot: Pair<Int, Int>? = null,
     val road: RoadSpec? = null,
+    /** 当前速度（km/h，供固件/串口日志显示） */
+    val speedKmh: Int = 0,
     /** 当前路段名称（固件显示在屏幕第一行，超长自动滚动） */
     val roadName: String = "",
     /** 提示文本（路况/测速等；固件显示在“距离”下方的黄色行） */
@@ -67,6 +69,7 @@ data class NavFrame(
         put("overview", Json.pts(overview))
         overviewDot?.let { put("overview_dot", Json.pair(it)) }
         road?.let { put("road", it.toJson()) }
+        put("speed", speedKmh)
         if (roadName.isNotEmpty()) put("roadName", roadName)
         if (notice.isNotEmpty()) put("notice", notice)
     }

@@ -38,6 +38,7 @@ typedef struct {
     npt_t    overview[NAV_MAX_PTS];     int  overview_n;
     npt_t    overview_dot;              bool overview_dot_valid;
 
+    int16_t  speed_kmh;                 /* 当前速度（km/h，仅日志/可选显示） */
     char     road_name[24];             /* 当前路段名称（可选，显示在顶部第一行） */
     char     notice[24];                /* 提示文本（拥堵/测速/未来红绿灯倒计时），显示在距离行下方 */
 

@@ -210,6 +210,7 @@ object NavStateMapper {
             overview = mini,
             overviewDot = mini.lastOrNull(),
             road = roadOf(s),
+            speedKmh = s.speedKmh,
             roadName = safe(s.currentRoad),        /* 过滤字库外汉字（待扩字库后可完整显示） */
             notice = ""                            /* 路况/测速提示：下一轮接入 */
         )

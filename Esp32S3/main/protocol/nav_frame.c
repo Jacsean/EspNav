@@ -57,6 +57,7 @@ bool nav_frame_on_json_line(const char *line, int len)
         s_nav.overview_dot.y = (int16_t)oy;
         s_nav.overview_dot_valid = true;
     }
+    { int v2 = 0; s_nav.speed_kmh = jl_get_int(line, "speed", 0, &v2) ? (int16_t)v2 : 0; }
     jl_get_str(line, "roadName", s_nav.road_name, sizeof(s_nav.road_name));
     jl_get_str(line, "notice", s_nav.notice, sizeof(s_nav.notice));
     s_nav.has_road = jl_has_key(line, "road");
