@@ -189,8 +189,8 @@ function drawBoot(){
   g.font=FONT; g.textBaseline='top';
 
   const title = 'EspNav';
-  const stText = ['系统启动中…','正在连接 WiFi…','WiFi 已连接，等待手机…','连接成功，进入导航'][bootStage];
-  const stSub  = ['','热点：ESPNav-AP','IP 192.168.43.117','请打开手机 App'][bootStage];
+  const stText = ['系统启动中','正在连接 WiFi','WiFi已连接手机热点','连接成功，进入导航'][bootStage];
+  const stSub  = ['','热点 ESPNav-AP','等待手机App连接','请打开手机 App'][bootStage];
   const tip    = '热点 ESPNav-AP   密码 espnav1234';
   const prog   = [0.25, 0.5, 0.8, 1.0][bootStage];
 
@@ -209,8 +209,10 @@ function drawBoot(){
     [[8,8,1,1],[304,8,-1,1],[8,224,1,-1],[304,224,-1,-1]].forEach(c=>{
       g.beginPath(); g.moveTo(c[0]+c[2]*14,c[1]); g.lineTo(c[0],c[1]); g.lineTo(c[0],c[1]+c[3]*14); g.stroke();
     });
-    bootCenter('EspNav v1.0', 76, '#00e676');
-    bootCenter('可穿戴导航屏·骑行版', 102, '#7bef');   /* 间隔号 · 分隔（GB2312 字库含 U+00B7） */
+    g.save(); g.font = '36px SimHei, "Microsoft YaHei"';   /* 固件为 8px 点阵放大 3 倍 */
+    bootCenter('EspNav v1.0', 40, '#00e676');
+    g.restore();
+    bootCenter('可穿戴导航屏·骑行版', 92, '#7bef');
     const sy = 128 + Math.round(28 * Math.abs(Math.sin(anim / 40)));
     g.strokeStyle='#00e676'; g.beginPath(); g.moveTo(80, sy); g.lineTo(240, sy); g.stroke();
     bootCenter(stText, 182, '#ffffff');
