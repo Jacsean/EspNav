@@ -54,6 +54,7 @@
       </label><br>
       <label><input id="demoLong" type="checkbox" checked> 演示长文本滚动（路名滚动，30px/s）</label><br>
       <label><input id="showLost" type="checkbox"> 显示断线提示条（信号中断）</label><br>
+      <label><input id="autoDemo" type="checkbox"> 自动演示时序（上电→开机5秒→导航→断线回开机）</label><br>
       <label>行程图“北”字字号：
         <select id="northSize">
           <option value="16">16px（当前，偏大）</option>
@@ -87,7 +88,8 @@ const S=2, W=320, H=240, CX=160, CAR_Y=110, NEAR_Y=144;
 const cv=document.getElementById('scr'), g=cv.getContext('2d');
 const DIRS8=['北','东北','东','东南','南','西南','西','西北'];
 let northStyle='B';
-let demoLong=true, showLost=false, conn='ok', northPx=8;   // 行程图“北”标注风格（已确认 B：右上角“北”+十字线）
+let demoLong=true, showLost=false, conn='ok', northPx=8;
+let autoDemo=false, demoT=0, demoPhase=0;   // 行程图“北”标注风格（已确认 B：右上角“北”+十字线）
 const FONT='16px SimHei, "Microsoft YaHei"';
 
 
@@ -327,6 +329,16 @@ function loop(now){
   bootStyle = document.getElementById('bootStyle').value;
   bootStage = parseInt(document.getElementById('stage').value, 10);
   conn = document.getElementById('conn').value;
+  if (document.getElementById('autoDemo').checked) {
+    /* 时序演示：0=开机画面5s -> 1=导航6s -> 2=断线(立即回开机) -> 3=等待重连5s -> 1 */
+    autoDemo = true; demoT += dt;
+    if (demoPhase === 0 && demoT >= 5) { demoPhase = 1; demoT = 0; }
+    else if (demoPhase === 1 && demoT >= 6) { demoPhase = 2; demoT = 0; }
+    else if (demoPhase === 2 && demoT >= 0.6) { demoPhase = 3; demoT = 0; }
+    else if (demoPhase === 3 && demoT >= 5) { demoPhase = 1; demoT = 0; }
+    if (demoPhase === 1) { conn = 'ok'; screen = 'nav'; }
+    else { conn = 'wait'; screen = 'boot'; }
+  } else { autoDemo = false; }
   northPx = parseInt(document.getElementById('northSize').value, 10);
   showLost = document.getElementById('showLost').checked;
   render();
