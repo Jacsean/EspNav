@@ -173,38 +173,47 @@ static void draw_net_status(void)
     font_draw_text(6, 218, buf, 0x7BEF);       /* 底部最后一行（浅灰） */
 }
 
+/* 罗盘带（顶部居中，中心 x=160 与道路中轴重合）
+ * · 每 15° 一个小刻度、主方位刻度加长；主方位（北/东/南/西）写中文
+ * · 斜方位（东北/西北/东南/西南）用刻度体现（中文两字会重叠）
+ * · 中心=黄色车头箭头 + 淡黄中轴线；右侧显示“方位 + 角度” */
 static void draw_compass(const nav_frame_t *f)
 {
-    /* 罗盘：4 个主方位用中文文字刻度；4 个斜方位用短刻度线（中文 2 字会重叠，故不写字）
-     * 箭头右侧显示“当前方位 + 度数”，8 个方位都由此体现。 */
     static const char *main_labels[4] = { "北", "东", "南", "西" };
-    const int bx = 235, spread = 75, y = 4;
+    static const char *dirs8[8] = { "北", "东北", "东", "东南", "南", "西南", "西", "西北" };
+    const int bx = 160;
+    const int cy = 20;
+    const int spread = 150;                     /* ±150px 映射 ±180° */
+    const float px_per_deg = (float)spread / 180.0f;
+    int heading = ((f->heading % 360) + 360) % 360;
 
-    for (int i = 0; i < 4; i++) {                      /* 主方位：0/90/180/270 -> 北/东/南/西 */
-        /* 偏角 = 方位角 - 车头角，归一化到 (-180,180]；注意用 +540 而非 +360，否则 0° 会变成 -180°（方位整体偏 180°） */
-        int off = (((((i * 90) - f->heading + 540) % 360) - 180) * spread) / 180;
-        int tx = bx + off - font_text_width(main_labels[i]) / 2;
-        if (tx > bx - spread && tx < bx + spread && tx > -20 && tx < 312) {
-            font_draw_text(tx, y, main_labels[i], PATH_GREEN);
-        }
+    /* 1) 15° 刻度线 */
+    for (int a = 0; a < 360; a += 15) {
+        int d = ((a - heading + 540) % 360) - 180;
+        int x = bx + (int)((float)d * px_per_deg);
+        if (x < bx - spread || x > bx + spread) continue;
+        int major = (a % 90 == 0);
+        fb_line(x, cy - 9, x, cy + (major ? 5 : 0), major ? PATH_GREEN : 0x7BEF);
     }
-    for (int i = 0; i < 4; i++) {                      /* 斜方位：短刻度线 */
-        int off = (((((i * 90 + 45) - f->heading + 540) % 360) - 180) * spread) / 180;
-        int tx = bx + off;
-        if (tx > bx - spread && tx < bx + spread) {
-            fb_line(tx, y + 2, tx, y + 8, 0x7BEF);
-        }
-    }
-    fb_triangle(bx, 28, 6, RGB565_RED);          /* 红色车头箭头（固定朝上） */
 
-    /* 箭头右侧：当前方位（中文）+ 度数 */
+    /* 2) 主方位中文 */
+    for (int i = 0; i < 4; i++) {
+        int d = ((i * 90 - heading + 540) % 360) - 180;
+        int x = bx + (int)((float)d * px_per_deg);
+        if (x < bx - spread + 8 || x > bx + spread - 8) continue;
+        font_draw_text(x - font_text_width(main_labels[i]) / 2, cy + 8, main_labels[i], PATH_GREEN);
+    }
+
+    /* 3) 中心：黄色车头箭头 + 淡黄中轴线（与道路中轴连成一条线） */
+    fb_triangle(bx, cy + 2, 7, RGB565_YELLOW);
+    fb_line(bx, cy + 8, bx, 100, 0x6B60);       /* 淡黄中轴线，指向车标上方 */
+
+    /* 4) 方位 + 角度（中心右侧） */
     {
-        static const char *dirs[8] = { "北", "东北", "东", "东南", "南", "西南", "西", "西北" };
         char buf[24];
-        int deg = ((f->heading % 360) + 360) % 360;
-        int idx = ((deg + 22) / 45) % 8;                /* 最近方位 */
-        snprintf(buf, sizeof(buf), "%s %d°", dirs[idx], deg);
-        font_draw_text(bx + 12, 22, buf, RGB565_WHITE);
+        int idx = ((heading + 22) / 45) % 8;
+        snprintf(buf, sizeof(buf), "%s %d°", dirs8[idx], heading);
+        font_draw_text(bx + 14, cy + 2, buf, RGB565_WHITE);
     }
 }
 
@@ -556,7 +565,7 @@ static void draw_frame(const nav_frame_t *f, float anim)
     if (f->road_name[0]) {
         static char rb[64];
         font_clip_utf8(f->road_name, 12 * 16, rb, sizeof(rb));  /* 放宽，超出由滚动显示 */
-        draw_line_scroll(0, 4, 2, rb, PATH_GREEN, 152);         /* 裁剪到罗盘之前 */
+        draw_line_scroll(0, 4, 40, rb, PATH_GREEN, 300);        /* 罗盘带占顶部，路名下移 */
     }
     draw_overview(f);
 
@@ -564,15 +573,15 @@ static void draw_frame(const nav_frame_t *f, float anim)
     {
         static char buf[64];                 /* static：避免显示任务栈压力 */
         font_clip_utf8(f->hint, 12 * 16, buf, sizeof(buf));     /* 放宽，超出由滚动显示 */
-        draw_line_scroll(1, 4, 22, buf, PATH_GREEN, 152);       /* 滚动（裁剪到罗盘之前） */
+        draw_line_scroll(1, 4, 60, buf, PATH_GREEN, 300);       /* 下移一行 */
 
         snprintf(buf, sizeof(buf), "距离：%d m", (int)f->turn_dist);
-        font_draw_text(4, 42, buf, PATH_GREEN);                 /* 下移一行 */
+        font_draw_text(4, 80, buf, PATH_GREEN);                 /* 再下移一行 */
 
         if (f->notice[0]) {                                     /* 路况/设施提示（红绿灯倒计时若将来可得也放这里） */
             static char nb[40];
             font_clip_utf8(f->notice, 20 * 16, nb, sizeof(nb));
-            draw_line_scroll(2, 4, 62, nb, RGB565_YELLOW, 316);
+            draw_line_scroll(2, 4, 100, nb, RGB565_YELLOW, 316);
         }
 
         int km = (int)(f->total_dist / 1000);
