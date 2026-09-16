@@ -173,10 +173,6 @@ static void draw_net_status(void)
     font_draw_text(6, 218, buf, 0x7BEF);       /* 底部最后一行（浅灰） */
 }
 
-/* 罗盘带（顶部居中，中心 x=160 与道路中轴重合）
- * · 每 15° 一个小刻度、主方位刻度加长；主方位（北/东/南/西）写中文
- * · 斜方位（东北/西北/东南/西南）用刻度体现（中文两字会重叠）
- * · 中心=黄色车头箭头 + 淡黄中轴线；右侧显示“方位 + 角度” */
 /* 罗盘带（顶部居中，中心 x=160 与道路中轴对齐）
  * · 刻度统一 8px（15°/45° 同长）；主方位（北/东/南/西）位置不画线，改写中文
  * · 罗盘内不再画箭头/中轴线（画面上只保留路面上那一个黄色车头）
@@ -235,7 +231,15 @@ static void draw_overview(const nav_frame_t *f)
         int dx = ax + 8 + f->overview_dot.x, dy = ay + 8 + (40 - f->overview_dot.y);
         fb_fill_rect(dx - 2, dy - 2, dx + 2, dy + 2, RGB565_YELLOW);
     }
-    font_draw_text(ax + 80, ay + 2, "北", PATH_GREEN);   /* 小地图北向标记（汉字，与 HTML V2 一致） */
+    font_draw_text(ax + 80, ay + 2, "北", PATH_GREEN);   /* 右上角北字 */
+    {   /* 十字线：下移一个网格(10px)避开北字；竖线上端加向上小箭头指向北 */
+        const int vx = ax + 88;                     /* 北字中心 */
+        const int ny = ay + 26;                     /* 十字中心（原 ay+16，下移 10px） */
+        fb_line(vx, ay + 20, vx, ny + 9, PATH_GREEN);              /* 竖线（上端留箭头位） */
+        fb_line(vx - 3, ay + 24, vx, ay + 19, PATH_GREEN);         /* 箭头左斜 */
+        fb_line(vx + 3, ay + 24, vx, ay + 19, PATH_GREEN);         /* 箭头右斜 */
+        fb_line(vx - 9, ny, vx + 9, ny, PATH_GREEN);               /* 横线 */
+    }
 }
 
 /* ================= M4：路况模板渲染（参照 nav_sim_v2.html readRoad / 几何规格 V0.3） ================= */
@@ -557,6 +561,8 @@ static void draw_frame(const nav_frame_t *f, float anim)
     for (int i = 0; i + 1 < f->route_n; i++)
         fb_line(f->route_center[i].x, f->route_center[i].y, f->route_center[i + 1].x, f->route_center[i + 1].y, PATH_GREEN);
     /* 车辆光标 */
+    /* 路线中轴线（绿色，贯通道路远端 NAV_FAR_Y 到近端 NAV_NEAR_Y；随后绘制车头 -> 车头压线） */
+    fb_line(NAV_CX, NAV_FAR_Y, NAV_CX, NAV_NEAR_Y, RGB565_GREEN);
     if (f->pos_valid) fb_triangle(f->pos.x, f->pos.y, 14, RGB565_YELLOW);
 
 #if RENDER_TEXT
