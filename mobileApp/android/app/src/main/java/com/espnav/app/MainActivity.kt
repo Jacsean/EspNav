@@ -55,6 +55,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        savedBundle = savedInstanceState
         installCrashHandler()
         setupTabs()
 
@@ -113,11 +114,14 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     override fun onResume() {
         super.onResume()
-        runCatching { binding.mapView.onResume() }
+        /* 只有导航页可见时才驱动 MapView 生命周期（官方要求 onCreate/onResume/onPause/onDestroy 成对） */
+        if (binding.pageNav.visibility == View.VISIBLE) ensureMap()
     }
 
     override fun onPause() {
-        runCatching { binding.mapView.onPause() }
+        if (binding.pageNav.visibility == View.VISIBLE) {
+            runCatching { binding.mapView.onPause() }
+        }
         super.onPause()
     }
 
@@ -431,6 +435,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private var aMap: com.amap.api.maps.AMap? = null
     private var previewLine: com.amap.api.maps.model.Polyline? = null
     private var previewSource: AmapNavSource? = null
+    private var mapReady = false
+    private var savedBundle: Bundle? = null
     private var startMarker: com.amap.api.maps.model.Marker? = null
     private var endMarker: com.amap.api.maps.model.Marker? = null
     private var startLatLng: com.amap.api.maps.model.LatLng? = null
@@ -486,14 +492,19 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     private fun ensureMap() {
-        if (aMap != null) {
-            runCatching { binding.mapView.onResume() }
+        if (mapReady) {
+            /* 已创建：恢复渲染并强制重新布局（熄屏/切 Tab 后地图可能因尺寸为 0 而空白） */
+            runCatching {
+                binding.mapView.onResume()
+                binding.mapView.requestLayout()
+                binding.mapView.postInvalidate()
+            }
             return
         }
         try {
             com.amap.api.maps.MapsInitializer.updatePrivacyShow(applicationContext, true, true)
             com.amap.api.maps.MapsInitializer.updatePrivacyAgree(applicationContext, true)
-            binding.mapView.onCreate(null)
+            binding.mapView.onCreate(savedBundle)
             val am = binding.mapView.map ?: throw IllegalStateException("map 对象为空")
             aMap = am
             am.uiSettings.isMyLocationButtonEnabled = true
@@ -506,6 +517,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             am.isMyLocationEnabled = true
             am.setOnMapClickListener { ll -> askSetPoint(ll) }
             am.setOnMapLongClickListener { ll -> askSetPoint(ll) }   /* 长按也可选点（更灵敏） */
+            mapReady = true
             log("地图就绪：点地图可设置起点/终点")
         } catch (t: Throwable) {
             log("! 地图初始化失败：" + t.message)
