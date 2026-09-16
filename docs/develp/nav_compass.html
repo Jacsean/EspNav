@@ -54,6 +54,13 @@
       </label><br>
       <label><input id="demoLong" type="checkbox" checked> 演示长文本滚动（路名滚动，30px/s）</label><br>
       <label><input id="showLost" type="checkbox"> 显示断线提示条（信号中断）</label><br>
+      <label>行程图“北”字字号：
+        <select id="northSize">
+          <option value="16">16px（当前，偏大）</option>
+          <option value="12">12px（缩小约 1/4）</option>
+          <option value="8" selected>8px（缩小一半）</option>
+        </select>
+      </label><br>
       <label>行程图“北”标注：
         <select id="ns">
           <option value="A">A 顶部居中＋指北竖线</option>
@@ -80,7 +87,7 @@ const S=2, W=320, H=240, CX=160, CAR_Y=110, NEAR_Y=144;
 const cv=document.getElementById('scr'), g=cv.getContext('2d');
 const DIRS8=['北','东北','东','东南','南','西南','西','西北'];
 let northStyle='B';
-let demoLong=true, showLost=false, conn='ok';   // 行程图“北”标注风格（已确认 B：右上角“北”+十字线）
+let demoLong=true, showLost=false, conn='ok', northPx=8;   // 行程图“北”标注风格（已确认 B：右上角“北”+十字线）
 const FONT='16px SimHei, "Microsoft YaHei"';
 
 
@@ -141,24 +148,30 @@ function drawRoute(){
   g.fillStyle='#ffe000'; g.fillRect(ax+8+lp[0]-2, ay+8+(40-lp[1])-2, 5,5);
 
   g.fillStyle='#00e676'; g.strokeStyle='#00e676'; g.lineWidth=1;
+  g.save();
+  g.font = northPx + 'px SimHei, "Microsoft YaHei"';     /* 小地图“北”字字号（可调） */
   if (northStyle === 'A') {                       // 顶部居中 + 指北竖线
     const cx=ax+aw/2;
-    g.beginPath(); g.moveTo(cx,ay+2); g.lineTo(cx,ay+12); g.stroke();
-    g.beginPath(); g.moveTo(cx-3,ay+6); g.lineTo(cx,ay+2); g.lineTo(cx+3,ay+6); g.stroke();
-    g.fillText('北', cx-g.measureText('北').width/2, ay+13);
+    g.beginPath(); g.moveTo(cx,ay+2); g.lineTo(cx,ay+8); g.stroke();
+    g.beginPath(); g.moveTo(cx-3,ay+4); g.lineTo(cx,ay+2); g.lineTo(cx+3,ay+4); g.stroke();
+    g.fillText('北', cx-g.measureText('北').width/2, ay+9);
   } else if (northStyle === 'B') {                // 右上角“北” + 十字线
-    const nx=ax+aw-18, ny=ay+26;                 // 十字线下移一个网格(10px)，避开“北”字
-    const vx=nx+8;
-    g.fillText('北', nx, ay+2);
-    g.beginPath(); g.moveTo(vx,ay+20); g.lineTo(vx,ny+9); g.stroke();      // 竖（上端留出箭头位）
-    g.beginPath(); g.moveTo(vx-3,ay+24); g.lineTo(vx,ay+19); g.lineTo(vx+3,ay+24); g.stroke(); // 向上小箭头，指向“北”
-    g.beginPath(); g.moveTo(nx-1,ny);   g.lineTo(nx+17,ny); g.stroke();    // 横
+    const nw = g.measureText('北').width;         // 随字号变化
+    const nx = ax + 80;                          // “北”字起点（与固件一致）
+    const vx = Math.round(nx + nw / 2);          // 十字线中心 = 北字中心
+    const yTop = ay + 2 + northPx + 3;           // 竖线起点：北字下方 3px
+    const ny = Math.max(yTop + 7, ay + 26);      // 十字中心（不低于一个网格）
+    g.fillText('北', nx, ay + 2);
+    g.beginPath(); g.moveTo(vx, yTop + 4); g.lineTo(vx, ny + 9); g.stroke();                    // 竖（上端留箭头位）
+    g.beginPath(); g.moveTo(vx-3, yTop+5); g.lineTo(vx, yTop); g.lineTo(vx+3, yTop+5); g.stroke(); // 向上小箭头
+    g.beginPath(); g.moveTo(vx-9, ny); g.lineTo(vx+9, ny); g.stroke();                          // 横
   } else {                                        // 右上角 箭头↑ + “北”
     const nx=ax+aw-26;
     g.beginPath(); g.moveTo(nx+6,ay+18); g.lineTo(nx+6,ay+4); g.stroke();
     g.beginPath(); g.moveTo(nx+2,ay+8); g.lineTo(nx+6,ay+4); g.lineTo(nx+10,ay+8); g.stroke();
     g.fillText('北', nx+16, ay+4);
   }
+  g.restore();
 }
 
 
@@ -314,6 +327,7 @@ function loop(now){
   bootStyle = document.getElementById('bootStyle').value;
   bootStage = parseInt(document.getElementById('stage').value, 10);
   conn = document.getElementById('conn').value;
+  northPx = parseInt(document.getElementById('northSize').value, 10);
   showLost = document.getElementById('showLost').checked;
   render();
   requestAnimationFrame(loop);
