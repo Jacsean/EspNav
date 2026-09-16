@@ -59,6 +59,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
         savedBundle = savedInstanceState
         installCrashHandler()
+        refreshActionStates()          /* 启动即按“未连接”置灰相关操作 */
         setupTabs()
 
         client = EspNavClient(lifecycleScope)
@@ -161,8 +162,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         NavService.start(this)                    /* 熄屏保持连接 */
         requestNotifyPermissionIfNeeded()
         setStatus("已连接 $addr")
-        binding.btnConnect.isEnabled = false
-        binding.btnDisconnect.isEnabled = true
+        refreshActionStates()          /* 连接成功：相关操作解灰（用户要求：启动成功后刷新一次） */
         log("已连接 $addr")
         send(OutMsg.hello())                 /* 握手：告知 ESP32 “App 已上线” */
     }
@@ -171,8 +171,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         stopMock()
         scheduleReconnect(reason)
         setStatus("未连接（$reason）")
-        binding.btnConnect.isEnabled = true
-        binding.btnDisconnect.isEnabled = false
+        refreshActionStates()          /* 断开：重新置灰 */
         log("断开：$reason")
     }
 
@@ -489,10 +488,33 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     /** 刷新“起点/终点是否已选”的显眼状态行 */
+    /** 按连接状态刷新所有操作可用性：未连接时除“连接/一键连接/配网页/复制日志”外一律置灰 */
+    private fun refreshActionStates() {
+        val on = client.isConnected
+        binding.btnConnect.isEnabled = !on
+        binding.btnQuickConnect.isEnabled = !on
+        binding.btnDisconnect.isEnabled = on
+        for (v in listOf<android.view.View>(
+                binding.btnSendOnce, binding.btnClear, binding.btnMockStart, binding.btnMockStop,
+                binding.btnAmapNav, binding.btnPing, binding.btnGetConfig,
+                binding.seekBrightness, binding.seekDashSpeed, binding.switchAnim)) {
+            v.isEnabled = on
+        }
+        updatePickState()                     /* 导航页的操作也随连接状态刷新 */
+        log("操作可用性已刷新：" + (if (on) "已连接 · 操作可用" else "未连接 · 仅连接/配网可用"))
+    }
+
     private fun updatePickState() {
         binding.tvPickState.text =
             "起点：" + (if (startLatLng != null) "已选" else "未选") +
             "　　" + "终点：" + (if (endLatLng != null) "已选" else "未选")
+        /* 未连接时导航页操作一律不可用；“开始导航/放弃”还需已有预览 */
+        val on = client.isConnected
+        val hasPreview = previewSource != null
+        binding.btnUseMapNav.isEnabled = on
+        binding.btnMapClear.isEnabled = on
+        binding.btnStartNav.isEnabled = on && hasPreview
+        binding.btnGiveUp.isEnabled = on && hasPreview
     }
 
     /** Toast + 日志（失败原因要看得见，不能只写日志） */
