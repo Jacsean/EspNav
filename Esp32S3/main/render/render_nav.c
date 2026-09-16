@@ -106,6 +106,41 @@ void render_nav_set_frame(const nav_frame_t *f)
 }
 
 /* 罗盘（顶部右侧）：8 方位标签随 heading 平移 + 中央红色车头箭头（车头朝上） */
+/* ---------------- 长文本水平滚动（30px/s：30fps 下每帧 1px；滚完停顿 0.6s ≈ 18 帧）---------------- */
+#define SCROLL_SLOTS        3
+#define SCROLL_PAUSE_FRAMES 18
+
+static float s_scroll[SCROLL_SLOTS];
+static int   s_scroll_pause[SCROLL_SLOTS];
+
+static int scroll_off(int slot, int text_w, int avail_w)
+{
+    if (slot < 0 || slot >= SCROLL_SLOTS) return 0;
+    if (text_w <= avail_w) {                 /* 放得下就不动 */
+        s_scroll[slot] = 0.0f;
+        s_scroll_pause[slot] = 0;
+        return 0;
+    }
+    if (s_scroll_pause[slot] > 0) {          /* 停顿中 */
+        s_scroll_pause[slot]--;
+        return (int)s_scroll[slot];
+    }
+    s_scroll[slot] += 1.0f;
+    if (s_scroll[slot] > (float)(text_w + 24)) {   /* 完全滚出 + 间隔后回到起点并停顿 */
+        s_scroll[slot] = 0.0f;
+        s_scroll_pause[slot] = SCROLL_PAUSE_FRAMES;
+    }
+    return (int)s_scroll[slot];
+}
+
+/* 长文本行：超出可用宽度则滚动；始终裁剪到 [x, clip1] */
+static void draw_line_scroll(int slot, int x, int y, const char *text, uint16_t color, int clip1)
+{
+    int w = font_text_width(text);
+    int off = scroll_off(slot, w, clip1 - x);
+    font_draw_text_clip(x - off, y, text, color, x, clip1);
+}
+
 /* 顶部网络状态行：STA 已连接 <ip> / STA 未连接 AP:ESPNav-AP
  * 用途：不用看串口也能确认 ESP32 当前是"只开热点"还是"已连上手机热点"。 */
 static void draw_net_status(void)
@@ -468,7 +503,6 @@ static void draw_frame(const nav_frame_t *f, float anim)
 {
     if (!f || !f->valid) return;
     fb_clear(RGB565_BLACK);
-    fb_fill_rect(0, 0, FB_W - 1, 1, RGB565_GREEN);          /* 顶部信息带示意 */
     fb_line(0, 160, FB_W - 1, 160, RGB565_DGRAY);
     fb_line(220, 160, 220, FB_H - 1, RGB565_DGRAY);
 
@@ -501,25 +535,25 @@ static void draw_frame(const nav_frame_t *f, float anim)
     draw_compass(f);
     draw_net_status();
     if (f->road_name[0]) {
-        static char rb[40];
-        font_clip_utf8(f->road_name, 6 * 16, rb, sizeof(rb));   /* 最多 6 个全角，避免压到罗盘 */
-        font_draw_text(4, 2, rb, PATH_GREEN);
+        static char rb[64];
+        font_clip_utf8(f->road_name, 12 * 16, rb, sizeof(rb));  /* 放宽，超出由滚动显示 */
+        draw_line_scroll(0, 4, 2, rb, PATH_GREEN, 152);         /* 裁剪到罗盘之前 */
     }
     draw_overview(f);
 
     /* ---- 文字层（hint / 距离 / 统计）---- */
     {
         static char buf[64];                 /* static：避免显示任务栈压力 */
-        font_clip_utf8(f->hint, 9 * 16, buf, sizeof(buf));      /* hint ≤9 全角（协议 §6.7） */
-        font_draw_text(4, 22, buf, PATH_GREEN);                 /* 下移一行：让顶部留给网络状态 */
+        font_clip_utf8(f->hint, 12 * 16, buf, sizeof(buf));     /* 放宽，超出由滚动显示 */
+        draw_line_scroll(1, 4, 22, buf, PATH_GREEN, 152);       /* 滚动（裁剪到罗盘之前） */
 
         snprintf(buf, sizeof(buf), "距离：%d m", (int)f->turn_dist);
         font_draw_text(4, 42, buf, PATH_GREEN);                 /* 下移一行 */
 
         if (f->notice[0]) {                                     /* 路况/设施提示（红绿灯倒计时若将来可得也放这里） */
             static char nb[40];
-            font_clip_utf8(f->notice, 9 * 16, nb, sizeof(nb));
-            font_draw_text(4, 62, nb, RGB565_YELLOW);
+            font_clip_utf8(f->notice, 20 * 16, nb, sizeof(nb));
+            draw_line_scroll(2, 4, 62, nb, RGB565_YELLOW, 316);
         }
 
         int km = (int)(f->total_dist / 1000);

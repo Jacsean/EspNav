@@ -108,3 +108,41 @@ void font_clip_utf8(const char *utf8, int max_px, char *out, int outsz)
     }
     out[oi] = 0;
 }
+
+/* 与 font_draw_text 相同，但只绘制落在 [clip_x0, clip_x1] 内的像素（滚动文本用） */
+int font_draw_text_clip(int x, int y, const char *utf8, uint16_t color, int clip_x0, int clip_x1)
+{
+    const char *p = utf8;
+    int cx = x;
+    while (*p) {
+        uint32_t cp = utf8_next(&p);
+        if (cp == 0) break;
+        const font_glyph_t *g = find_glyph(cp);
+        int w = g ? (int)g->w : 16;
+        if (cx + w >= clip_x0 && cx <= clip_x1) {          /* 只处理与裁剪区相交的字 */
+            if (g) {
+                int nb = (g->w + 7) / 8;
+                for (int yy = 0; yy < FONT_H; yy++) {
+                    for (int xx = 0; xx < g->w; xx++) {
+                        int px = cx + xx;
+                        if (px < clip_x0 || px > clip_x1) continue;
+                        uint8_t byte = font_bits[g->off + (uint32_t)yy * nb + (uint32_t)(xx / 8)];
+                        if (byte & (0x80 >> (xx % 8))) fb_pixel(px, y + yy, color);
+                    }
+                }
+            } else {
+                for (int i = 0; i < 16; i++) {
+                    int px = cx + i;
+                    if (px >= clip_x0 && px <= clip_x1) {
+                        fb_pixel(px, y, color);
+                        fb_pixel(px, y + 15, color);
+                    }
+                }
+                if (cx >= clip_x0 && cx <= clip_x1)
+                    for (int i = 0; i < 16; i++) fb_pixel(cx, y + i, color);
+            }
+        }
+        cx += w;
+    }
+    return cx;
+}

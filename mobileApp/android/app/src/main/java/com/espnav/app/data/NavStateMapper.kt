@@ -222,7 +222,9 @@ object NavStateMapper {
             pos = CX to CAR_Y,
             overview = mini,
             overviewDot = mini.lastOrNull(),
-            road = roadOf(s)
+            road = roadOf(s),
+            roadName = safe(s.currentRoad),        /* 过滤字库外汉字（待扩字库后可完整显示） */
+            notice = ""                            /* 路况/测速提示：下一轮接入 */
         )
     }
 }

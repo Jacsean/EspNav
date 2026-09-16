@@ -16,6 +16,8 @@ extern const uint8_t font_bits[];
 void font_init(void);
 /* 绘制 UTF-8 文本，返回结束 x */
 int  font_draw_text(int x, int y, const char *utf8, uint16_t color);
+/* 带水平裁剪的绘制（用于滚动文本，避免侵入相邻区域） */
+int  font_draw_text_clip(int x, int y, const char *utf8, uint16_t color, int clip_x0, int clip_x1);
 /* 文本像素宽度 */
 int  font_text_width(const char *utf8);
 /* 按最大像素宽度截断（超出末尾追加 …） */
