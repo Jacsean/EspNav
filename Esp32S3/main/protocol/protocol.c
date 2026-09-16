@@ -17,12 +17,12 @@ static uint32_t s_err = 0;
 static int64_t s_t_msg = 0;                     /* 最近收到任意报文的时刻 */
 static int64_t s_t_nav = 0;                     /* 最近收到 NAV_FRAME 的时刻 */
 
-/* 简化后的 2 阶段：只要“App 的报文还在”就算已连接（有没有导航数据由渲染侧决定显示内容） */
+/* 纯报文驱动：只要“App 的报文还在”就算已连接（画面内容完全由报文决定） */
 int protocol_link_stage(void)
 {
     int64_t now = esp_timer_get_time();
-    if (s_t_msg == 0 || (now - s_t_msg) > LINK_TIMEOUT_US) return 1;   /* 1 = 等待 App */
-    return 2;                                                          /* 2 = 已连接 */
+    if (s_t_msg == 0 || (now - s_t_msg) > LINK_TIMEOUT_US) return LINK_STAGE_WAIT_APP;
+    return LINK_STAGE_CONNECTED;
 }
 
 void protocol_link_reset(void)

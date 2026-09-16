@@ -14,7 +14,9 @@ void protocol_handle(const char *line, int len, proto_send_fn send, void *ctx);
 uint32_t protocol_err_count(void);
 void     protocol_err_reset(void);
 
-/* 应用层链路阶段（只看“收到什么报文”，不看 TCP 连接状态 —— 判定依据唯一）：
- *   1 = 等待 App（5 秒内无任何报文）  2 = 已连接（有报文；是否有导航数据由渲染侧决定内容） */
+/* 应用层链路阶段（纯报文驱动，判定依据唯一；不使用任何计时/计数附加条件）
+ * 返回值只允许用下面两个具名常量比较，禁止写 stage < 3 这类魔法数字。 */
+#define LINK_STAGE_WAIT_APP  1   /* 等待 App：5 秒内未收到任何报文 */
+#define LINK_STAGE_CONNECTED 2   /* 已连接：有报文在流动 */
 int  protocol_link_stage(void);
 void protocol_link_reset(void);
