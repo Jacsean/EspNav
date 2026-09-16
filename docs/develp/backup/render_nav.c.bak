@@ -104,18 +104,10 @@ static void quad_from_centerline(const nav_frame_t *f, int nearHalf, int farHalf
 }
 
 
-static uint32_t s_frame_count = 0;      /* 收到的有效帧计数（显示任务据此判断数据是否真正在流动） */
-
-uint32_t render_nav_frame_count(void)
-{
-    return s_frame_count;
-}
-
 void render_nav_set_frame(const nav_frame_t *f)
 {
     if (!f || !f->valid) return;
     s_cur = *f;
-    s_frame_count++;
     s_have = true;
     s_link_lost = false;     /* 收到新帧 -> 恢复实时画面 */
 }
@@ -677,7 +669,7 @@ void render_nav_frame(const nav_frame_t *f)
 void render_nav_boot(int stage, const char *sub)
 {
     static float anim = 0.0f;
-    static const char *st_text[3] = { "系统启动中", "正在连接 WiFi", "WiFi已连接手机热点" };
+    static const char *st_text[3] = { "系统启动中", "正在连接 WiFi", "WiFi 已连接，等待手机" };
     const uint16_t GRID = 0x10C2;                 /* 极暗绿灰 */
     int i, w, y;
     char line[48];
@@ -697,14 +689,14 @@ void render_nav_boot(int stage, const char *sub)
     fb_line(FB_W - 9, FB_H - 9, FB_W - 23, FB_H - 9, PATH_GREEN);
     fb_line(FB_W - 9, FB_H - 9, FB_W - 9, FB_H - 23, PATH_GREEN);
 
-    /* 标题（3 倍放大并上移，避免与网格/副标题叠压）+ 副标题 */
-    w = font_text_width("EspNav v1.0") * 3;
-    font_draw_text_scaled((FB_W - w) / 2, 40, "EspNav v1.0", PATH_GREEN, 3);
+    /* 标题 + 副标题（居中） */
+    w = font_text_width("EspNav v1.0");
+    font_draw_text((FB_W - w) / 2, 76, "EspNav v1.0", PATH_GREEN);
     w = font_text_width("可穿戴导航屏·骑行版");
-    font_draw_text((FB_W - w) / 2, 92, "可穿戴导航屏·骑行版", 0x7BEF);
+    font_draw_text((FB_W - w) / 2, 102, "可穿戴导航屏·骑行版", 0x7BEF);
 
     /* 扫描线（动态） */
-    y = 132 + (int)(24.0f * (anim - (int)(anim / 56.0f) * 56.0f) / 56.0f * 2.0f);
+    y = 128 + (int)(28.0f * (anim - (int)(anim / 56.0f) * 56.0f) / 56.0f * 2.0f);
     if (y > 156) y = 156 - (y - 156);
     fb_line(80, y, 240, y, PATH_GREEN);
 
@@ -714,12 +706,9 @@ void render_nav_boot(int stage, const char *sub)
     snprintf(line, sizeof(line), "%s", st_text[stage]);
     w = font_text_width(line);
     font_draw_text((FB_W - w) / 2, 182, line, RGB565_WHITE);
-    {
-        const char *line2 = (stage == 2) ? "等待手机App连接" : sub;   /* 阶段2 固定提示语 */
-        if (line2 && line2[0]) {
-            w = font_text_width(line2);
-            font_draw_text((FB_W - w) / 2, 206, line2, 0x7BEF);
-        }
+    if (sub && sub[0]) {
+        w = font_text_width(sub);
+        font_draw_text((FB_W - w) / 2, 206, sub, 0x7BEF);
     }
     fb_flush();          /* 关键：fb_* 只写内存帧缓冲，必须 flush 才推送到 LCD */
 }

@@ -146,3 +146,33 @@ int font_draw_text_clip(int x, int y, const char *utf8, uint16_t color, int clip
     }
     return cx;
 }
+
+/* 按整数倍放大绘制（每像素放大为 scale×scale 方块） */
+int font_draw_text_scaled(int x, int y, const char *utf8, uint16_t color, int scale)
+{
+    const char *p = utf8;
+    int cx = x;
+    if (scale < 1) scale = 1;
+    while (*p) {
+        uint32_t cp = utf8_next(&p);
+        if (cp == 0) break;
+        const font_glyph_t *g = find_glyph(cp);
+        int gw = g ? (int)g->w : 16;
+        if (g) {
+            int nb = (g->w + 7) / 8;
+            for (int yy = 0; yy < FONT_H; yy++) {
+                for (int xx = 0; xx < g->w; xx++) {
+                    uint8_t byte = font_bits[g->off + (uint32_t)yy * nb + (uint32_t)(xx / 8)];
+                    if (byte & (0x80 >> (xx % 8))) {
+                        int bx = cx + xx * scale, by = y + yy * scale;
+                        for (int dy = 0; dy < scale; dy++)
+                            for (int dx = 0; dx < scale; dx++)
+                                fb_pixel(bx + dx, by + dy, color);
+                    }
+                }
+            }
+        }
+        cx += gw * scale;
+    }
+    return cx;
+}

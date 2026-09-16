@@ -19,8 +19,6 @@ static void display_task(void *arg)
     ESP_LOGI(TAG, "display task running (开机画面>=5s -> 连接后进入导航；断线立即回开机画面)");
     int64_t last = esp_timer_get_time();
     int64_t boot_t0 = last;
-    int64_t last_frame_t = last;        /* 最近一次收到导航帧的时刻 */
-    uint32_t last_frames = 0;
     bool boot = true;
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(33));                  /* 目标 30fps（实际受 SPI 传输限制） */
@@ -30,17 +28,12 @@ static void display_task(void *arg)
         if (dt > 0.5f) dt = 0.5f;
 
         int64_t el = (now - boot_t0) / 1000000;         /* 距进入开机画面的秒数 */
-        uint32_t fr = render_nav_frame_count();
-        if (fr != last_frames) { last_frames = fr; last_frame_t = now; }
-        /* “能工作”= 收到过帧 且 3 秒内仍有新帧（只看 TCP 连接会因 App 自动重连而反复切换） */
-        bool active = (fr > 0) && ((now - last_frame_t) < 3000000);
+        bool linked = tcp_server_has_client();
 
-        if (boot) {                                     /* 开机画面：能工作且满 5 秒才切；或超时兜底 */
-            if ((active && el >= BOOT_MIN_S) || el > BOOT_TIMEOUT_S) {
+        if (boot) {                                     /* 开机画面：已连且满 5 秒才切；或超时兜底 */
+            if ((linked && el >= BOOT_MIN_S) || el > BOOT_TIMEOUT_S) {
                 boot = false;
-                if (fr == 0) render_nav_demo();         /* 兜底切换且无数据：显示样例画面，避免黑屏 */
-                ESP_LOGI(TAG, "boot -> nav (frames=%lu, elapsed=%llds)",
-                         (unsigned long)fr, (long long)el);
+                ESP_LOGI(TAG, "boot -> nav (linked=%d, elapsed=%llds)", (int)linked, (long long)el);
             } else {
                 char sub[32];
                 int stage = (el < 1) ? 0 : (wifi_sta_is_connected() ? 2 : 1);
@@ -50,10 +43,10 @@ static void display_task(void *arg)
                 render_nav_boot(stage, sub);
                 continue;
             }
-        } else if (!active) {                           /* 3 秒无新帧 = 不能工作：立即回开机画面 */
+        } else if (!linked) {                           /* 断线：立即回开机画面（不显示“信号中断”） */
             boot = true;
             boot_t0 = now;
-            ESP_LOGW(TAG, "no data for 3s -> back to boot screen");
+            ESP_LOGW(TAG, "app disconnected -> back to boot screen");
             continue;
         }
         render_nav_tick(dt);

@@ -7,6 +7,8 @@ void render_nav_boot(int stage, const char *sub);
 void render_nav_demo(void);          /* 内置样例-直行（与 nav_sim_v2.html 参数一致） */
 /* M3：帧到达时 set（仅缓存），显示任务周期调用 tick（含按 dash_speed 的虚线流动动画） */
 void render_nav_set_frame(const nav_frame_t *f);
+/* 已收到的帧计数（显示任务据此判断“数据是否真的在流动”，避免仅凭 TCP 连接切换画面） */
+uint32_t render_nav_frame_count(void);
 void render_nav_tick(float dt);
 /* 立即用当前缓存帧渲染一次（收帧时调用，保证帧必上屏） */
 void render_nav_draw_now(void);
