@@ -11,6 +11,8 @@
 static const char *TAG = "display_task";
 
 #define BOOT_MIN_S     5       /* 开机画面最短显示时间（画面切换延迟；后台照常收数据） */
+#define LINK_GRACE_S   5       /* TCP 无活跃连接持续超过该秒数才视为断开 */
+#define FRAME_GRACE_S  30      /* 无新导航帧持续超过该秒数才视为“不能工作” */
 #define BOOT_TIMEOUT_S 60      /* 兜底：60 秒仍未等到手机 App 连接也进入导航画面 */
 
 static void display_task(void *arg)
@@ -20,6 +22,7 @@ static void display_task(void *arg)
     int64_t last = esp_timer_get_time();
     int64_t boot_t0 = last;
     int64_t last_frame_t = last;        /* 最近一次收到导航帧的时刻 */
+    int64_t last_active_t = last;       /* 最近一次“有活跃连接”的时刻 */
     uint32_t last_frames = 0;
     bool boot = true;
     for (;;) {
@@ -32,8 +35,12 @@ static void display_task(void *arg)
         int64_t el = (now - boot_t0) / 1000000;         /* 距进入开机画面的秒数 */
         uint32_t fr = render_nav_frame_count();
         if (fr != last_frames) { last_frames = fr; last_frame_t = now; }
-        /* “能工作”= 收到过帧 且 3 秒内仍有新帧（只看 TCP 连接会因 App 自动重连而反复切换） */
-        bool active = (fr > 0) && ((now - last_frame_t) < 3000000);
+        /* 双条件（都带宽限，避免扫描/重连的短暂抖动导致闪屏）：
+         * conn_ok = 5 秒内有活跃连接；frames_ok = 收到过帧且 30 秒内有新帧 */
+        if (tcp_server_has_client()) last_active_t = now;
+        bool conn_ok   = (now - last_active_t) < (int64_t)LINK_GRACE_S * 1000000;
+        bool frames_ok = (fr > 0) && ((now - last_frame_t) < (int64_t)FRAME_GRACE_S * 1000000);
+        bool active = conn_ok && frames_ok;
 
         if (boot) {                                     /* 开机画面：能工作且满 5 秒才切；或超时兜底 */
             if ((active && el >= BOOT_MIN_S) || el > BOOT_TIMEOUT_S) {
@@ -50,10 +57,11 @@ static void display_task(void *arg)
                 render_nav_boot(stage, sub);
                 continue;
             }
-        } else if (!active) {                           /* 3 秒无新帧 = 不能工作：立即回开机画面 */
+        } else if (!active) {                           /* 判定“不能工作”（已含宽限）才回开机画面 */
             boot = true;
             boot_t0 = now;
-            ESP_LOGW(TAG, "no data for 3s -> back to boot screen");
+            ESP_LOGW(TAG, "not workable (conn_ok=%d frames_ok=%d) -> back to boot screen",
+                     (int)conn_ok, (int)frames_ok);
             continue;
         }
         render_nav_tick(dt);

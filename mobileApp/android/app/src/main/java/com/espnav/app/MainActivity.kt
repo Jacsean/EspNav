@@ -46,6 +46,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private var mockJob: Job? = null
     private val prefs by lazy { getSharedPreferences("espnav", MODE_PRIVATE) }
     private val pendingCandidates = ArrayDeque<String>()
+    /** 连接尝试互斥：避免“候选链/自动重连/扫描”三者并发建连（多连接会互相踢，屏幕反复切画面） */
+    private var connecting = false
     private val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
     private val crashFile: java.io.File get() = java.io.File(filesDir, "crash.log")
     private var reconnectCount = 0
@@ -148,11 +150,12 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         log("连接中断（" + reason + "），" + (RECONNECT_DELAY_MS / 1000) + " 秒后自动重连（第 " + reconnectCount + " 次）")
         lifecycleScope.launch {
             delay(RECONNECT_DELAY_MS)
-            if (!client.isConnected) doConnect()
+            if (!client.isConnected && !connecting) { connecting = true; doConnect() }
         }
     }
 
     override fun onConnected(addr: String) {
+        connecting = false
         prefs.edit().putString(KEY_LAST_IP, addr.substringBefore(':')).apply()   /* 记住可用地址 */
         reconnectCount = 0
         NavService.start(this)                    /* 熄屏保持连接 */
@@ -193,6 +196,9 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     /** 一键连接：依次尝试“上次成功的地址”和 192.168.4.1；4.5 秒未连上就换下一个 */
     private fun quickConnect() {
+        if (client.isConnected) { log("已连接，无需重连"); return }
+        if (connecting) { log("连接进行中，忽略重复请求"); return }
+        connecting = true
         val list = LinkedHashSet<String>()
         prefs.getString(KEY_LAST_IP, null)?.takeIf { it.isNotBlank() }?.let { list.add(it) }
         list.add(binding.etHost.text.toString().trim().ifBlank { DEFAULT_HOST })
@@ -207,12 +213,14 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     private fun tryNextCandidate() {
+        if (client.isConnected) { connecting = false; return }
         val c = pendingCandidates.removeFirstOrNull()
         if (c == null) {
             log("已知地址都未连上 → 开始扫描当前局域网（8899）…")
             scanForDevice { ips ->
                 if (ips.isEmpty()) {
                     log("扫描未发现设备：请确认手机与 ESP32 在同一网络（ESP32 已配网连上本热点，或手机连了 ESPNav-AP）")
+                    connecting = false
                 } else {
                     log("扫描发现：${ips.joinToString(", ")} → 依次尝试")
                     pendingCandidates.addAll(ips)
