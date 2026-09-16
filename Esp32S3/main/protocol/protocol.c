@@ -95,8 +95,7 @@ void protocol_handle(const char *line, int len, proto_send_fn send, void *ctx)
         const espnav_config_t *c = config_get();
         char hb[128];
         snprintf(hb, sizeof(hb),
-                 "{\"msg_type\":\"HELLO_ACK\",\"payload\":{\"firmware_ver\":\"%s\"}}
-",
+                 "{\"msg_type\":\"HELLO_ACK\",\"payload\":{\"firmware_ver\":\"%s\"}}\n",
                  c->firmware_ver);
         if (send) send(hb, ctx);
         ESP_LOGI(TAG, "RX HELLO -> TX HELLO_ACK ver=%s", c->firmware_ver);

@@ -233,6 +233,36 @@ def check_format_truncation(path, src):
     return issues, hints
 
 
+def check_unterminated_string(path, src):
+    """C 源码里双引号字符串跨行未闭合（heredoc 折叠 \n 的典型后果，必然编译失败）"""
+    issues = []
+    body = strip_comments(src)
+    for i, line in enumerate(body.split('\n'), 1):
+        n, j = 0, 0
+        while j < len(line):
+            c = line[j]
+            if c == '\\':
+                j += 2
+                continue
+            if c == "'":            # 字符字面量：整段跳过（里面可能包含引号，如 '\'"\''）
+                j += 1
+                while j < len(line):
+                    if line[j] == '\\':
+                        j += 2
+                        continue
+                    if line[j] == "'":
+                        j += 1
+                        break
+                    j += 1
+                continue
+            if c == '"':
+                n += 1
+            j += 1
+        if n % 2 == 1:
+            issues.append('line %d: unterminated string literal (missing terminating quote)' % i)
+    return issues
+
+
 def check_color_macros(root):
     """使用了未定义的 RGB565_* 颜色宏（C 编译必报 undeclared identifier）"""
     defined, used = set(), {}
@@ -309,6 +339,10 @@ def main():
 
         for msg in check_sys_headers(c, raw):
             print('[missing sysheader] %s: %s' % (c, msg))
+            problems += 1
+
+        for msg in check_unterminated_string(c, raw):
+            print('[string] %s: %s' % (c, msg))
             problems += 1
 
         for msg in check_balance(c, raw):
