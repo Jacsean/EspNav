@@ -7,7 +7,13 @@ import android.view.View
 import android.widget.SeekBar
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.espnav.app.data.MockNavigator
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import com.espnav.app.data.AmapNavSource
+import com.espnav.app.data.MockNavSource
+import com.espnav.app.data.NavSource
 import com.espnav.app.data.NavStateMapper
 import com.espnav.app.databinding.ActivityMainBinding
 import com.espnav.app.net.EspNavClient
@@ -29,7 +35,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var client: EspNavClient
-    private lateinit var mock: MockNavigator
+    private var navSource: NavSource = MockNavSource()
     private var mockJob: Job? = null
     private val prefs by lazy { getSharedPreferences("espnav", MODE_PRIVATE) }
     private val pendingCandidates = ArrayDeque<String>()
@@ -42,7 +48,6 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
         client = EspNavClient(lifecycleScope)
         client.listener = this
-        mock = MockNavigator()
 
         binding.etHost.setText(prefs.getString(KEY_LAST_IP, null) ?: DEFAULT_HOST)
         binding.etPort.setText("8899")
@@ -59,12 +64,13 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         binding.btnGetConfig.setOnClickListener { send(OutMsg.getConfig()) }
         binding.btnClear.setOnClickListener { send(OutMsg.clearScreen()) }
         binding.btnSendOnce.setOnClickListener {
-            val f = NavStateMapper.toFrame(mock.next())
+            val f = NavStateMapper.toFrame(navSource.latest())
             send(OutMsg.navFrame(f))
-            binding.tvStage.text = "单帧：${mock.stageName()} 剩余 ${f.turnDist} m"
+            binding.tvStage.text = "单帧：${navSource.displayName} 剩余 ${f.turnDist} m"
         }
         binding.btnMockStart.setOnClickListener { startMock() }
         binding.btnMockStop.setOnClickListener { stopMock() }
+        binding.btnAmapNav.setOnClickListener { startAmapNav() }
 
         binding.seekBrightness.progress = 80
         binding.seekDashSpeed.progress = 40
@@ -160,28 +166,77 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         client.connect(host, port)
     }
 
+    /** 开始模拟导航（数据源 = MockNavSource） */
     private fun startMock() {
-        if (mockJob?.isActive == true) return
+        launchNav(MockNavSource(), "模拟导航")
+    }
+
+    /** 开始高德导航：先申请定位权限，再启动 AMapNavi（目的地 = 当前位置北向 2km，用于验证链路） */
+    private fun startAmapNav() {
         if (!client.isConnected) {
-            log("未连接，无法开始模拟")
+            log("未连接，无法开始导航")
             return
         }
-        mock.reset()
+        if (!hasLocationPermission()) {
+            log("需要定位权限，请在弹窗中允许")
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                ),
+                REQ_LOCATION
+            )
+            return
+        }
+        launchNav(AmapNavSource(applicationContext, 0.0, 0.0, autoDestMeters = 2000), "高德导航")
+    }
+
+    private fun hasLocationPermission(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_LOCATION) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                log("定位权限已授予，启动高德导航")
+                startAmapNav()
+            } else {
+                log("定位权限被拒绝，无法使用高德导航")
+            }
+        }
+    }
+
+    /** 统一启动：切换数据源并按 5Hz 向屏幕发帧 */
+    private fun launchNav(source: NavSource, label: String) {
+        if (mockJob?.isActive == true) return
+        if (!client.isConnected) {
+            log("未连接，无法开始导航")
+            return
+        }
+        navSource = source
+        navSource.start()
         mockJob = lifecycleScope.launch {
             while (isActive) {
-                val f = NavStateMapper.toFrame(mock.next())
+                val f = NavStateMapper.toFrame(navSource.latest())
                 client.queue(OutMsg.navFrame(f))
                 binding.tvStage.text =
-                    "模拟中：${mock.stageName()}  剩余 ${f.turnDist} m  进度 ${f.progressPct}%"
+                    "${label}：剩余 ${f.turnDist} m  进度 ${f.progressPct}%  ${f.hint}"
                 delay(FRAME_INTERVAL_MS)
             }
         }
-        log("开始模拟导航（每 ${FRAME_INTERVAL_MS}ms 一帧）")
+        log("开始 $label（每 ${FRAME_INTERVAL_MS}ms 一帧）")
     }
 
     private fun stopMock() {
         mockJob?.cancel()
         mockJob = null
+        runCatching { navSource.stop() }
     }
 
     private fun send(json: String) {
@@ -215,6 +270,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     companion object {
         private const val DEFAULT_HOST = "192.168.4.1"
+        private const val REQ_LOCATION = 1001
         private const val KEY_LAST_IP = "last_ip"
         private const val FRAME_INTERVAL_MS = 200L   // 5 Hz（协议上限 10fps）
         private const val MAX_LOG_LINES = 200

@@ -22,7 +22,9 @@ import com.amap.api.navi.model.NaviLatLng
 class AmapNavSource(
     private val context: Context,
     private val destLat: Double,
-    private val destLon: Double
+    private val destLon: Double,
+    /** >0 时忽略 destLat/destLon，改用“当前位置北向前方 N 米”作为目的地（用于快速验证链路） */
+    private val autoDestMeters: Int = 0
 ) : NavSource, SimpleNaviListener() {
 
     companion object {
@@ -37,6 +39,7 @@ class AmapNavSource(
 
     private var navi: AMapNavi? = null
     private var started = false
+    private var routeRequested = false
 
     /** 导航回调缓存的最新状态（[latest] 直接返回它，不推进） */
     @Volatile
@@ -80,7 +83,7 @@ class AmapNavSource(
 
     override fun latest(): NavState = state
 
-    /** 由界面在拿到定位权限后调用：发起“当前位置 -> 目的地”算路 */
+    /** 发起“当前位置 -> 目的地”算路；目的地可为自动生成（前方 N 米） */
     fun calculateRoute(from: GeoPoint?) {
         val n = navi ?: return
         val start = from ?: lastOrigin
@@ -88,17 +91,26 @@ class AmapNavSource(
             Log.w(TAG, "尚无定位，无法算路")
             return
         }
+        val dLat: Double
+        val dLon: Double
+        if (destLat == 0.0 && destLon == 0.0 && autoDestMeters > 0) {
+            dLat = start.lat + autoDestMeters / 111_320.0     // 北向偏移
+            dLon = start.lon
+            Log.i(TAG, "使用自动目的地：当前位置北向 ${autoDestMeters} 米")
+        } else {
+            dLat = destLat
+            dLon = destLon
+        }
         val fromPts = listOf(NaviLatLng(start.lat, start.lon))
-        val toPts = listOf(NaviLatLng(destLat, destLon))
+        val toPts = listOf(NaviLatLng(dLat, dLon))
         val ok = n.calculateDriveRoute(fromPts, toPts, null, ROUTE_STRATEGY_DEFAULT)
-        Log.i(TAG, "发起算路: $start -> ($destLat,$destLon) result=$ok")
+        Log.i(TAG, "发起算路: ($start) -> ($dLat,$dLon) result=$ok")
     }
 
     // ---------------- 高德回调 -> NavState ----------------
 
     override fun onInitNaviSuccess() {
-        Log.i(TAG, "onInitNaviSuccess：SDK 就绪")
-        calculateRoute(null)
+        Log.i(TAG, "onInitNaviSuccess：SDK 就绪（等待首个定位后自动算路）")
     }
 
     override fun onInitNaviFailure() {
@@ -120,11 +132,16 @@ class AmapNavSource(
 
     override fun onLocationChange(loc: AMapNaviLocation?) {
         val l = loc ?: return
-        l.coord?.let { lastOrigin = GeoPoint(it.latitude, it.longitude) }
+        val c = l.coord
+        if (c != null) lastOrigin = GeoPoint(c.latitude, c.longitude)
         state = state.copy(
             headingDeg = l.bearing.toInt(),
-            speedKmh = (l.speed * 3.6f).toInt()          // 高德 speed 为 m/s
+            speedKmh = (l.speed * 3.6f).toInt()          // 高德 Location.speed 为 m/s
         )
+        if (!routeRequested && c != null) {              // 首个定位到达 -> 自动算路
+            routeRequested = true
+            calculateRoute(lastOrigin)
+        }
     }
 
     override fun onNaviInfoUpdate(info: NaviInfo?) {

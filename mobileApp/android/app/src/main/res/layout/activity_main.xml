@@ -140,6 +140,13 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="@string/btn_mock_stop" />
+
+            <Button
+                android:id="@+id/btnAmapNav"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/btn_amap_nav" />
         </LinearLayout>
 
         <LinearLayout
