@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import androidx.core.widget.doAfterTextChanged
 import android.widget.Toast
 import android.view.View
 import android.widget.SeekBar
@@ -48,6 +49,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private val pendingCandidates = ArrayDeque<String>()
     /** 连接尝试互斥：避免“候选链/自动重连/扫描”三者并发建连（多连接会互相踢，屏幕反复切画面） */
     private var connecting = false
+    /** 算路超时兜底任务（高德回调不返回时不至于一直“正在算路…”） */
+    private var routeTimeoutJob: kotlinx.coroutines.Job? = null
     private val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
     private val crashFile: java.io.File get() = java.io.File(filesDir, "crash.log")
     private var reconnectCount = 0
@@ -71,6 +74,9 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         binding.etTo.setText(TO_ADDRESS)
         binding.btnDisconnect.isEnabled = false
 
+        for (et in listOf(binding.etFrom, binding.etTo)) {
+            et.doAfterTextChanged { updatePickState() }
+        }
         binding.btnConnect.setOnClickListener { doConnect() }
         binding.btnQuickConnect.setOnClickListener { quickConnect() }
         binding.btnOpenProv.setOnClickListener { openProvPage() }
@@ -508,9 +514,18 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     private fun updatePickState() {
-        binding.tvPickState.text =
-            "起点：" + (if (startLatLng != null) "已选" else "未选") +
-            "　　" + "终点：" + (if (endLatLng != null) "已选" else "未选")
+        /* 起终点来源：地图选点 > 输入框地址 > 未选（之前只看地图选点，输入了地址却显示“未选”，是荒谬的） */
+        val fromSrc = when {
+            startLatLng != null -> "已选(地图)"
+            binding.etFrom.text.toString().isNotBlank() -> "已选(地址)"
+            else -> "未选"
+        }
+        val toSrc = when {
+            endLatLng != null -> "已选(地图)"
+            binding.etTo.text.toString().isNotBlank() -> "已选(地址)"
+            else -> "未选"
+        }
+        binding.tvPickState.text = "起点：" + fromSrc + "　　" + "终点：" + toSrc
         /* 未连接时导航页操作一律不可用；“开始导航/放弃”还需已有预览 */
         val on = client.isConnected
         val hasPreview = previewSource != null
@@ -675,10 +690,25 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         binding.btnGiveUp.visibility = View.GONE
         src.start()
         log("正在算路（预览模式，不会发送到 ESP32）…")
+        /* 超时兜底：高德导航回调若一直不返回，不能让你傻等（最常见原因是 Key 未开通导航服务） */
+        routeTimeoutJob?.cancel()
+        routeTimeoutJob = lifecycleScope.launch {
+            delay(ROUTE_TIMEOUT_MS)
+            if (binding.tvRouteInfo.text.startsWith("正在算路")) {
+                binding.tvRouteInfo.text = "算路超时 ✕"
+                toast("算路超时：请检查 ①高德Key是否开通『Android导航SDK』服务 ②手机是否有外网")
+                log("⚠ 算路超时（" + (ROUTE_TIMEOUT_MS / 1000) + " 秒无回调）。常见原因：")
+                log("   ① 高德 Key 只开通了地图服务，未开通【Android 导航 SDK】——去高德控制台确认")
+                log("   ② 手机当前无外网（如连的是 ESPNav-AP 热点）")
+                log("   ③ 起终点距离过近/无骑行路径可算")
+            }
+        }
     }
 
     /** 预览成功：地图画蓝色路线 + 显示全程/时间 + 出现「开始导航/放弃」 */
     private fun showRoutePreview(len: Int, sec: Int, coords: List<com.espnav.app.data.GeoPoint>) {
+        routeTimeoutJob?.cancel()
+        routeTimeoutJob = null
         val am = aMap ?: return
         runCatching { previewLine?.remove() }
         val pts = coords.map { com.amap.api.maps.model.LatLng(it.lat, it.lon) }
@@ -770,6 +800,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         private const val TO_ADDRESS = "北京亦庄同济南路地铁站"
         private const val KEY_LAST_IP = "last_ip"
         private const val FRAME_INTERVAL_MS = 200L   // 5 Hz（协议上限 10fps）
+        private const val ROUTE_TIMEOUT_MS = 12000L  // 算路超时兜底（毫秒）
         private const val MAX_LOG_LINES = 1000
     }
 }
