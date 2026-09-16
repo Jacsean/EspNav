@@ -467,8 +467,22 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             endMarker = null
             startLatLng = null
             endLatLng = null
+            updatePickState()
             log("已清除地图标记")
         }
+    }
+
+    /** 刷新“起点/终点是否已选”的显眼状态行 */
+    private fun updatePickState() {
+        binding.tvPickState.text =
+            "起点：" + (if (startLatLng != null) "已选" else "未选") +
+            "　　" + "终点：" + (if (endLatLng != null) "已选" else "未选")
+    }
+
+    /** Toast + 日志（失败原因要看得见，不能只写日志） */
+    private fun toast(msg: String) {
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        log(msg)
     }
 
     private fun ensureMap() {
@@ -491,6 +505,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             am.myLocationStyle = st
             am.isMyLocationEnabled = true
             am.setOnMapClickListener { ll -> askSetPoint(ll) }
+            am.setOnMapLongClickListener { ll -> askSetPoint(ll) }   /* 长按也可选点（更灵敏） */
             log("地图就绪：点地图可设置起点/终点")
         } catch (t: Throwable) {
             log("! 地图初始化失败：" + t.message)
@@ -511,6 +526,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                     setMarker(false)
                     reverseGeocode(ll, false)
                 }
+                updatePickState()
             }
             .show()
     }
@@ -557,15 +573,15 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         val s0 = startLatLng
         val e0 = endLatLng
         if (s0 == null || e0 == null) {
-            log("请先在地图上选择起点和终点（点地图 -> 设为起点/终点）")
+            toast("请先点地图选起点和终点（点一下地图，或长按）")
             return
         }
         if (!hasInternet()) {
-            log("手机当前无外网：高德算路需要联网，请先配网")
+            toast("手机当前无外网：高德算路需要联网")
             return
         }
         if (!hasLocationPermission()) {
-            log("需要定位权限，请允许后重试")
+            toast("需要定位权限，请允许后重试")
             ActivityCompat.requestPermissions(
                 this,
                 arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
@@ -618,11 +634,11 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private fun startConfirmedNav() {
         val src = previewSource
         if (src == null) {
-            log("请先点「预览路线」")
+            toast("请先点「预览路线」")
             return
         }
         if (!client.isConnected) {
-            log("未连接，无法开始导航")
+            toast("未连接，无法开始导航")
             return
         }
         src.onRouteReady = null
@@ -640,6 +656,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         previewSource?.stop()
         previewSource = null
         binding.tvRouteInfo.text = getString(R.string.tip_route_info)
+        updatePickState()
         binding.btnStartNav.visibility = View.GONE
         binding.btnGiveUp.visibility = View.GONE
         log("已放弃本次路线预览")
