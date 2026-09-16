@@ -48,6 +48,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private val pendingCandidates = ArrayDeque<String>()
     private val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
     private val crashFile: java.io.File get() = java.io.File(filesDir, "crash.log")
+    private var reconnectCount = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -133,8 +134,23 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     // ---------------- 网络回调（都在主线程） ----------------
 
+    /** 断线自动重连（App 切后台/网络抖动后会自己恢复，最多 5 次） */
+    private fun scheduleReconnect(reason: String) {
+        if (reconnectCount >= MAX_RECONNECT) {
+            log("自动重连已达上限（$MAX_RECONNECT 次），请手动点「一键连接」")
+            return
+        }
+        reconnectCount++
+        log("连接中断（" + reason + "），" + (RECONNECT_DELAY_MS / 1000) + " 秒后自动重连（第 " + reconnectCount + " 次）")
+        lifecycleScope.launch {
+            delay(RECONNECT_DELAY_MS)
+            if (!client.isConnected) doConnect()
+        }
+    }
+
     override fun onConnected(addr: String) {
         prefs.edit().putString(KEY_LAST_IP, addr.substringBefore(':')).apply()   /* 记住可用地址 */
+        reconnectCount = 0
         setStatus("已连接 $addr")
         binding.btnConnect.isEnabled = false
         binding.btnDisconnect.isEnabled = true
@@ -143,6 +159,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     override fun onDisconnected(reason: String) {
         stopMock()
+        scheduleReconnect(reason)
         setStatus("未连接（$reason）")
         binding.btnConnect.isEnabled = true
         binding.btnDisconnect.isEnabled = false
@@ -579,6 +596,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     companion object {
         private const val DEFAULT_HOST = "192.168.4.1"
         private const val REQ_LOCATION = 1001
+        private const val MAX_RECONNECT = 5
+        private const val RECONNECT_DELAY_MS = 3000L
         /** 默认测试起终点（骑行；emulate=true 为模拟行进，室内也可测） */
         private const val FROM_ADDRESS = "北京亦庄泰河三街1号"
         private const val TO_ADDRESS = "北京亦庄同济南路地铁站"

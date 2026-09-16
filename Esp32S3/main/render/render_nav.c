@@ -163,14 +163,15 @@ static void draw_compass(const nav_frame_t *f)
     const int bx = 235, spread = 75, y = 4;
 
     for (int i = 0; i < 4; i++) {                      /* 主方位：0/90/180/270 -> 北/东/南/西 */
-        int off = (((((i * 90) - f->heading + 360) % 360) - 180) * spread) / 180;
+        /* 偏角 = 方位角 - 车头角，归一化到 (-180,180]；注意用 +540 而非 +360，否则 0° 会变成 -180°（方位整体偏 180°） */
+        int off = (((((i * 90) - f->heading + 540) % 360) - 180) * spread) / 180;
         int tx = bx + off - font_text_width(main_labels[i]) / 2;
         if (tx > bx - spread && tx < bx + spread && tx > -20 && tx < 312) {
             font_draw_text(tx, y, main_labels[i], PATH_GREEN);
         }
     }
     for (int i = 0; i < 4; i++) {                      /* 斜方位：短刻度线 */
-        int off = (((((i * 90 + 45) - f->heading + 360) % 360) - 180) * spread) / 180;
+        int off = (((((i * 90 + 45) - f->heading + 540) % 360) - 180) * spread) / 180;
         int tx = bx + off;
         if (tx > bx - spread && tx < bx + spread) {
             fb_line(tx, y + 2, tx, y + 8, 0x7BEF);
