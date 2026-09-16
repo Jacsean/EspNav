@@ -166,6 +166,7 @@ class AmapNavSource(
     // ---------------- 高德回调 -> NavState ----------------
 
     override fun onCalculateRouteSuccess(result: AMapCalcRouteResult?) {
+        try {   // onCalculateRouteSuccess 加固
         // 取真实路径（坐标列表）与全程距离
         try {
             val path = navi?.naviPath
@@ -188,6 +189,7 @@ class AmapNavSource(
         } catch (e: Exception) {
             logE("startNavi 异常：" + e.message)
         }
+        } catch (t: Throwable) { logE("onCalculateRouteSuccess 异常：" + t.message) }
     }
 
     override fun onCalculateRouteFailure(errorCode: Int) {
@@ -195,6 +197,7 @@ class AmapNavSource(
     }
 
     override fun onLocationChange(loc: AMapNaviLocation?) {
+        try {   // onLocationChange 加固
         val l = loc ?: return
         val c = l.coord
         if (c != null) lastOrigin = GeoPoint(c.latitude, c.longitude)
@@ -208,6 +211,7 @@ class AmapNavSource(
             if (toAddress.isNotBlank()) geocodeAndRoute() else calculateAutoDest()
         }
         refreshPathProjection()
+        } catch (t: Throwable) { logE("onLocationChange 异常：" + t.message) }
     }
 
     /** 等间隔降采样（保留首尾），控制发帧体积 */
@@ -258,6 +262,7 @@ class AmapNavSource(
     }
 
     override fun onNaviInfoUpdate(info: NaviInfo?) {
+        try {   // onNaviInfoUpdate 加固
         val i = info ?: return
         state = state.copy(
             turnType = mapIcon(i.iconType),
@@ -270,6 +275,7 @@ class AmapNavSource(
             elapsedSec = state.elapsedSec + 1,
             etaText = etaTextOf(i.pathRetainTime)
         )
+        } catch (t: Throwable) { logE("onNaviInfoUpdate 异常：" + t.message) }
     }
 
     /** 剩余秒 -> 预计到达时刻（HH:mm） */

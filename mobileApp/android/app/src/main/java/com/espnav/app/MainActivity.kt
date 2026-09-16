@@ -24,10 +24,12 @@ import com.espnav.app.databinding.ActivityMainBinding
 import com.espnav.app.net.EspNavClient
 import com.espnav.app.protocol.InMsg
 import com.espnav.app.protocol.OutMsg
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -45,11 +47,14 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private val prefs by lazy { getSharedPreferences("espnav", MODE_PRIVATE) }
     private val pendingCandidates = ArrayDeque<String>()
     private val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+    private val crashFile: java.io.File get() = java.io.File(filesDir, "crash.log")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        installCrashHandler()
 
         client = EspNavClient(lifecycleScope)
         client.listener = this
@@ -95,6 +100,12 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             log("设置 流动动画 = $checked")
         }
 
+        if (crashFile.exists() && crashFile.length() > 0) {
+            val txt = crashFile.readText()
+            log("⚠ 上次运行崩溃日志（供反馈，已另存为 crash.old.log）：")
+            log(txt.takeLast(1500))
+            runCatching { crashFile.renameTo(java.io.File(filesDir, "crash.old.log")) }
+        }
         log("就绪：请先连接热点 ESPNav-AP，再点“连接”")
     }
 
@@ -147,6 +158,9 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         prefs.getString(KEY_LAST_IP, null)?.takeIf { it.isNotBlank() }?.let { list.add(it) }
         list.add(binding.etHost.text.toString().trim().ifBlank { DEFAULT_HOST })
         list.add(DEFAULT_HOST)
+        // 当前所在子网的网关（手机热点网关通常就是 ESP32 所在网段的第一跳）
+        val my = localIpv4()
+        if (my.count { it == '.' } == 3) list.add(my.substringBeforeLast('.') + ".1")
         pendingCandidates.clear()
         pendingCandidates.addAll(list)
         log("一键连接：候选地址 ${list.joinToString(" -> ")}")
@@ -156,8 +170,16 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private fun tryNextCandidate() {
         val c = pendingCandidates.removeFirstOrNull()
         if (c == null) {
-            log("一键连接失败：请确认手机已连上热点 ESPNav-AP（密码 espnav1234）")
-            log("或在浏览器打开 http://192.168.4.1 完成配网后重试")
+            log("已知地址都未连上 → 开始扫描当前局域网（8899）…")
+            scanForDevice { ips ->
+                if (ips.isEmpty()) {
+                    log("扫描未发现设备：请确认手机与 ESP32 在同一网络（ESP32 已配网连上本热点，或手机连了 ESPNav-AP）")
+                } else {
+                    log("扫描发现：${ips.joinToString(", ")} → 依次尝试")
+                    pendingCandidates.addAll(ips)
+                    tryNextCandidate()
+                }
+            }
             return
         }
         binding.etHost.setText(c)
@@ -219,6 +241,38 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         // 把高德内部日志转发到界面日志区（便于真机诊断）
         src.logSink = { msg -> runOnUiThread { log("高德: " + msg) } }
         launchNav(src, "高德骑行导航")
+    }
+
+    /** 在当前所在子网内扫描 8899 端口，自动发现 ESP32（手机热点/家里路由/ESP 热点都适用） */
+    private fun scanForDevice(onDone: (List<String>) -> Unit) {
+        val my = localIpv4()
+        if (my == "未知" || my.count { it == '.' } != 3) {
+            onDone(emptyList())
+            return
+        }
+        val prefix = my.substringBeforeLast('.')
+        log("开始扫描子网 $prefix.0/24 的 8899 端口（约 5 秒）…")
+        lifecycleScope.launch(Dispatchers.IO) {
+            val found = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val pool = java.util.concurrent.Executors.newFixedThreadPool(32)
+            val latch = java.util.concurrent.CountDownLatch(254)
+            for (i in 1..254) {
+                pool.execute {
+                    try {
+                        java.net.Socket().use { sk ->
+                            sk.connect(java.net.InetSocketAddress("$prefix.$i", 8899), 220)
+                            found.add("$prefix.$i")
+                        }
+                    } catch (_: Exception) {
+                    } finally {
+                        latch.countDown()
+                    }
+                }
+            }
+            latch.await(7, java.util.concurrent.TimeUnit.SECONDS)
+            pool.shutdownNow()
+            withContext(Dispatchers.Main) { onDone(found.toList()) }
+        }
     }
 
     /** 取本机 IPv4（用于判断是否处于 ESP32 热点网段 192.168.4.x） */
@@ -305,6 +359,22 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             val v = sb?.progress ?: return
             action(v)
             log("设置 $tag = $v")
+        }
+    }
+
+    /** 安装全局崩溃捕获：把堆栈写入 App 私有目录，下次启动时显示，便于反馈定位 */
+    /** 安装全局崩溃捕获：把堆栈写入 App 私有目录，下次启动时显示，便于反馈定位 */
+    private fun installCrashHandler() {
+        val def = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            runCatching {
+                val nl = System.lineSeparator()
+                crashFile.appendText("=== " + java.util.Date().toString() + "  thread=" + t.name + " ===")
+                crashFile.appendText(nl)
+                crashFile.appendText(android.util.Log.getStackTraceString(e))
+                crashFile.appendText(nl)
+            }
+            def?.uncaughtException(t, e)      // 仍交给系统（会显示"应用已停止"）
         }
     }
 

@@ -145,7 +145,10 @@ REQUIRED_IMPORTS = {
     'Locale':            'java.util.Locale',
 }
 
-PRE = '(^|[^A-Za-z0-9_])'   # 允许 .isActive / scope.launch 这类扩展调用，禁止 fooIsActive
+# 函数/属性（小写开头）：允许 .isActive / scope.launch 这类扩展调用，禁止 fooIsActive
+PRE = '(^|[^A-Za-z0-9_])'
+# 类型/类名（大写开头）：排除全限定写法 android.util.Log（无需 import）
+PRE_TYPE = '(^|[^A-Za-z0-9_.])'
 POST = '($|[^A-Za-z0-9_])'
 
 
@@ -154,7 +157,8 @@ def check_required_imports(path, src):
     body = strip_literals(strip_comments(src))
     imports = set(re.findall(r'(?m)^[ 	]*import[ 	]+([\w.]+)', src))
     for sym, fq in sorted(REQUIRED_IMPORTS.items()):
-        if re.search(PRE + re.escape(sym) + POST, body) and fq not in imports:
+        pre = PRE_TYPE if (sym[:1].isupper()) else PRE      # 类名排除全限定前缀
+        if re.search(pre + re.escape(sym) + POST, body) and fq not in imports:
             issues.append('uses %s but misses "import %s" (Unresolved reference)' % (sym, fq))
     return issues
 
