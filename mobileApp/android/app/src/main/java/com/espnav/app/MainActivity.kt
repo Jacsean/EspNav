@@ -151,6 +151,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     override fun onConnected(addr: String) {
         prefs.edit().putString(KEY_LAST_IP, addr.substringBefore(':')).apply()   /* 记住可用地址 */
         reconnectCount = 0
+        NavService.start(this)                    /* 熄屏保持连接 */
+        requestNotifyPermissionIfNeeded()
         setStatus("已连接 $addr")
         binding.btnConnect.isEnabled = false
         binding.btnDisconnect.isEnabled = true
@@ -332,6 +334,17 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }.getOrDefault(false)
 
+    /** Android 13+ 需要通知权限，前台服务才能显示常驻通知 */
+    private fun requestNotifyPermissionIfNeeded() {
+        if (android.os.Build.VERSION.SDK_INT < 33) return
+        if (checkSelfPermission("android.permission.POST_NOTIFICATIONS") ==
+            PackageManager.PERMISSION_GRANTED
+        ) return
+        ActivityCompat.requestPermissions(
+            this, arrayOf("android.permission.POST_NOTIFICATIONS"), REQ_NOTIFY
+        )
+    }
+
     private fun hasLocationPermission(): Boolean =
         ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
@@ -378,6 +391,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         mockJob = null
         runCatching { navSource.stop() }
         runCatching { binding.mapView.onDestroy() }
+        NavService.stop(this)
     }
 
     private fun send(json: String) {
@@ -596,6 +610,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     companion object {
         private const val DEFAULT_HOST = "192.168.4.1"
         private const val REQ_LOCATION = 1001
+        private const val REQ_NOTIFY = 1002
         private const val MAX_RECONNECT = 5
         private const val RECONNECT_DELAY_MS = 3000L
         /** 默认测试起终点（骑行；emulate=true 为模拟行进，室内也可测） */

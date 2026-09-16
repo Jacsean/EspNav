@@ -48,8 +48,8 @@ static void client_task(void *arg)
         frame_parser_feed(&fp, buf, (size_t)r, on_line, &sock);
     }
 
-    ESP_LOGI(TAG, "client %d disconnected -> 请求清屏（协议 §6：链路断开清屏）", sock);
-    render_nav_clear();
+    ESP_LOGI(TAG, "client %d disconnected -> 显示“信号中断”提示（保留最后画面）", sock);
+    render_nav_link_lost();
     if (s_client == sock) s_client = -1;
     close(sock);
     vTaskDelete(NULL);

@@ -15,7 +15,8 @@ static const char *TAG = "render_nav";
 /* ---- 模块级状态（统一在文件顶部定义，任何函数体内的使用都不会“先于声明”）---- */
 static nav_frame_t s_cur;            /* 当前导航帧 */
 static bool        s_have = false;   /* 是否已有可渲染帧 */
-static bool        s_blank_req = false;  /* CLEAR_SCREEN/断线清屏请求（显示任务消费） */
+static bool        s_blank_req = false;  /* CLEAR_SCREEN 清屏请求（显示任务消费） */
+static bool        s_link_lost = false;  /* 链路断开：保留画面 + 中部“信号中断”提示 */
 static float       s_anim = 0.0f;    /* 虚线相位 */
 
 
@@ -33,7 +34,12 @@ static float       s_anim = 0.0f;    /* 虚线相位 */
 
 void render_nav_clear(void)
 {
-    s_blank_req = true;      /* 由显示任务执行清屏，避免跨任务并发访问 SPI */
+    s_blank_req = true;      /* CLEAR_SCREEN：由显示任务执行清屏 */
+}
+
+void render_nav_link_lost(void)
+{
+    s_link_lost = true;      /* 断线：保留最后画面，仅叠加提示条 */
 }
 
 void render_nav_init(void)
@@ -103,6 +109,7 @@ void render_nav_set_frame(const nav_frame_t *f)
     if (!f || !f->valid) return;
     s_cur = *f;
     s_have = true;
+    s_link_lost = false;     /* 收到新帧 -> 恢复实时画面 */
 }
 
 /* 罗盘（顶部右侧）：8 方位标签随 heading 平移 + 中央红色车头箭头（车头朝上） */
@@ -139,6 +146,17 @@ static void draw_line_scroll(int slot, int x, int y, const char *text, uint16_t 
     int w = font_text_width(text);
     int off = scroll_off(slot, w, clip1 - x);
     font_draw_text_clip(x - off, y, text, color, x, clip1);
+}
+
+/* 链路断开提示条（协议 §6.7：主视图中部，黑底红字），保留画面不清屏 */
+static void draw_link_lost_banner(void)
+{
+    const int y = 56;
+    const int h = 26;
+    static const char *txt = "信号中断";
+    int w = font_text_width(txt);
+    fb_fill_rect(0, y, FB_W - 1, y + h - 1, RGB565_BLACK);
+    font_draw_text((FB_W - w) / 2, y + 5, txt, RGB565_RED);
 }
 
 /* 顶部网络状态行：STA 已连接 <ip> / STA 未连接 AP:ESPNav-AP
@@ -600,6 +618,7 @@ void render_nav_tick(float dt)
         if (s_anim > 100000.0f) s_anim = 0.0f;
     }
     draw_frame(&s_cur, s_anim);
+    if (s_link_lost) draw_link_lost_banner();
 }
 
 /* 收帧即渲染（双保险：不依赖显示任务定时器） */
