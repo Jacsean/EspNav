@@ -24,6 +24,8 @@
     <div class="ctl">
       <label>车头方位：<input id="hd" type="range" min="0" max="359" value="45"> <span id="hdv">45°</span></label><br>
       <label><input id="auto" type="checkbox" checked> 自动旋转</label><br>
+      <label><input id="demoLong" type="checkbox" checked> 演示长文本滚动（路名滚动，30px/s）</label><br>
+      <label><input id="showLost" type="checkbox"> 显示断线提示条（信号中断）</label><br>
       <label>行程图“北”标注：
         <select id="ns">
           <option value="A">A 顶部居中＋指北竖线</option>
@@ -49,13 +51,53 @@
 const S=2, W=320, H=240, CX=160, CAR_Y=110, NEAR_Y=144;
 const cv=document.getElementById('scr'), g=cv.getContext('2d');
 const DIRS8=['北','东北','东','东南','南','西南','西','西北'];
-let northStyle='B';   // 行程图“北”标注风格（已确认 B：右上角“北”+十字线）
+let northStyle='B';
+let demoLong=true, showLost=false;   // 行程图“北”标注风格（已确认 B：右上角“北”+十字线）
 const FONT='16px SimHei, "Microsoft YaHei"';
 
 
 /* 行程图：网格/路径/黄点保持原样；“北”的标注按 northStyle 切换
    A: 顶部居中“北” + 指北短竖线     B: 右上角“北” + 下方十字线
    C: 右上角 箭头↑ + “北”            */
+
+/* 带流动相位的虚线：等价固件 fb_dashed_line_off(on=8, off=6, phase) */
+function dashedLineOff(x0,y0,x1,y1,color,on,off,phase){
+  const dx=x1-x0, dy=y1-y0, len=Math.hypot(dx,dy);
+  if(len<=0) return;
+  const ux=dx/len, uy=dy/len, period=on+off;
+  let d = -(phase % period);
+  g.strokeStyle=color; g.lineWidth=1; g.beginPath();
+  while(d < len){
+    const a=Math.max(0,d), b=Math.min(len,d+on);
+    if(b>a){ g.moveTo(x0+ux*a, y0+uy*a); g.lineTo(x0+ux*b, y0+uy*b); }
+    d += period;
+  }
+  g.stroke();
+}
+
+
+/* 长文本水平滚动（等价固件：30px/s，滚完停顿 0.6s）+ 裁剪到 [x, clip1] */
+const scrollState = {};
+function scrollOffset(slot, textW, availW, dt){
+  if (textW <= availW) return 0;
+  if (!scrollState[slot]) scrollState[slot] = { x: 0, pause: 0 };
+  const st = scrollState[slot];
+  if (st.pause > 0) st.pause -= dt;
+  else {
+    st.x += 30 * dt;
+    if (st.x > textW + 24) { st.x = 0; st.pause = 0.6; }
+  }
+  return st.x;
+}
+function drawTextLine(slot, x, y, text, color, clip1, dt){
+  const w = g.measureText(text).width;
+  const off = scrollOffset(slot, w, clip1 - x, dt);
+  g.save();
+  g.beginPath(); g.rect(x, y - 2, clip1 - x, 20); g.clip();
+  g.fillStyle = color; g.fillText(text, x - off, y);
+  g.restore();
+}
+
 function drawRoute(){
   const ax=220, ay=160, aw=100, ah=80;
   g.fillStyle='#000'; g.fillRect(ax,ay,aw,ah);
@@ -91,7 +133,7 @@ function drawRoute(){
   }
 }
 
-function draw(heading){
+function draw(heading, anim){
   g.setTransform(1,0,0,1,0,0); g.fillStyle='#000'; g.fillRect(0,0,cv.width,cv.height);
   g.setTransform(S,0,0,S,0,0); g.imageSmoothingEnabled=false;
   g.font=FONT; g.textBaseline='top';
@@ -99,14 +141,15 @@ function draw(heading){
   /* ---------- ① 路面（与固件一致：近端 144 / 远端 30 / 半宽 75→18）---------- */
   g.fillStyle='#777';
   g.beginPath(); g.moveTo(CX-75,NEAR_Y); g.lineTo(CX+75,NEAR_Y); g.lineTo(CX+18,30); g.lineTo(CX-18,30); g.closePath(); g.fill();
-  g.strokeStyle='#fff'; g.setLineDash([8,6]); g.lineWidth=1;
-  g.beginPath(); g.moveTo(CX-75,NEAR_Y); g.lineTo(CX-18,30); g.stroke();
-  g.beginPath(); g.moveTo(CX+75,NEAR_Y); g.lineTo(CX+18,30); g.stroke();
-  g.setLineDash([]);
+  /* 两侧白色虚线：带流动相位（固件原有 fb_dashed_line_off，anim 增大->向近端滚动） */
+  dashedLineOff(CX-75, NEAR_Y, CX-18, 30, '#ffffff', 8, 6, anim);
+  dashedLineOff(CX+75, NEAR_Y, CX+18, 30, '#ffffff', 8, 6, anim);
 
-  /* ---------- ①b 道路中轴线（绿色，贯通道路远端 y=30 到近端 y=144；车头随后压在其上）---------- */
+  /* ---------- ①b 路线中心线（固件原有 past_center/route_center，绿色双线；本预览道路是直的，故表现为贯通中轴）---------- */
   g.strokeStyle='#00e676'; g.lineWidth=2;
   g.beginPath(); g.moveTo(CX,30); g.lineTo(CX,NEAR_Y); g.stroke();
+  g.strokeStyle='#0320'; g.lineWidth=1;                 /* 固件里中心线为深绿+亮绿双线 */
+  g.beginPath(); g.moveTo(CX+1,30); g.lineTo(CX+1,NEAR_Y); g.stroke();
 
   /* ---------- ② 两条暗色分隔线（原样：y=160 横线、x=220 竖线）---------- */
   g.strokeStyle='#383c38'; g.lineWidth=1;
@@ -136,15 +179,23 @@ function draw(heading){
   }
 
   /* ---------- ④ 文字：前三行整体下移一行（避开罗盘）---------- */
-  g.fillStyle='#00e676';
-  g.fillText('泰河三街', 4, 24);
-  g.fillText('前方300米左转', 4, 44);
-  g.fillText('距离：320 m', 4, 64);
+  const roadName = demoLong ? '泰河三街与同济南路交叉口' : '泰河三街';
+  drawTextLine(0, 4, 24, roadName, '#00e676', 312, dt);
+  drawTextLine(1, 4, 44, '前方300米左转', '#00e676', 312, dt);
+  g.fillStyle='#00e676'; g.fillText('距离：320 m', 4, 64);
   /* 底部四行保持原位不动 */
   g.fillText('全程 4.2km 已完19%', 6, 164);
   g.fillText('耗时 12 min', 6, 182);
   g.fillText('预计到达 14:27', 6, 200);
   g.fillStyle='#7bef'; g.fillText('STA 192.168.43.117', 6, 218);
+
+  /* ---------- ④b 断线提示条（固件原有：黑底 + 居中红字，可开关预览）---------- */
+  if (showLost) {
+    const t2 = '信号中断';
+    const w2 = g.measureText(t2).width;
+    g.fillStyle='#000'; g.fillRect(0, 56, 319, 56 + 26 - 1);
+    g.fillStyle='#f80000'; g.fillText(t2, (320 - w2) / 2, 56 + 5);
+  }
 
   /* ---------- ⑤ 唯一黄色车头 + 其右侧“方位+角度” ---------- */
   g.fillStyle='#ffe000';
@@ -158,12 +209,22 @@ function draw(heading){
 }
 
 const hd=document.getElementById('hd'), hdv=document.getElementById('hdv');
-function render(){ const h=parseInt(hd.value,10); hdv.textContent=h+'°'; draw(h); }
+let dt=1/60, anim=0;
+function render(){ const h=parseInt(hd.value,10); hdv.textContent=h+'°'; draw(h, anim); }
 hd.addEventListener('input',render);
 document.getElementById('ns').addEventListener('change',e=>{ northStyle=e.target.value; render(); });
-let t=45;
-setInterval(()=>{ if(document.getElementById('auto').checked){ t=(t+1)%360; hd.value=t; render(); } },60);
-render();
+let t=45, last=performance.now();
+/* 与固件一致的动画驱动：dash_speed=40px/s 推进虚线相位（offset 增大->向下滚动） */
+function loop(now){
+  dt = Math.min(0.05, (now - last) / 1000); last = now;
+  anim += 40 * dt;
+  if (document.getElementById('auto').checked){ t=(t+1)%360; hd.value=t; }
+  demoLong = document.getElementById('demoLong').checked;
+  showLost = document.getElementById('showLost').checked;
+  render();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
 </script>
 </body>
 </html>
