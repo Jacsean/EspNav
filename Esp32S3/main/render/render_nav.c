@@ -110,28 +110,48 @@ void render_nav_set_frame(const nav_frame_t *f)
  * 用途：不用看串口也能确认 ESP32 当前是"只开热点"还是"已连上手机热点"。 */
 static void draw_net_status(void)
 {
-    static char buf[48];
+    static char buf[40];
     if (wifi_sta_is_connected()) {
         const char *ip = wifi_sta_ip_str();
-        snprintf(buf, sizeof(buf), "STA 已连接 %s", (ip && ip[0]) ? ip : "?");
+        snprintf(buf, sizeof(buf), "STA %s", (ip && ip[0]) ? ip : "OK");
     } else {
         snprintf(buf, sizeof(buf), "STA 未连接 AP:ESPNav-AP");
     }
-    font_draw_text(4, 2, buf, 0x7BEF);         /* 浅灰：不抢导航信息 */
+    font_draw_text(6, 218, buf, 0x7BEF);       /* 底部最后一行（浅灰） */
 }
 
 static void draw_compass(const nav_frame_t *f)
 {
-    static const char *labels[4] = { "北", "东", "南", "西" };   /* 中文方位（字库已含） */
+    /* 罗盘：4 个主方位用中文文字刻度；4 个斜方位用短刻度线（中文 2 字会重叠，故不写字）
+     * 箭头右侧显示“当前方位 + 度数”，8 个方位都由此体现。 */
+    static const char *main_labels[4] = { "北", "东", "南", "西" };
     const int bx = 235, spread = 75, y = 4;
-    for (int i = 0; i < 4; i++) {
+
+    for (int i = 0; i < 4; i++) {                      /* 主方位：0/90/180/270 -> 北/东/南/西 */
         int off = (((((i * 90) - f->heading + 360) % 360) - 180) * spread) / 180;
-        int tx = bx + off - font_text_width(labels[i]) / 2;
+        int tx = bx + off - font_text_width(main_labels[i]) / 2;
         if (tx > bx - spread && tx < bx + spread && tx > -20 && tx < 312) {
-            font_draw_text(tx, y, labels[i], PATH_GREEN);
+            font_draw_text(tx, y, main_labels[i], PATH_GREEN);
+        }
+    }
+    for (int i = 0; i < 4; i++) {                      /* 斜方位：短刻度线 */
+        int off = (((((i * 90 + 45) - f->heading + 360) % 360) - 180) * spread) / 180;
+        int tx = bx + off;
+        if (tx > bx - spread && tx < bx + spread) {
+            fb_line(tx, y + 2, tx, y + 8, 0x7BEF);
         }
     }
     fb_triangle(bx, 28, 6, RGB565_RED);          /* 红色车头箭头（固定朝上） */
+
+    /* 箭头右侧：当前方位（中文）+ 度数 */
+    {
+        static const char *dirs[8] = { "北", "东北", "东", "东南", "南", "西南", "西", "西北" };
+        char buf[24];
+        int deg = ((f->heading % 360) + 360) % 360;
+        int idx = ((deg + 22) / 45) % 8;                /* 最近方位 */
+        snprintf(buf, sizeof(buf), "%s %d°", dirs[idx], deg);
+        font_draw_text(bx + 12, 22, buf, RGB565_WHITE);
+    }
 }
 
 /* 行程图（右下 overview）：网格 + 路径 + 当前位置点
@@ -477,9 +497,14 @@ static void draw_frame(const nav_frame_t *f, float anim)
     if (f->pos_valid) fb_triangle(f->pos.x, f->pos.y, 14, RGB565_YELLOW);
 
 #if RENDER_TEXT
-    /* 顶部网络状态 + 罗盘 + 行程图（不依赖 RENDER_TEXT 开关） */
-    draw_net_status();
+    /* 罗盘 + 行程图 + 底部网络状态（不依赖 RENDER_TEXT 开关） */
     draw_compass(f);
+    draw_net_status();
+    if (f->road_name[0]) {
+        static char rb[40];
+        font_clip_utf8(f->road_name, 6 * 16, rb, sizeof(rb));   /* 最多 6 个全角，避免压到罗盘 */
+        font_draw_text(4, 2, rb, PATH_GREEN);
+    }
     draw_overview(f);
 
     /* ---- 文字层（hint / 距离 / 统计）---- */
@@ -491,16 +516,22 @@ static void draw_frame(const nav_frame_t *f, float anim)
         snprintf(buf, sizeof(buf), "距离：%d m", (int)f->turn_dist);
         font_draw_text(4, 42, buf, PATH_GREEN);                 /* 下移一行 */
 
+        if (f->notice[0]) {                                     /* 路况/设施提示（红绿灯倒计时若将来可得也放这里） */
+            static char nb[40];
+            font_clip_utf8(f->notice, 9 * 16, nb, sizeof(nb));
+            font_draw_text(4, 62, nb, RGB565_YELLOW);
+        }
+
         int km = (int)(f->total_dist / 1000);
         int frac = (int)((f->total_dist % 1000) / 100);
-        snprintf(buf, sizeof(buf), "全程 %d.%d km  已完 %u%%", km, frac, (unsigned)f->progress_pct);
-        font_draw_text(6, 168, buf, PATH_GREEN);
+        snprintf(buf, sizeof(buf), "全程 %d.%dkm 已完%u%%", km, frac, (unsigned)f->progress_pct);
+        font_draw_text(6, 164, buf, PATH_GREEN);
 
         snprintf(buf, sizeof(buf), "耗时 %u min", (unsigned)f->elapsed_min);
-        font_draw_text(6, 190, buf, PATH_GREEN);
+        font_draw_text(6, 182, buf, PATH_GREEN);
 
         snprintf(buf, sizeof(buf), "预计到达 %s", f->eta_time);
-        font_draw_text(6, 212, buf, PATH_GREEN);
+        font_draw_text(6, 200, buf, PATH_GREEN);
 
         /* 北向标记统一由 draw_overview() 绘制（固定表示行程图方向），此处不再重复 */
     }
