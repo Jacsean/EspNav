@@ -46,6 +46,8 @@ class AmapNavSource(
         private const val ROUTE_STRATEGY_DEFAULT = 0
         /** 路径点采样上限（协议单帧点数上限 16） */
         private const val MAX_PATH_PTS = 16
+        /** 地图画线用的最大点数（全量路径可能有几千点，直接画会卡顿/闪退） */
+        private const val MAX_PREVIEW_PTS = 200
         /** 主视图显示“前方多少米”的路径（决定路面/绿线的缩放） */
         private const val VIEW_METERS = 400.0
     }
@@ -222,7 +224,7 @@ class AmapNavSource(
             val cb = onRouteReady
             if (cb != null) {
                 log("预览模式：路线已算出，等待确认后再启动导航")
-                cb(len, sec, pathAllCoords)
+                cb(len, sec, downsample(pathAllCoords, MAX_PREVIEW_PTS))
             } else {
                 startNavigation()
             }

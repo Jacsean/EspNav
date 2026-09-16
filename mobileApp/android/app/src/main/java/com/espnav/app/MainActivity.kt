@@ -600,8 +600,15 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private fun previewRoute() {
         val s0 = startLatLng
         val e0 = endLatLng
-        if (s0 == null || e0 == null) {
-            toast("请先点地图选起点和终点（点一下地图，或长按）")
+        val fromText = binding.etFrom.text.toString().trim()
+        val toText = binding.etTo.text.toString().trim()
+        /* 起点/终点：地图选点优先，其次用输入框里的地址文本（两种方式都支持） */
+        if (s0 == null && fromText.isEmpty()) {
+            toast("请在地图上选起点，或在“起点”输入框填写地址")
+            return
+        }
+        if (e0 == null && toText.isEmpty()) {
+            toast("请在地图上选终点，或在“终点”输入框填写地址")
             return
         }
         if (!hasInternet()) {
@@ -619,9 +626,12 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         }
         previewSource?.stop()
         val src = AmapNavSource(
-            applicationContext, "", "", "北京", emulate = true,
-            fixedFrom = com.espnav.app.data.GeoPoint(s0.latitude, s0.longitude),
-            fixedTo = com.espnav.app.data.GeoPoint(e0.latitude, e0.longitude)
+            applicationContext,
+            if (s0 != null) "" else fromText,      /* 地图选点优先，否则用地址文本 */
+            if (e0 != null) "" else toText,
+            "北京", emulate = true,
+            fixedFrom = s0?.let { com.espnav.app.data.GeoPoint(it.latitude, it.longitude) },
+            fixedTo = e0?.let { com.espnav.app.data.GeoPoint(it.latitude, it.longitude) }
         )
         src.logSink = { msg -> runOnUiThread { log("高德: " + msg) } }
         src.onRouteReady = { len, sec, coords -> runOnUiThread { showRoutePreview(len, sec, coords) } }
