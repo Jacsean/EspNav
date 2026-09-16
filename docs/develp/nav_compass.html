@@ -78,8 +78,10 @@ function drawRoute(){
     g.fillText('北', cx-g.measureText('北').width/2, ay+13);
   } else if (northStyle === 'B') {                // 右上角“北” + 十字线
     const nx=ax+aw-18, ny=ay+26;                 // 十字线下移一个网格(10px)，避开“北”字
+    const vx=nx+8;
     g.fillText('北', nx, ay+2);
-    g.beginPath(); g.moveTo(nx+8,ny-9); g.lineTo(nx+8,ny+9); g.stroke();   // 竖
+    g.beginPath(); g.moveTo(vx,ay+20); g.lineTo(vx,ny+9); g.stroke();      // 竖（上端留出箭头位）
+    g.beginPath(); g.moveTo(vx-3,ay+24); g.lineTo(vx,ay+19); g.lineTo(vx+3,ay+24); g.stroke(); // 向上小箭头，指向“北”
     g.beginPath(); g.moveTo(nx-1,ny);   g.lineTo(nx+17,ny); g.stroke();    // 横
   } else {                                        // 右上角 箭头↑ + “北”
     const nx=ax+aw-26;
@@ -101,6 +103,10 @@ function draw(heading){
   g.beginPath(); g.moveTo(CX-75,NEAR_Y); g.lineTo(CX-18,30); g.stroke();
   g.beginPath(); g.moveTo(CX+75,NEAR_Y); g.lineTo(CX+18,30); g.stroke();
   g.setLineDash([]);
+
+  /* ---------- ①b 道路中轴线（绿色，贯通道路远端 y=30 到近端 y=144；车头随后压在其上）---------- */
+  g.strokeStyle='#00e676'; g.lineWidth=2;
+  g.beginPath(); g.moveTo(CX,30); g.lineTo(CX,NEAR_Y); g.stroke();
 
   /* ---------- ② 两条暗色分隔线（原样：y=160 横线、x=220 竖线）---------- */
   g.strokeStyle='#383c38'; g.lineWidth=1;
