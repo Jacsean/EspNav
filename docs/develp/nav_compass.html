@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>EspNav 罗盘 v6 预览（仅调整罗盘样式，其余保持原样）</title>
+<title>EspNav 屏幕效果预览（罗盘样式）</title>
 <style>
   body { background:#181818; color:#ddd; font-family:"Microsoft YaHei",sans-serif; margin:18px; }
   .wrap { display:flex; gap:24px; flex-wrap:wrap; }
@@ -17,7 +17,7 @@
 </style>
 </head>
 <body>
-<h2>EspNav 罗盘 v6 预览</h2>
+<h2>EspNav 屏幕效果预览（罗盘样式）</h2>
 <div class="wrap">
   <div class="panel">
     <canvas id="scr" width="640" height="480"></canvas>
@@ -25,15 +25,15 @@
       <label>车头方位：<input id="hd" type="range" min="0" max="359" value="45"> <span id="hdv">45°</span></label><br>
       <label><input id="auto" type="checkbox" checked> 自动旋转</label>
     </div>
-    <p class="tip">320×240 放大 2 倍。除罗盘外，全部与现有固件画面一致（路面/行程图/网格/字体大小/底部四行位置都不变）。</p>
+    <p class="tip">320×240 放大 2 倍。除罗盘外全部保持原样：路面、两条暗色分隔线、行程图（含暗色网格）、字体、底部四行位置均不变。<br><b>本文件为唯一的效果预览文件</b>（不再一个想法建一个新 html）。</p>
   </div>
   <div class="panel">
     <table>
       <tr><th>你的要求</th><th>v6 做法</th></tr>
       <tr><td>1. 其余一律保持原样</td><td>路面、行程图（右下 100×80 网格）、字体 16px、底部四行位置全部不动；<b>只改罗盘</b></td></tr>
-      <tr><td>2. 短刻度＝长刻度长度；长刻度换成方位文字</td><td>所有刻度<b>统一 4px</b>；主方位（北/东/南/西）位置<b>显示中文</b>不画长线</td></tr>
+      <tr><td>2. 短刻度＝长刻度长度；长刻度换成方位文字</td><td>所有刻度<b>统一 8px</b>；主方位（北/东/南/西）位置<b>显示中文</b>不画长线</td></tr>
       <tr><td>3. 泰河三街/前方…/距离… 整体下移，不与罗盘重叠</td><td>三行下移到 <b>y=24 / 44 / 64</b>（罗盘占顶部 ~22px）</td></tr>
-      <tr><td>4. 只保留一个黄色车头；方位+角度在车头右边</td><td>罗盘中心<b>不再画箭头</b>；只有路面上那个黄车头；<b>“东北 45°”显示在车头右侧</b>并实时刷新</td></tr>
+      <tr><td>4. 只保留一个黄色车头；方位+角度在车头右边</td><td>罗盘中心<b>不再画箭头</b>；只有路面上那个黄车头；<b>“东北 45°”显示在车头正下方</b>，<b>透明底 + 亮青字</b>（无黑色方块）并实时刷新</td></tr>
     </table>
     <p class="tip">罗盘居中于屏幕中轴（x=160），与道路中轴对齐；转动时方位文字经过中心，8 个方位都能看到。</p>
   </div>
@@ -57,10 +57,15 @@ function draw(heading){
   g.beginPath(); g.moveTo(CX+75,NEAR_Y); g.lineTo(CX+18,30); g.stroke();
   g.setLineDash([]);
 
-  /* ---------- ② 行程图（右下 220,160 100×80，网格 10px，原样）---------- */
+  /* ---------- ② 两条暗色分隔线（原样：y=160 横线、x=220 竖线）---------- */
+  g.strokeStyle='#383c38'; g.lineWidth=1;
+  g.beginPath(); g.moveTo(0,160); g.lineTo(319,160); g.stroke();
+  g.beginPath(); g.moveTo(220,160); g.lineTo(220,239); g.stroke();
+
+  /* ---------- ③ 行程图（右下 220,160 100×80，网格 10px，原样）---------- */
   const ax=220, ay=160, aw=100, ah=80;
   g.fillStyle='#000'; g.fillRect(ax,ay,aw,ah);
-  g.strokeStyle='#2104'; g.lineWidth=1;
+  g.strokeStyle='#383c38'; g.lineWidth=1;
   for(let x2=ax;x2<ax+aw;x2+=10){ g.beginPath(); g.moveTo(x2,ay); g.lineTo(x2,ay+ah); g.stroke(); }
   for(let y2=ay;y2<ay+ah;y2+=10){ g.beginPath(); g.moveTo(ax,y2); g.lineTo(ax+aw,y2); g.stroke(); }
   const rp=[[8,6],[22,19],[46,14],[62,26]];
@@ -80,7 +85,7 @@ function draw(heading){
     if(x<bx-spread||x>bx+spread) continue;
     g.strokeStyle= (a%45===0)?'#00e676':'#7bef';
     g.lineWidth=1;
-    g.beginPath(); g.moveTo(x,cy); g.lineTo(x,cy+4); g.stroke();      // 统一 4px
+    g.beginPath(); g.moveTo(x,cy); g.lineTo(x,cy+8); g.stroke();      // 统一 8px（加长）
   }
   g.fillStyle='#00e676';
   for(let i=0;i<4;i++){                          // 主方位：中文（替代长刻度）
@@ -105,8 +110,11 @@ function draw(heading){
   g.fillStyle='#ffe000';
   g.beginPath(); g.moveTo(CX,CAR_Y-14); g.lineTo(CX-10,CAR_Y+10); g.lineTo(CX+10,CAR_Y+10); g.closePath(); g.fill();
   const idx=((Math.round(heading)%360)+360)%360;
-  g.fillStyle='#fff';
-  g.fillText(DIRS8[Math.round(idx/45)%8]+' '+idx+'°', CX+14, CAR_Y-8);
+  const txt=DIRS8[Math.round(idx/45)%8]+' '+idx+'°';
+  const tw=g.measureText(txt).width;
+  /* 车头正下方：透明底 + 亮青字（无黑块叠加，灰路上对比度高） */
+  g.fillStyle='#00ffff'; g.textBaseline='top';
+  g.fillText(txt, CX-tw/2, CAR_Y+16);
 }
 
 const hd=document.getElementById('hd'), hdv=document.getElementById('hdv');
