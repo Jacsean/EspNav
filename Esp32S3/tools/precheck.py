@@ -233,6 +233,22 @@ def check_format_truncation(path, src):
     return issues, hints
 
 
+def check_color_macros(root):
+    """使用了未定义的 RGB565_* 颜色宏（C 编译必报 undeclared identifier）"""
+    defined, used = set(), {}
+    for dirpath, _, names in os.walk(root):
+        for fn2 in names:
+            if not fn2.endswith(('.c', '.h')):
+                continue
+            fp = os.path.join(dirpath, fn2)
+            src = open(fp, encoding='utf-8', errors='replace').read()
+            defined |= set(re.findall(r'#define\s+(RGB565_\w+)', src))
+            body = strip_literals(strip_comments(src))
+            for m in set(re.findall(r'(RGB565_[A-Z0-9_]+)', body)):
+                used.setdefault(m, fp)
+    return ['%s: undefined color macro %s' % (fp, m) for m, fp in sorted(used.items()) if m not in defined]
+
+
 def main():
     if not os.path.isdir(ROOT):
         print('dir not found: %s' % ROOT)
@@ -304,6 +320,10 @@ def main():
             if len(re.findall(r'\b%s\b' % re.escape(fn), src)) < 2:
                 print('[unused] %s: static %s never used (-Werror=unused-function)' % (c, fn))
                 problems += 1
+
+    for msg in check_color_macros(ROOT):
+        print('[color] %s' % msg)
+        problems += 1
 
     print('----')
     print('checked %d .c / %d .h, problems: %d' % (len(c_paths), len(hdr_paths), problems))
