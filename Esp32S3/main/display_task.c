@@ -5,20 +5,43 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "render/render_nav.h"
+#include "comm/wifi_sta.h"
+#include "comm/tcp_server.h"
 
 static const char *TAG = "display_task";
+
+#define BOOT_TIMEOUT_S 60      /* 兜底：60 秒仍未等到手机 App 连接也进入导航画面 */
 
 static void display_task(void *arg)
 {
     (void)arg;
-    ESP_LOGI(TAG, "display task running (周期渲染 + 虚线流动动画)");
+    ESP_LOGI(TAG, "display task running (开机画面 -> 收到 App 连接后进入导航画面)");
     int64_t last = esp_timer_get_time();
+    int64_t boot_t0 = last;
+    bool boot = true;
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(33));                  /* 目标 30fps（实际受 SPI 传输限制） */
         int64_t now = esp_timer_get_time();
         float dt = (float)(now - last) / 1000000.0f;
         last = now;
         if (dt > 0.5f) dt = 0.5f;
+
+        if (boot) {                                     /* 开机画面：等 App 连接或超时 */
+            int64_t el = (now - boot_t0) / 1000000;
+            if (tcp_server_has_client() || el > BOOT_TIMEOUT_S) {
+                boot = false;
+                ESP_LOGI(TAG, "boot -> nav (client=%d, elapsed=%llds)",
+                         (int)tcp_server_has_client(), (long long)el);
+            } else {
+                char sub[32];
+                int stage = (el < 1) ? 0 : (wifi_sta_is_connected() ? 2 : 1);
+                if (stage == 2)      snprintf(sub, sizeof(sub), "IP %s", wifi_sta_ip_str());
+                else if (stage == 1) snprintf(sub, sizeof(sub), "热点 ESPNav-AP");
+                else                 sub[0] = 0;
+                render_nav_boot(stage, sub);
+                continue;
+            }
+        }
         render_nav_tick(dt);
         static uint32_t n = 0;
         n++;

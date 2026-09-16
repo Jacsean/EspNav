@@ -106,3 +106,8 @@ void tcp_server_start(void)
 {
     xTaskCreate(server_task, "tcp_srv", 4096, NULL, 5, NULL);
 }
+
+bool tcp_server_has_client(void)
+{
+    return s_client >= 0;
+}

@@ -650,3 +650,50 @@ void render_nav_frame(const nav_frame_t *f)
     render_nav_set_frame(f);
     draw_frame(f, 0.0f);
 }
+/* ---------------- 开机画面（B 科技版）----------------
+ * 暗网格 + 四角标记 + 标题/副标题 + 扫描线 + 状态行；全部使用 16px/8px 现有字库 */
+void render_nav_boot(int stage, const char *sub)
+{
+    static float anim = 0.0f;
+    static const char *st_text[3] = { "系统启动中", "正在连接 WiFi", "WiFi 已连接，等待手机" };
+    const uint16_t GRID = 0x10C2;                 /* 极暗绿灰 */
+    int i, w, y;
+    char line[48];
+
+    anim += 1.5f;
+    if (anim > 1000.0f) anim = 0.0f;
+    fb_clear(RGB565_BLACK);
+
+    /* 暗网格背景（每 16px） */
+    for (i = 0; i < FB_W; i += 16) fb_line(i, 0, i, FB_H - 1, GRID);
+    for (y = 0; y < FB_H; y += 16) fb_line(0, y, FB_W - 1, y, GRID);
+
+    /* 四角 L 形标记 */
+    fb_line(8, 8, 22, 8, PATH_GREEN);      fb_line(8, 8, 8, 22, PATH_GREEN);
+    fb_line(FB_W - 9, 8, FB_W - 23, 8, PATH_GREEN);    fb_line(FB_W - 9, 8, FB_W - 9, 22, PATH_GREEN);
+    fb_line(8, FB_H - 9, 22, FB_H - 9, PATH_GREEN);    fb_line(8, FB_H - 9, 8, FB_H - 23, PATH_GREEN);
+    fb_line(FB_W - 9, FB_H - 9, FB_W - 23, FB_H - 9, PATH_GREEN);
+    fb_line(FB_W - 9, FB_H - 9, FB_W - 9, FB_H - 23, PATH_GREEN);
+
+    /* 标题 + 副标题（居中） */
+    w = font_text_width("EspNav v1.0");
+    font_draw_text((FB_W - w) / 2, 76, "EspNav v1.0", PATH_GREEN);
+    w = font_text_width("可穿戴导航屏·骑行版");
+    font_draw_text((FB_W - w) / 2, 102, "可穿戴导航屏·骑行版", 0x7BEF);
+
+    /* 扫描线（动态） */
+    y = 128 + (int)(28.0f * (anim - (int)(anim / 56.0f) * 56.0f) / 56.0f * 2.0f);
+    if (y > 156) y = 156 - (y - 156);
+    fb_line(80, y, 240, y, PATH_GREEN);
+
+    /* 状态行 */
+    if (stage < 0) stage = 0;
+    if (stage > 2) stage = 2;
+    snprintf(line, sizeof(line), "%s", st_text[stage]);
+    w = font_text_width(line);
+    font_draw_text((FB_W - w) / 2, 182, line, RGB565_WHITE);
+    if (sub && sub[0]) {
+        w = font_text_width(sub);
+        font_draw_text((FB_W - w) / 2, 206, sub, 0x7BEF);
+    }
+}

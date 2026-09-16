@@ -188,7 +188,7 @@ function drawBoot(){
       g.beginPath(); g.moveTo(c[0]+c[2]*14,c[1]); g.lineTo(c[0],c[1]); g.lineTo(c[0],c[1]+c[3]*14); g.stroke();
     });
     bootCenter('EspNav v1.0', 76, '#00e676');
-    bootCenter('可穿戴导航屏－骑行版', 102, '#7bef');   /* 破折号用全角－：GB2312 字库无 U+2014 */
+    bootCenter('可穿戴导航屏·骑行版', 102, '#7bef');   /* 间隔号 · 分隔（GB2312 字库含 U+00B7） */
     const sy = 128 + Math.round(28 * Math.abs(Math.sin(anim / 40)));
     g.strokeStyle='#00e676'; g.beginPath(); g.moveTo(80, sy); g.lineTo(240, sy); g.stroke();
     bootCenter(stText, 182, '#ffffff');

@@ -17,7 +17,7 @@ HANZI = (
  "道省县乡上下一二三四五六七八九十百千万零地点老记得准时过来个取件码稍后"
  "发材料明天早晚上"
 )
-SYMBOLS = "…｜：°"
+SYMBOLS = "…｜：°·—"
 
 def render_glyph(ch, w, h, fontpath, size, yoff=0):
     """渲染单字到位图并居中裁剪到 w×h，返回按行(MSB 左)的字节列表"""
