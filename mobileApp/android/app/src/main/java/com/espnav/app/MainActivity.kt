@@ -128,6 +128,15 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     override fun onError(message: String) {
         log("! " + message)
+        if (message.contains("连接失败")) {
+            val ip = localIpv4()
+            log("本机 IP：$ip")
+            if (!ip.startsWith("192.168.4.")) {
+                log("⚠ 你当前不在 ESPNav-AP 网段(192.168.4.x)：手机 WLAN 未连上 ESPNav-AP，")
+                log("  或被系统自动切回移动数据。请：①关闭 WLAN+/智能网络切换 ②重连 ESPNav-AP")
+                log("  更稳的做法：配网让 ESP32 连你手机热点（手机保持开热点+流量）")
+            }
+        }
     }
 
     // ---------------- 操作 ----------------
@@ -211,6 +220,21 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         src.logSink = { msg -> runOnUiThread { log("高德: " + msg) } }
         launchNav(src, "高德骑行导航")
     }
+
+    /** 取本机 IPv4（用于判断是否处于 ESP32 热点网段 192.168.4.x） */
+    private fun localIpv4(): String = runCatching {
+        val all = java.net.NetworkInterface.getNetworkInterfaces() ?: return@runCatching "未知"
+        for (nif in all) {
+            if (!nif.isUp || nif.isLoopback) continue
+            for (addr in nif.inetAddresses) {
+                if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
+                    val a = addr.hostAddress
+                    if (!a.isNullOrEmpty()) return@runCatching a
+                }
+            }
+        }
+        "未知"
+    }.getOrDefault("未知")
 
     /** 是否有可用的外网（高德 SDK 需要联网算路与校验 Key） */
     private fun hasInternet(): Boolean = runCatching {
