@@ -596,10 +596,24 @@ static void draw_frame(const nav_frame_t *f, float anim)
         }
     }
     /* 已行驶 / 未行驶路径（绿） */
+    /* ---- 临时排查（用户线索：漂移绿色折线只在"车头下方"）----
+     * past_center = App 发来的"已走过路径"，屏幕上位于车头【下方】，与该现象吻合。
+     * ① 打印其真实坐标（每 30 帧一次，避免刷屏）② 暂时屏蔽绘制，验证折线是否随之消失。
+     * 验证完成后：删除 #if 0 / #endif 即可恢复绘制。 */
+    if (f->past_n > 0) {
+        static uint32_t past_log_n = 0;
+        if ((past_log_n++ % 30u) == 0u) {
+            ESP_LOGW(TAG, "past_center n=%d 首=(%d,%d) 末=(%d,%d)",
+                     f->past_n, f->past_center[0].x, f->past_center[0].y,
+                     f->past_center[f->past_n - 1].x, f->past_center[f->past_n - 1].y);
+        }
+    }
+#if 0   /* 【临时屏蔽】验证"车头下方绿色折线漂移"是否由 past_center 绘制产生 */
     for (int i = 0; i + 1 < f->past_n; i++) {
         if (!pt_in_screen(f->past_center[i]) || !pt_in_screen(f->past_center[i + 1])) continue;
         fb_line(f->past_center[i].x, f->past_center[i].y, f->past_center[i + 1].x, f->past_center[i + 1].y, PATH_GREEN);
     }
+#endif
     for (int i = 0; i + 1 < f->route_n; i++) {
         if (!pt_in_screen(f->route_center[i]) || !pt_in_screen(f->route_center[i + 1])) continue;
         fb_line(f->route_center[i].x, f->route_center[i].y, f->route_center[i + 1].x, f->route_center[i + 1].y, PATH_GREEN);
