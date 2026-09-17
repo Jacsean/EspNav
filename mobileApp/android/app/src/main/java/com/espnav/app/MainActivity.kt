@@ -58,6 +58,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     /** 算路超时兜底任务（高德回调不返回时不至于一直“正在算路…”） */
     private var routeTimeoutJob: kotlinx.coroutines.Job? = null
+    private var previewLenM = 0      /* 预览得到的全程（米） */
+    private var previewSecS = 0      /* 预览得到的预计耗时（秒） */
     private val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
     private val crashFile: java.io.File get() = java.io.File(filesDir, "crash.log")
     private var reconnectCount = 0
@@ -412,12 +414,20 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQ_LOCATION) {
+        if (requestCode == REQ_LOCATION) {                     /* 连接页：高德骑行导航 */
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 log("定位权限已授予，启动高德导航")
                 startAmapNav()
             } else {
                 log("定位权限被拒绝，无法使用高德导航")
+            }
+        } else if (requestCode == REQ_LOCATION_PREVIEW) {      /* 导航页：只继续预览，绝不启动导航 */
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                log("定位权限已授予，继续预览路线（不会自动开始导航）")
+                previewRoute()
+            } else {
+                log("定位权限被拒绝：预览路线需要定位（算路起点/显示当前位置）")
+                toast("预览路线需要定位权限，请在系统设置中允许")
             }
         }
     }
@@ -886,7 +896,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             ActivityCompat.requestPermissions(
                 this,
                 arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
-                REQ_LOCATION
+                REQ_LOCATION_PREVIEW
             )
             return
         }
@@ -987,6 +997,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 am.moveCamera(com.amap.api.maps.CameraUpdateFactory.newLatLngBounds(b.build(), 60))
             }
         }
+        previewLenM = len
+        previewSecS = sec
         val info = String.format(java.util.Locale.US, "全程 %.1f km · 预计 %d 分钟", len / 1000.0, sec / 60)
         binding.tvRouteInfo.text = info
         binding.btnStartNav.visibility = View.VISIBLE
@@ -1010,6 +1022,11 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         launchNav(src, "高德骑行导航(地图选点)")
         binding.btnStartNav.visibility = View.GONE
         binding.btnGiveUp.visibility = View.GONE
+        /* 状态栏：不要停留在“尚未算路”（用户反馈不合理） */
+        binding.tvRouteInfo.text = String.format(
+            java.util.Locale.US, "导航中 · 全程 %.1f km · 预计 %d 分钟",
+            previewLenM / 1000.0, previewSecS / 60
+        )
         log("已确认路线，开始与 ESP32 同步导航数据")
     }
 
@@ -1051,7 +1068,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     companion object {
         private const val DEFAULT_HOST = "192.168.4.1"
-        private const val REQ_LOCATION = 1001
+        private const val REQ_LOCATION = 1001          /* 连接页：高德骑行导航 */
+        private const val REQ_LOCATION_PREVIEW = 1003  /* 导航页：预览路线（必须与上面区分，否则授权后会误启导航） */
         private const val REQ_NOTIFY = 1002
         /** 地图默认缩放级别：11 ≈ 方圆 20~30 公里（适合骑行选点） */
         private const val DEFAULT_ZOOM = 11f
