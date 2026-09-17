@@ -231,7 +231,8 @@
         android:id="@+id/pageNav"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:visibility="gone">
 
         <!-- 摘要行：起终点摘要 + 返回连接页 + 展开编辑（L2b：地图为核心，控件收到最少） -->
         <LinearLayout

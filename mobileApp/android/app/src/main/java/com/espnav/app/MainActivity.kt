@@ -728,22 +728,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             st.radiusFillColor(0x2200aa66)
             am.myLocationStyle = st
             am.isMyLocationEnabled = true
-            /* 图层/相机类设置必须在地图【加载完成后】再应用：
-             * 创建时就设会导致底图渲染异常 —— 表现为整屏淡蓝（用户实测）。
-             * 同时去掉 setMinZoomLevel（直接改相机，风险最高，先不用）。 */
-            am.setOnMapLoadedListener {
-                runCatching {
-                    am.isTrafficEnabled = false                     /* 不要路况色带（骑行无关） */
-                    am.mapType = com.amap.api.maps.AMap.MAP_TYPE_NORMAL
-                    am.showBuildings(false)                          /* 不要建筑物色块 */
-                    am.showIndoorMap(false)                          /* 不要室内图 */
-                    am.showMapText(true)                             /* 保留路名/地标文字 */
-                    am.setMaxZoomLevel(19f)                          /* 仅限制最大放大（保留细节） */
-                    am.uiSettings.isTiltGesturesEnabled = false       /* 关 3D 倾斜（骑行不需要） */
-                    am.uiSettings.isRotateGesturesEnabled = false     /* 关旋转手势 */
-                    log("地图样式/流畅性设置已应用（加载完成后）")
-                }
-            }
+            /* 地图样式/流畅性设置【已全部暂时移除】：用户实测开启后地图一片淡蓝。
+             * 按二分法排查 —— 先回到"什么都不设"的可用基线，确认能出图后，再分批加回。 */
             /* 首次拿到定位后：以当前位置为中心，并缩放到骑行合理范围（方圆约 20~30 公里） */
             am.setOnMyLocationChangeListener { loc ->
                 if (loc != null && !mapCenteredOnce) {
