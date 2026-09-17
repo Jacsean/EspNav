@@ -35,7 +35,9 @@ class AmapNavSource(
     private val emulate: Boolean = true,
     /** 地图选点直接给定的起终点（非空时优先使用，跳过地址解析） */
     private val fixedFrom: GeoPoint? = null,
-    private val fixedTo: GeoPoint? = null
+    private val fixedTo: GeoPoint? = null,
+    /** 途经点（按顺序生效，最多 3 个；骑行算路原生支持 wayPoints） */
+    private val wayPoints: List<GeoPoint> = emptyList()
 ) : NavSource, SimpleNaviListener() {
 
     companion object {
@@ -162,12 +164,28 @@ class AmapNavSource(
             log("无目的地坐标：请先在地图上选终点，或使用地址输入")
             return
         }
-        val ok = n.calculateRideRoute(
-            NaviLatLng(start.lat, start.lon),
-            NaviLatLng(to.lat, to.lon)
-        )
-        log("发起骑行算路 result=" + ok + " 起点=(" + start.lat + ", " + start.lon +
-            ") 终点=(" + to.lat + ", " + to.lon + ")")
+        /* 有途经点时改用 NaviPoi 版骑行算路（com.amap.api.navi.AMapNavi#calculateRideRoute 的
+         * (NaviPoi, List<NaviPoi>, NaviPoi, TravelStrategy) 重载，原生支持 wayPoints） */
+        val ok = if (wayPoints.isEmpty()) {
+            n.calculateRideRoute(
+                NaviLatLng(start.lat, start.lon),
+                NaviLatLng(to.lat, to.lon)
+            )
+        } else {
+            n.calculateRideRoute(
+                com.amap.api.navi.model.NaviPoi(
+                    "起点", com.amap.api.maps.model.LatLng(start.lat, start.lon), ""),
+                wayPoints.map {
+                    com.amap.api.navi.model.NaviPoi(
+                        "途经点", com.amap.api.maps.model.LatLng(it.lat, it.lon), "")
+                },
+                com.amap.api.navi.model.NaviPoi(
+                    "终点", com.amap.api.maps.model.LatLng(to.lat, to.lon), ""),
+                com.amap.api.navi.enums.TravelStrategy.SINGLE
+            )
+        }
+        log("发起骑行算路 result=" + ok + " 途经点=" + wayPoints.size +
+            " 起点=(" + start.lat + ", " + start.lon + ") 终点=(" + to.lat + ", " + to.lon + ")")
     }
 
     private fun geocodeAndRoute() {

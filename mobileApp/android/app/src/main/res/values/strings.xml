@@ -40,4 +40,12 @@
     <string name="btn_back_connect">◀ 连接</string>
     <string name="btn_edit_points">编辑 ▾</string>
     <string name="btn_edit_collapse">收起 ▴</string>
+    <string name="btn_add_via">＋ 添加途经点</string>
+    <string name="btn_del_via">✕</string>
+    <string name="label_via">途经</string>
+    <string name="menu_set_via">设为途经点</string>
+    <string name="via_limit_tip">最多 3 个途经点</string>
+    <string name="via_sort_tip">长按途经点可排序</string>
+    <string name="btn_up">↑ 上移</string>
+    <string name="btn_down">↓ 下移</string>
 </resources>

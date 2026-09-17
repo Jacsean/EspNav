@@ -49,6 +49,11 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private val pendingCandidates = ArrayDeque<String>()
     /** 连接尝试互斥：避免“候选链/自动重连/扫描”三者并发建连（多连接会互相踢，屏幕反复切画面） */
     private var connecting = false
+    /** 途经点（最多 MAX_VIA 个）：地址文本 + 解析到的坐标；顺序即生效顺序 */
+    private val viaTexts = mutableListOf<String>()
+    private val viaPoints = mutableListOf<com.amap.api.maps.model.LatLng?>()
+    private val viaMarkers = mutableListOf<com.amap.api.maps.model.Marker?>()
+
     /** 算路超时兜底任务（高德回调不返回时不至于一直“正在算路…”） */
     private var routeTimeoutJob: kotlinx.coroutines.Job? = null
     private val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
@@ -87,6 +92,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             binding.tvEditToggle.text = getString(if (show) R.string.btn_edit_collapse else R.string.btn_edit_points)
         }
         binding.btnBackToConnect.setOnClickListener { showTab(false) }
+        binding.btnAddVia.setOnClickListener { addVia() }
         /* 日志区是公共组件（两个 Tab 都可见），点标题可折叠/展开 */
         binding.logHeader.setOnClickListener {
             val show = binding.svLog.visibility != View.VISIBLE
@@ -541,6 +547,129 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         log("操作可用性已刷新：" + (if (on) "已连接 · 操作可用" else "未连接 · 仅连接/配网可用"))
     }
 
+    // ---------------- 途经点（v1+v2：增/删/✕；长按排序菜单）----------------
+
+    private fun rebuildViaRows() {
+        binding.viaContainer.removeAllViews()
+        val ctx = this
+        for (i in viaTexts.indices) {
+            val row = android.widget.LinearLayout(ctx).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+            }
+            val tag = android.widget.TextView(ctx).apply {
+                text = getString(R.string.label_via) + (i + 1)
+                setPadding(0, 0, 8, 0)
+            }
+            val et = android.widget.EditText(ctx).apply {
+                layoutParams = android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                inputType = android.text.InputType.TYPE_CLASS_TEXT
+                importantForAutofill = android.view.View.IMPORTANT_FOR_AUTOFILL_NO
+                setText(viaTexts[i])
+                addTextChangedListener(object : android.text.TextWatcher {
+                    override fun afterTextChanged(w: android.text.Editable?) {
+                        if (i < viaTexts.size) viaTexts[i] = w?.toString() ?: ""
+                    }
+                    override fun beforeTextChanged(c: CharSequence?, a: Int, b: Int, d: Int) = Unit
+                    override fun onTextChanged(c: CharSequence?, a: Int, b: Int, d: Int) = Unit
+                })
+            }
+            val del = android.widget.Button(ctx).apply {
+                text = getString(R.string.btn_del_via)
+                minWidth = 0
+                setOnClickListener { removeVia(i) }
+            }
+            row.addView(tag); row.addView(et); row.addView(del)
+            row.setOnLongClickListener { showViaSortMenu(i); true }   /* 长按：排序/删除 */
+            binding.viaContainer.addView(row)
+        }
+        updatePickState()
+    }
+
+    private fun addVia() {
+        if (viaTexts.size >= MAX_VIA) {
+            toast(getString(R.string.via_limit_tip))
+            return
+        }
+        viaTexts.add("")
+        viaPoints.add(null)
+        viaMarkers.add(null)
+        rebuildViaRows()
+        log("新增途经点 " + viaTexts.size + "/" + MAX_VIA + "（" + getString(R.string.via_sort_tip) + "）")
+    }
+
+    private fun removeVia(index: Int) {
+        if (index !in viaTexts.indices) return
+        runCatching { viaMarkers.getOrNull(index)?.remove() }
+        viaTexts.removeAt(index)
+        viaPoints.removeAt(index)
+        viaMarkers.removeAt(index)
+        rebuildViaRows()
+        rebuildViaMarkers()
+        log("删除途经点，剩余 " + viaTexts.size + " 个")
+    }
+
+    private fun moveVia(from: Int, to: Int) {
+        if (from !in viaTexts.indices || to !in viaTexts.indices || from == to) return
+        val t = viaTexts.removeAt(from); viaTexts.add(to, t)
+        val p2 = viaPoints.removeAt(from); viaPoints.add(to, p2)
+        val m = viaMarkers.removeAt(from); viaMarkers.add(to, m)
+        rebuildViaRows()
+        rebuildViaMarkers()
+        log("途经点顺序已调整：" + (from + 1) + " -> " + (to + 1))
+    }
+
+    /** 长按途经点行：弹出排序/删除菜单（移动端无右键，用长按替代） */
+    private fun showViaSortMenu(index: Int) {
+        val items = mutableListOf<String>()
+        if (index > 0) items.add(getString(R.string.btn_up))
+        if (index < viaTexts.size - 1) items.add(getString(R.string.btn_down))
+        items.add(getString(R.string.btn_del_via))
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(getString(R.string.label_via) + (index + 1))
+            .setItems(items.toTypedArray()) { _, which ->
+                val choice = items[which]
+                when (choice) {
+                    getString(R.string.btn_up) -> moveVia(index, index - 1)
+                    getString(R.string.btn_down) -> moveVia(index, index + 1)
+                    else -> removeVia(index)
+                }
+            }
+            .show()
+    }
+
+    /** 地图选点 -> 作为途经点（若已达上限则提示） */
+    private fun setViaFromMap(ll: com.amap.api.maps.model.LatLng) {
+        if (viaTexts.size >= MAX_VIA) { toast(getString(R.string.via_limit_tip)); return }
+        viaTexts.add(String.format(java.util.Locale.US, "%.5f,%.5f", ll.latitude, ll.longitude))
+        viaPoints.add(ll)
+        viaMarkers.add(null)
+        rebuildViaRows()
+        rebuildViaMarkers()
+        reverseGeocodeOnly(ll) { addr ->
+            if (addr.isNotBlank() && viaTexts.isNotEmpty()) {
+                viaTexts[viaTexts.size - 1] = addr
+                rebuildViaRows()
+            }
+        }
+        log("已添加途经点（地图选点）共 " + viaTexts.size + " 个")
+    }
+
+    /** 途经点地图标记（供地图选点后可视化） */
+    private fun rebuildViaMarkers() {
+        val am = aMap ?: return
+        viaMarkers.forEachIndexed { i, m ->
+            if (m == null && viaPoints.getOrNull(i) != null) {
+                val ll = viaPoints[i]!!
+                viaMarkers[i] = runCatching {
+                    am.addMarker(
+                        com.amap.api.maps.model.MarkerOptions().position(ll)
+                            .title(getString(R.string.label_via) + (i + 1))
+                    )
+                }.getOrNull()
+            }
+        }
+    }
+
     private fun updatePickState() {
         /* 起终点来源：地图选点 > 输入框地址 > 未选（之前只看地图选点，输入了地址却显示“未选”，是荒谬的） */
         val fromSrc = when {
@@ -557,7 +686,9 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         /* 摘要行：起终点（地址优先显示，便于一眼确认） */
         val fShow = binding.etFrom.text.toString().trim().ifBlank { if (startLatLng != null) "地图选点" else "—" }
         val tShow = binding.etTo.text.toString().trim().ifBlank { if (endLatLng != null) "地图选点" else "—" }
-        binding.tvRouteSummary.text = "起点 " + fShow + " → 终点 " + tShow
+        val viaN = viaTexts.count { it.isNotBlank() }
+        binding.tvRouteSummary.text = "起点 " + fShow +
+            (if (viaN > 0) " → 途经 " + viaN + " 处" else "") + " → 终点 " + tShow
         /* 未连接时导航页操作一律不可用；“开始导航/放弃”还需已有预览 */
         val on = client.isConnected
         val hasPreview = previewSource != null
@@ -637,15 +768,17 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private fun askSetPoint(ll: com.amap.api.maps.model.LatLng) {
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle(String.format(java.util.Locale.US, "%.5f, %.5f", ll.latitude, ll.longitude))
-            .setItems(arrayOf("设为起点", "设为终点")) { _, which ->
+            .setItems(arrayOf("设为起点", "设为终点", getString(R.string.menu_set_via))) { _, which ->
                 if (which == 0) {
                     startLatLng = ll
                     setMarker(true)
                     reverseGeocode(ll, true)
-                } else {
+                } else if (which == 1) {
                     endLatLng = ll
                     setMarker(false)
                     reverseGeocode(ll, false)
+                } else {
+                    setViaFromMap(ll)
                 }
                 updatePickState()
             }
@@ -689,6 +822,25 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         }
     }
 
+    /** 逆地理编码（只取地址文本，不写起终点输入框）—— 供途经点使用 */
+    private fun reverseGeocodeOnly(ll: com.amap.api.maps.model.LatLng, onDone: (String) -> Unit) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val addr = runCatching {
+                val gs = com.amap.api.services.geocoder.GeocodeSearch(applicationContext)
+                val q = com.amap.api.services.geocoder.RegeocodeQuery(
+                    com.amap.api.services.core.LatLonPoint(ll.latitude, ll.longitude),
+                    200f,
+                    com.amap.api.services.geocoder.GeocodeSearch.AMAP
+                )
+                gs.getFromLocation(q)?.formatAddress ?: ""
+            }.getOrDefault("")
+            val text = addr.ifEmpty {
+                String.format(java.util.Locale.US, "%.5f,%.5f", ll.latitude, ll.longitude)
+            }
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { onDone(text) }
+        }
+    }
+
     /** ① 预览路线：只算路、不与 ESP32 同步；成功后在地图上画线等待确认 */
     private fun previewRoute() {
         val s0 = startLatLng
@@ -717,6 +869,50 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             )
             return
         }
+        /* 途经点：地址 -> 坐标（地图选点已有坐标则直接用）；解析失败即中止 */
+        if (viaTexts.any { it.isNotBlank() }) {
+            binding.tvRouteInfo.text = "正在解析途经点…"
+            lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val gs = com.amap.api.services.geocoder.GeocodeSearch(applicationContext)
+                val resolved = mutableListOf<com.espnav.app.data.GeoPoint>()
+                for (i in viaTexts.indices) {
+                    val txt = viaTexts[i].trim()
+                    if (txt.isEmpty()) continue
+                    val have = viaPoints.getOrNull(i)
+                    if (have != null) {
+                        resolved.add(com.espnav.app.data.GeoPoint(have.latitude, have.longitude))
+                        continue
+                    }
+                    val pt = runCatching {
+                        gs.getFromLocationName(
+                            com.amap.api.services.geocoder.GeocodeQuery(txt, "北京")
+                        )?.firstOrNull()?.latLonPoint
+                    }.getOrNull()
+                    if (pt == null) {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            toast("途经点" + (i + 1) + " 解析失败：" + txt)
+                            binding.tvRouteInfo.text = getString(R.string.tip_route_info)
+                        }
+                        return@launch
+                    }
+                    viaPoints[i] = com.amap.api.maps.model.LatLng(pt.latitude, pt.longitude)
+                    resolved.add(com.espnav.app.data.GeoPoint(pt.latitude, pt.longitude))
+                }
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    startPreviewWithVia(resolved)
+                }
+            }
+            return
+        }
+        startPreviewWithVia(emptyList())
+    }
+
+    /** 实际发起预览算路（wayPoints 已解析成坐标） */
+    private fun startPreviewWithVia(vias: List<com.espnav.app.data.GeoPoint>) {
+        val s0 = startLatLng
+        val e0 = endLatLng
+        val fromText = binding.etFrom.text.toString().trim()
+        val toText = binding.etTo.text.toString().trim()
         previewSource?.stop()
         val src = AmapNavSource(
             applicationContext,
@@ -724,7 +920,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             if (e0 != null) "" else toText,
             "北京", emulate = true,
             fixedFrom = s0?.let { com.espnav.app.data.GeoPoint(it.latitude, it.longitude) },
-            fixedTo = e0?.let { com.espnav.app.data.GeoPoint(it.latitude, it.longitude) }
+            fixedTo = e0?.let { com.espnav.app.data.GeoPoint(it.latitude, it.longitude) },
+            wayPoints = vias
         )
         src.logSink = { msg -> runOnUiThread { log("高德: " + msg) } }
         src.onRouteReady = { len, sec, coords -> runOnUiThread { showRoutePreview(len, sec, coords) } }
@@ -845,6 +1042,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         private const val KEY_LAST_IP = "last_ip"
         private const val FRAME_INTERVAL_MS = 200L   // 5 Hz（协议上限 10fps）
         private const val ROUTE_TIMEOUT_MS = 12000L  // 算路超时兜底（毫秒）
+        private const val MAX_VIA = 3                // 途经点上限（与高德/百度一致）
         private const val MAX_LOG_LINES = 1000
     }
 }

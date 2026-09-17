@@ -301,6 +301,13 @@
                     android:importantForAutofill="no" />
             </LinearLayout>
 
+            <!-- 途经点：动态增删（最多 3 个，按顺序生效） -->
+            <LinearLayout
+                android:id="@+id/viaContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -320,6 +327,12 @@
                     android:inputType="text"
                     android:importantForAutofill="no" />
             </LinearLayout>
+
+            <Button
+                android:id="@+id/btnAddVia"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/btn_add_via" />
         </LinearLayout>
 
         <!-- 信息行：选点状态 + 路线信息（合并一行） -->
