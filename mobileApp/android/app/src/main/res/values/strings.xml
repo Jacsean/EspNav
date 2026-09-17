@@ -31,6 +31,9 @@
     <string name="tab_connect">连接</string>
     <string name="tab_nav">导航</string>
     <string name="tab_compare">行程预览</string>
+    <string name="compare_loading">正在加载对比页…</string>
+    <string name="compare_failed">对比页加载失败：</string>
+    <string name="compare_need_route">请先在「导航」页点「预览路线」算一条路线，再回到本页</string>
     <string name="tip_map_pick">点一下地图即可设置起点/终点（会弹出选择）</string>
     <string name="btn_use_map_nav">预览路线</string>
     <string name="btn_map_clear">清除标记</string>

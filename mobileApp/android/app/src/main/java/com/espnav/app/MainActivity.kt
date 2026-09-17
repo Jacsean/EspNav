@@ -538,6 +538,9 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     private var compareView: android.webkit.WebView? = null
 
+    /** 对比页状态行（加载中 / 失败原因 / 需先算路提示）；成功渲染后隐藏 */
+    private var compareStatus: android.widget.TextView? = null
+
     /** 最近一次算出的路径（经纬度），供行程预览页对比两种采样 */
     private var comparePts: List<com.espnav.app.data.GeoPoint> = emptyList()
 
@@ -545,32 +548,88 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private fun ensureCompare() {
         if (compareView != null) return
         try {
+            binding.pageCompare.removeAllViews()
+            /* 状态行：加载中 / 失败原因都看得见，避免"无提示纯黑" */
+            val tv = android.widget.TextView(this)
+            tv.setTextColor(0xFFFFCC80.toInt())
+            tv.textSize = 13f
+            tv.gravity = android.view.Gravity.CENTER
+            tv.setPadding(12, 12, 12, 12)
+            tv.text = getString(R.string.compare_loading)
+            binding.pageCompare.addView(
+                tv,
+                android.widget.LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+            compareStatus = tv
+
             val wv = android.webkit.WebView(this)
             wv.settings.javaScriptEnabled = true
+            wv.settings.domStorageEnabled = true
+            wv.settings.allowFileAccess = true
             wv.setBackgroundColor(0xFF181818.toInt())
             wv.webViewClient = object : android.webkit.WebViewClient() {
                 override fun onPageFinished(view: android.webkit.WebView, url: String?) {
-                    pushPathToCompare()      /* 页面就绪后再注入，否则 window.setPath 尚未定义 */
+                    if (comparePts.isEmpty()) {
+                        showCompareMsg(getString(R.string.compare_need_route))
+                    } else {
+                        compareStatus?.visibility = View.GONE
+                        pushPathToCompare()   /* 页面就绪后再注入，否则 window.setPath 尚未定义 */
+                    }
+                }
+
+                override fun onReceivedError(
+                    view: android.webkit.WebView,
+                    request: android.webkit.WebResourceRequest?,
+                    error: android.webkit.WebResourceError?
+                ) {
+                    showCompareMsg(getString(R.string.compare_failed) + (error?.description ?: ""))
                 }
             }
-            wv.loadUrl("file:///android_asset/sampling_compare.html")
+            /* 直接读 assets 文本再注入：绕开 file:// 访问策略在不同 ROM / WebView 版本上的差异 */
+            val html = assets.open("sampling_compare.html").bufferedReader().use { it.readText() }
+            wv.loadDataWithBaseURL("file:///android_asset/", html, "text/html", "UTF-8", null)
             binding.pageCompare.addView(
                 wv,
                 android.widget.LinearLayout.LayoutParams(
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                    0,
+                    1f
                 )
             )
             compareView = wv
-            log("行程预览页已加载")
+            log("行程预览页已加载（assets 注入 " + html.length + " 字节）")
         } catch (t: Throwable) {
-            log("行程预览页加载失败：" + t.message)
+            showCompareMsg(getString(R.string.compare_failed) + (t.message ?: t.javaClass.simpleName))
         }
     }
 
-    /** 切走时释放渲染内存（下次进入重新加载） */
+    /** 状态行显示提示并写日志（WebView 不可用 / 加载失败时用户能看到确切原因） */
+    private fun showCompareMsg(msg: String) {
+        compareStatus?.let {
+            it.text = msg
+            it.visibility = View.VISIBLE
+        }
+        log(msg)
+    }
+
+    /** 切走时真正销毁 WebView 并置空 —— 下次进入必须重建并重新加载。
+     *  此前用 loadUrl("about:blank") 释放，但 ensureCompare() 见 compareView 非空就直接 return，
+     *  于是"切走再切回"会永远停在空白页，表现为一片漆黑（用户实测）。 */
     private fun releaseCompare() {
-        compareView?.let { runCatching { it.loadUrl("about:blank") } }
+        val wv = compareView
+        if (wv != null) {
+            runCatching {
+                binding.pageCompare.removeView(wv)
+                wv.stopLoading()
+                wv.destroy()
+            }
+        }
+        compareView = null
+        compareStatus = null
+        runCatching { binding.pageCompare.removeAllViews() }
     }
 
     /** 把最近一次算出的路径注入对比页（[[lon,lat],...]） */
