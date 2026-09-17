@@ -147,8 +147,9 @@ class AmapNavSource(
     }
 
     /** 地址 -> 坐标 -> 骑行算路（网络请求放在后台线程） */
-    /** 发起“当前位置 -> 目的地”算路；目的地优先级：地图选点 > 地址解析 > 自动目的地 */
-    /** 发起算路：起点=给定点或当前定位，终点=地图选点坐标（fixedTo） */
+    /** 发起算路：起点=给定点或当前定位，终点=地图选点坐标（fixedTo）
+     *  注意：本项目是**骑行**导航，必须用 calculateRideRoute；此前这里误用 calculateDriveRoute（驾车），
+     *  与连接页的骑行导航不一致，且会导致发起后回调不返回（界面卡在“正在算路…”）。 */
     fun calculateRoute(from: GeoPoint?) {
         val n = navi ?: return
         val start = from ?: lastOrigin
@@ -161,13 +162,12 @@ class AmapNavSource(
             log("无目的地坐标：请先在地图上选终点，或使用地址输入")
             return
         }
-        val ok = n.calculateDriveRoute(
-            listOf(NaviLatLng(start.lat, start.lon)),
-            listOf(NaviLatLng(to.lat, to.lon)),
-            null,
-            ROUTE_STRATEGY_DEFAULT
+        val ok = n.calculateRideRoute(
+            NaviLatLng(start.lat, start.lon),
+            NaviLatLng(to.lat, to.lon)
         )
-        log("发起算路 result=" + ok + " 终点=(" + to.lat + ", " + to.lon + ")")
+        log("发起骑行算路 result=" + ok + " 起点=(" + start.lat + ", " + start.lon +
+            ") 终点=(" + to.lat + ", " + to.lon + ")")
     }
 
     private fun geocodeAndRoute() {
