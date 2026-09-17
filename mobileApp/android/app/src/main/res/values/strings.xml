@@ -37,4 +37,7 @@
     <string name="btn_give_up">放弃</string>
     <string name="tip_route_info">尚未算路</string>
     <string name="tip_pick_none">起点：未选　　终点：未选</string>
+    <string name="btn_back_connect">◀ 连接</string>
+    <string name="btn_edit_points">编辑 ▾</string>
+    <string name="btn_edit_collapse">收起 ▴</string>
 </resources>

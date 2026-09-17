@@ -80,6 +80,13 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         binding.btnConnect.setOnClickListener { doConnect() }
         binding.btnQuickConnect.setOnClickListener { quickConnect() }
         binding.btnOpenProv.setOnClickListener { openProvPage() }
+        /* 摘要行「编辑」：展开/收起起终点输入框（默认收起，把屏幕让给地图） */
+        binding.tvEditToggle.setOnClickListener {
+            val show = binding.routeEditPanel.visibility != View.VISIBLE
+            binding.routeEditPanel.visibility = if (show) View.VISIBLE else View.GONE
+            binding.tvEditToggle.text = getString(if (show) R.string.btn_edit_collapse else R.string.btn_edit_points)
+        }
+        binding.btnBackToConnect.setOnClickListener { showTab(false) }
         /* 日志区是公共组件（两个 Tab 都可见），点标题可折叠/展开 */
         binding.logHeader.setOnClickListener {
             val show = binding.svLog.visibility != View.VISIBLE
@@ -132,6 +139,14 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         super.onResume()
         /* 只有导航页可见时才驱动 MapView 生命周期（官方要求 onCreate/onResume/onPause/onDestroy 成对） */
         if (binding.pageNav.visibility == View.VISIBLE) ensureMap()
+    }
+
+    /** 导航页是全屏的：返回键先切回连接页，再按才退出 */
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (binding.pageNav.visibility == View.VISIBLE) { showTab(false); return }
+        @Suppress("DEPRECATION")
+        super.onBackPressed()
     }
 
     override fun onPause() {
@@ -465,6 +480,20 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private var startLatLng: com.amap.api.maps.model.LatLng? = null
     private var endLatLng: com.amap.api.maps.model.LatLng? = null
 
+    /** L2b：导航页全屏（隐藏 Tab 栏，让地图占约 8 成）；返回按钮/返回键切回连接页 */
+    private fun applyTabUi(nav: Boolean) {
+        binding.tabMain.visibility = if (nav) View.GONE else View.VISIBLE
+        binding.pageConnect.visibility = if (nav) View.GONE else View.VISIBLE
+        binding.pageNav.visibility = if (nav) View.VISIBLE else View.GONE
+        if (nav) ensureMap() else runCatching { binding.mapView.onPause() }
+        refreshActionStates()
+    }
+
+    private fun showTab(nav: Boolean) {
+        binding.tabMain.getTabAt(if (nav) 1 else 0)?.select()   /* 触发 onTabSelected -> applyTabUi */
+        applyTabUi(nav)                                          /* 保险：Tab 被隐藏时也确保切页生效 */
+    }
+
     private fun setupTabs() {
         val tab = binding.tabMain
         tab.addTab(tab.newTab().setText(R.string.tab_connect))
@@ -472,14 +501,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         tab.addOnTabSelectedListener(object :
             com.google.android.material.tabs.TabLayout.OnTabSelectedListener {
             override fun onTabSelected(t: com.google.android.material.tabs.TabLayout.Tab) {
-                val nav = t.position == 1
-                binding.pageConnect.visibility = if (nav) View.GONE else View.VISIBLE
-                binding.pageNav.visibility = if (nav) View.VISIBLE else View.GONE
-                if (nav) {
-                    ensureMap()
-                } else {
-                    runCatching { binding.mapView.onPause() }
-                }
+                applyTabUi(t.position == 1)
             }
 
             override fun onTabUnselected(t: com.google.android.material.tabs.TabLayout.Tab) = Unit
@@ -531,7 +553,11 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             binding.etTo.text.toString().isNotBlank() -> "已选(地址)"
             else -> "未选"
         }
-        binding.tvPickState.text = "起点：" + fromSrc + "　　" + "终点：" + toSrc
+        binding.tvPickState.text = "起点：" + fromSrc + "　" + "终点：" + toSrc
+        /* 摘要行：起终点（地址优先显示，便于一眼确认） */
+        val fShow = binding.etFrom.text.toString().trim().ifBlank { if (startLatLng != null) "地图选点" else "—" }
+        val tShow = binding.etTo.text.toString().trim().ifBlank { if (endLatLng != null) "地图选点" else "—" }
+        binding.tvRouteSummary.text = "起点 " + fShow + " → 终点 " + tShow
         /* 未连接时导航页操作一律不可用；“开始导航/放弃”还需已有预览 */
         val on = client.isConnected
         val hasPreview = previewSource != null
@@ -578,6 +604,11 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             am.showBuildings(false)
             am.showIndoorMap(false)
             am.showMapText(true)
+            /* 流畅性：限制缩放范围（避免缩到全国导致数据量暴增）+ 关掉 3D 倾斜/旋转（骑行不需要） */
+            am.setMinZoomLevel(10f)
+            am.setMaxZoomLevel(19f)
+            am.uiSettings.isTiltGesturesEnabled = false
+            am.uiSettings.isRotateGesturesEnabled = false
             /* 首次拿到定位后：以当前位置为中心，并缩放到骑行合理范围（方圆约 20~30 公里） */
             am.setOnMyLocationChangeListener { loc ->
                 if (loc != null && !mapCenteredOnce) {

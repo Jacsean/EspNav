@@ -231,65 +231,124 @@
         android:id="@+id/pageNav"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:padding="8dp"
-        android:paddingBottom="16dp"
-        android:visibility="gone">
+        android:orientation="vertical">
 
+        <!-- 摘要行：起终点摘要 + 返回连接页 + 展开编辑（L2b：地图为核心，控件收到最少） -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp">
+
+            <Button
+                android:id="@+id/btnBackToConnect"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minWidth="0dp"
+                android:text="@string/btn_back_connect" />
+
+            <TextView
+                android:id="@+id/tvRouteSummary"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:maxLines="2"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:textSize="12sp"
+                android:text="@string/tip_pick_none" />
+
+            <TextView
+                android:id="@+id/tvEditToggle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:text="@string/btn_edit_points" />
+        </LinearLayout>
+
+        <!-- 编辑面板：默认隐藏（点「编辑」才展开），起点/终点输入框 -->
+        <LinearLayout
+            android:id="@+id/routeEditPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/label_from"
+                    android:gravity="center_vertical" />
+
+                <EditText
+                    android:id="@+id/etFrom"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:inputType="text"
+                    android:importantForAutofill="no" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/label_to"
+                    android:gravity="center_vertical" />
+
+                <EditText
+                    android:id="@+id/etTo"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:inputType="text"
+                    android:importantForAutofill="no" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- 信息行：选点状态 + 路线信息（合并一行） -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal">
 
             <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/label_from"
-                android:gravity="center_vertical" />
-
-            <EditText
-                android:id="@+id/etFrom"
+                android:id="@+id/tvPickState"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:inputType="text"
-                android:importantForAutofill="no" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:text="@string/tip_pick_none" />
 
             <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/label_to"
-                android:gravity="center_vertical" />
-
-            <EditText
-                android:id="@+id/etTo"
+                android:id="@+id/tvRouteInfo"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:inputType="text"
-                android:importantForAutofill="no" />
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:gravity="end"
+                android:text="@string/tip_route_info" />
         </LinearLayout>
 
-        <TextView
-            android:id="@+id/tvPickState"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="4dp"
-            android:textStyle="bold"
-            android:text="@string/tip_pick_none" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="12sp"
-            android:text="@string/tip_map_pick" />
-
+        <!-- 操作行：预览 / 开始导航 / 放弃 / 清除（一行放下） -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -309,12 +368,6 @@
                 android:layout_weight="1"
                 android:text="@string/btn_start_nav"
                 android:visibility="gone" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
 
             <Button
                 android:id="@+id/btnGiveUp"
@@ -331,13 +384,6 @@
                 android:layout_weight="1"
                 android:text="@string/btn_map_clear" />
         </LinearLayout>
-
-        <TextView
-            android:id="@+id/tvRouteInfo"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textStyle="bold"
-            android:text="@string/tip_route_info" />
 
         <com.amap.api.maps.MapView
             android:id="@+id/mapView"
