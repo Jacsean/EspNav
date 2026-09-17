@@ -349,8 +349,19 @@ static void road_path(const npt_t *pts, int n)
     if (n < 2) return;
     gpt_t pr[NAV_MAX_PTS];
     for (int i = 0; i < n; i++) { gpt_t g = { (float)pts[i].x, (float)pts[i].y }; pr[i] = geo_proj_pt(g); }
+    /* 【临时探针】模板点首末坐标（用户报告"绿色折线漂移、进某路段后消失"）：
+     * 与 past_center 的探针配合，用来确定到底是哪个数组给出了越界坐标。 */
+    {
+        static uint32_t rp_log_n = 0;
+        if (n > 0 && (rp_log_n++ % 30u) == 0u) {
+            ESP_LOGW(TAG, "road pts n=%d 首=(%d,%d) 末=(%d,%d)",
+                     n, pts[0].x, pts[0].y, pts[n - 1].x, pts[n - 1].y);
+        }
+    }
     for (int pass = 0; pass < 2; pass++) {
         for (int i = 0; i + 1 < n; i++) {
+            /* 越界点直接跳过（宁可少画一段，也不把线画到文字/行程图区域去） */
+            if (!pt_in_screen(pts[i]) || !pt_in_screen(pts[i + 1])) continue;
             int x0 = (int)pr[i].x, y0 = (int)pr[i].y, x1 = (int)pr[i+1].x, y1 = (int)pr[i+1].y;
             if (pass == 0) { fb_line(x0, y0, x1, y1, 0x0320); fb_line(x0, y0+1, x1, y1+1, 0x0320); }
             else           { fb_line(x0, y0, x1, y1, PATH_GREEN); fb_line(x0+1, y0, x1+1, y1, PATH_GREEN); }
