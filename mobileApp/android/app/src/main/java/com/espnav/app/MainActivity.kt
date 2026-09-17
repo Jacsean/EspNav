@@ -49,6 +49,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private val pendingCandidates = ArrayDeque<String>()
     /** 连接尝试互斥：避免“候选链/自动重连/扫描”三者并发建连（多连接会互相踢，屏幕反复切画面） */
     private var connecting = false
+    /** 主动断开标记：点「断开」/页面关闭时置位，用于跳过自动重连（否则会被立刻拉回连接） */
+    private var intentionalDisconnect = false
     /** 途经点（最多 MAX_VIA 个）：地址文本 + 解析到的坐标；顺序即生效顺序 */
     private val viaTexts = mutableListOf<String>()
     private val viaPoints = mutableListOf<com.amap.api.maps.model.LatLng?>()
@@ -100,6 +102,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             binding.tvLogTitle.text = getString(R.string.label_log) + (if (show) "  ▾" else "  ▸")
         }
         binding.btnDisconnect.setOnClickListener {
+            intentionalDisconnect = true                  /* 手动断开：不自动重连 */
             stopMock()
             send(OutMsg.bye())
             client.disconnect("手动断开")
@@ -169,6 +172,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     override fun onDestroy() {
         stopMock()
+        intentionalDisconnect = true
         send(OutMsg.bye())
         client.disconnect("页面关闭")
         super.onDestroy()
@@ -192,6 +196,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     override fun onConnected(addr: String) {
         connecting = false
+        intentionalDisconnect = false
         prefs.edit().putString(KEY_LAST_IP, addr.substringBefore(':')).apply()   /* 记住可用地址 */
         reconnectCount = 0
         NavService.start(this)                    /* 熄屏保持连接 */
@@ -204,7 +209,12 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     override fun onDisconnected(reason: String) {
         stopMock()
-        scheduleReconnect(reason)
+        if (intentionalDisconnect) {                     /* 主动断开：不再自动重连 */
+            intentionalDisconnect = false
+            log("已手动断开，不自动重连（如需恢复请点「一键连接」）")
+        } else {
+            scheduleReconnect(reason)                    /* 被动断开：保持自动重连 */
+        }
         setStatus("未连接（$reason）")
         refreshActionStates()          /* 断开：重新置灰 */
         log("断开：$reason")

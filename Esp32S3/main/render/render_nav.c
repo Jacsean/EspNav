@@ -251,6 +251,15 @@ static void draw_overview(const nav_frame_t *f)
         int x1 = ax + 8 + f->overview[i + 1].x, y1 = ay + 8 + (40 - f->overview[i + 1].y);
         fb_line(x0, y0, x1, y1, PATH_GREEN);
     }
+    /* 起终点标记：轨迹首点=起点(绿)、末点=终点(红)；当前位置仍为黄点（App 实时更新） */
+    if (f->overview_n >= 2) {
+        int sx = ax + 8 + f->overview[0].x;
+        int sy = ay + 8 + (40 - f->overview[0].y);
+        int tx = ax + 8 + f->overview[f->overview_n - 1].x;
+        int ty = ay + 8 + (40 - f->overview[f->overview_n - 1].y);
+        fb_fill_rect(sx - 2, sy - 2, sx + 2, sy + 2, RGB565_GREEN);
+        fb_fill_rect(tx - 2, ty - 2, tx + 2, ty + 2, RGB565_RED);
+    }
     if (f->overview_dot_valid) {
         int dx = ax + 8 + f->overview_dot.x, dy = ay + 8 + (40 - f->overview_dot.y);
         fb_fill_rect(dx - 2, dy - 2, dx + 2, dy + 2, RGB565_YELLOW);
