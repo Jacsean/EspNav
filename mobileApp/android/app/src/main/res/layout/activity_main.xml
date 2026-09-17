@@ -405,6 +405,7 @@
             android:layout_weight="1" />
     </LinearLayout>
 
+    </FrameLayout>
     <!-- ===== 日志区：独立于 Tab 的公共组件（两个 Tab 常驻可见，点标题可折叠）===== -->
     <LinearLayout
         android:layout_width="match_parent"
@@ -456,5 +457,4 @@
         </ScrollView>
     </LinearLayout>
 
-    </FrameLayout>
 </LinearLayout>

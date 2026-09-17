@@ -728,18 +728,22 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             st.radiusFillColor(0x2200aa66)
             am.myLocationStyle = st
             am.isMyLocationEnabled = true
-            /* 骑行友好样式：不要路况、不要建筑物与室内图，保留路名文字（单车到不了的高速/高架/地铁等
-             * 需在高德控制台“个性化地图”样式里配置，拿到 styleId 后再接入 setCustomMapStyleID） */
-            am.isTrafficEnabled = false
-            am.mapType = com.amap.api.maps.AMap.MAP_TYPE_NORMAL
-            am.showBuildings(false)
-            am.showIndoorMap(false)
-            am.showMapText(true)
-            /* 流畅性：限制缩放范围（避免缩到全国导致数据量暴增）+ 关掉 3D 倾斜/旋转（骑行不需要） */
-            am.setMinZoomLevel(10f)
-            am.setMaxZoomLevel(19f)
-            am.uiSettings.isTiltGesturesEnabled = false
-            am.uiSettings.isRotateGesturesEnabled = false
+            /* 图层/相机类设置必须在地图【加载完成后】再应用：
+             * 创建时就设会导致底图渲染异常 —— 表现为整屏淡蓝（用户实测）。
+             * 同时去掉 setMinZoomLevel（直接改相机，风险最高，先不用）。 */
+            am.setOnMapLoadedListener {
+                runCatching {
+                    am.isTrafficEnabled = false                     /* 不要路况色带（骑行无关） */
+                    am.mapType = com.amap.api.maps.AMap.MAP_TYPE_NORMAL
+                    am.showBuildings(false)                          /* 不要建筑物色块 */
+                    am.showIndoorMap(false)                          /* 不要室内图 */
+                    am.showMapText(true)                             /* 保留路名/地标文字 */
+                    am.setMaxZoomLevel(19f)                          /* 仅限制最大放大（保留细节） */
+                    am.uiSettings.isTiltGesturesEnabled = false       /* 关 3D 倾斜（骑行不需要） */
+                    am.uiSettings.isRotateGesturesEnabled = false     /* 关旋转手势 */
+                    log("地图样式/流畅性设置已应用（加载完成后）")
+                }
+            }
             /* 首次拿到定位后：以当前位置为中心，并缩放到骑行合理范围（方圆约 20~30 公里） */
             am.setOnMyLocationChangeListener { loc ->
                 if (loc != null && !mapCenteredOnce) {
