@@ -30,7 +30,6 @@
     <string name="tip_hotspot">提示：手机需先连接热点 ESPNav-AP（密码 espnav1234）</string>
     <string name="tab_connect">连接</string>
     <string name="tab_nav">导航</string>
-    <string name="tab_compare">行程预览</string>
     <string name="tip_map_pick">点一下地图即可设置起点/终点（会弹出选择）</string>
     <string name="btn_use_map_nav">预览路线</string>
     <string name="btn_map_clear">清除标记</string>
@@ -61,9 +60,6 @@
     <string name="set_hint_city">地理编码城市（关闭自动时使用，如 北京）</string>
     <string name="set_group_map">地图</string>
     <string name="set_hint_zoom">默认缩放级别 10~19（16 较近，11 约 20 公里）</string>
-    <string name="set_group_overview">行程图</string>
-    <string name="set_overview_vw">Visvalingam 高保真（长弧线优先保留）</string>
-    <string name="set_overview_dp">Douglas-Peucker 误差有界（实现简单）</string>
     <string name="set_group_log">日志</string>
     <string name="set_hint_log">日志最多保留行数（默认 1000）</string>
     <string name="set_group_perm">权限</string>

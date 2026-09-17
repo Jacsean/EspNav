@@ -59,5 +59,7 @@ data class NavState(
     /* ---- 已投影到屏幕/小地图坐标的路径（由 NavStateMapper.project / miniMap 生成）---- */
     val passedPath: List<Pair<Int, Int>> = emptyList(),
     val remainPath: List<Pair<Int, Int>> = emptyList(),
-    val overviewPath: List<Pair<Int, Int>> = emptyList()
+    val overviewPath: List<Pair<Int, Int>> = emptyList(),
+    /** 当前位置在行程图上的坐标（AmapNavSource 用 OverviewProjector 按定位投影得到） */
+    val overviewDotPos: Pair<Int, Int>? = null
 )

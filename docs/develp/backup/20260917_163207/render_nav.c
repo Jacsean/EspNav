@@ -240,21 +240,6 @@ static void draw_north8(int x, int y)
     }
 }
 
-/* 行程图局部坐标跨度：必须与 App 端 NavStateMapper.OV_SPAN 保持一致。
- * 原为 40 —— 长路线下相邻路口会被量化到同一个点，2026-09 提升到 200（分辨精度 x5）。 */
-#define OV_SPAN 200
-#define OV_BOX  72      /* 内容等比正方形边长（画布 100x80 内） */
-#define OV_OX   4       /* 内容区相对画布左上偏移（留边距 + 给右上角"北"指示留位置） */
-#define OV_OY   4
-
-/* 行程图局部坐标 -> 画布像素（等比、北在上） */
-static void ov_to_px(const npt_t *p, int *px, int *py)
-{
-    const int ax = 220, ay = 160;
-    *px = ax + OV_OX + (int)p->x * OV_BOX / OV_SPAN;
-    *py = ay + OV_OY + (OV_SPAN - (int)p->y) * OV_BOX / OV_SPAN;
-}
-
 static void draw_overview(const nav_frame_t *f)
 {
     const int ax = 220, ay = 160, aw = 100, ah = 80;
@@ -262,22 +247,21 @@ static void draw_overview(const nav_frame_t *f)
     for (int x = ax; x < ax + aw; x += 10) fb_line(x, ay, x, ay + ah - 1, grid);
     for (int y = ay; y < ay + ah; y += 10) fb_line(ax, y, ax + aw - 1, y, grid);
     for (int i = 0; i + 1 < f->overview_n; i++) {
-        int x0, y0, x1, y1;
-        ov_to_px(&f->overview[i], &x0, &y0);
-        ov_to_px(&f->overview[i + 1], &x1, &y1);
+        int x0 = ax + 8 + f->overview[i].x,     y0 = ay + 8 + (40 - f->overview[i].y);
+        int x1 = ax + 8 + f->overview[i + 1].x, y1 = ay + 8 + (40 - f->overview[i + 1].y);
         fb_line(x0, y0, x1, y1, PATH_GREEN);
     }
     /* 起终点标记：轨迹首点=起点(绿)、末点=终点(红)；当前位置仍为黄点（App 实时更新） */
     if (f->overview_n >= 2) {
-        int sx, sy, tx, ty;
-        ov_to_px(&f->overview[0], &sx, &sy);
-        ov_to_px(&f->overview[f->overview_n - 1], &tx, &ty);
+        int sx = ax + 8 + f->overview[0].x;
+        int sy = ay + 8 + (40 - f->overview[0].y);
+        int tx = ax + 8 + f->overview[f->overview_n - 1].x;
+        int ty = ay + 8 + (40 - f->overview[f->overview_n - 1].y);
         fb_fill_rect(sx - 2, sy - 2, sx + 2, sy + 2, RGB565_GREEN);
         fb_fill_rect(tx - 2, ty - 2, tx + 2, ty + 2, RGB565_RED);
     }
     if (f->overview_dot_valid) {
-        int dx, dy;
-        ov_to_px(&f->overview_dot, &dx, &dy);
+        int dx = ax + 8 + f->overview_dot.x, dy = ay + 8 + (40 - f->overview_dot.y);
         fb_fill_rect(dx - 2, dy - 2, dx + 2, dy + 2, RGB565_YELLOW);
     }
     draw_north8(ax + 80, ay + 2);                        /* 右上角小号“北”（8px 点阵） */

@@ -164,7 +164,6 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (binding.pageNav.visibility == View.VISIBLE) { showTab(false); return }
-        if (binding.pageCompare.visibility == View.VISIBLE) { showTab(false); return }
         @Suppress("DEPRECATION")
         super.onBackPressed()
     }
@@ -340,10 +339,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         }
         val from = binding.etFrom.text.toString().trim().ifBlank { appPrefs.fromAddress }
         val to = binding.etTo.text.toString().trim().ifBlank { appPrefs.toAddress }
-        val src = AmapNavSource(
-            applicationContext, from, to, appPrefs.geoCity, emulate = true,
-            samplerMode = appPrefs.samplerMode          /* 行程图采样方式（设置页可切换） */
-        )
+        val src = AmapNavSource(applicationContext, from, to, appPrefs.geoCity, emulate = true)
         // 把高德内部日志转发到界面日志区（便于真机诊断）
         src.logSink = { msg -> runOnUiThread { log("高德: " + msg) } }
         launchNav(src, "高德骑行导航")
@@ -519,68 +515,12 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private var endLatLng: com.amap.api.maps.model.LatLng? = null
 
     /** L2b：导航页全屏（隐藏 Tab 栏，让地图占约 8 成）；返回按钮/返回键切回连接页 */
-    private fun applyTabUi(nav: Boolean) = applyPage(if (nav) 1 else 0)
-
-    /** 按 Tab 序号切页：0 = 连接，1 = 导航（全屏），2 = 行程预览 */
-    private fun applyPage(index: Int) {
-        val nav = index == 1
-        val cmp = index == 2
+    private fun applyTabUi(nav: Boolean) {
         binding.tabMain.visibility = if (nav) View.GONE else View.VISIBLE
-        binding.pageConnect.visibility = if (index == 0) View.VISIBLE else View.GONE
+        binding.pageConnect.visibility = if (nav) View.GONE else View.VISIBLE
         binding.pageNav.visibility = if (nav) View.VISIBLE else View.GONE
-        binding.pageCompare.visibility = if (cmp) View.VISIBLE else View.GONE
         if (nav) ensureMap() else runCatching { binding.mapView.onPause() }
-        if (cmp) ensureCompare() else releaseCompare()   /* 懒加载 + 切走释放，避免 WebView 常驻内存 */
         refreshActionStates()
-    }
-
-    // ---------------- 行程预览（Tab 3：VW / DP 采样对比） ----------------
-
-    private var compareView: android.webkit.WebView? = null
-
-    /** 最近一次算出的路径（经纬度），供行程预览页对比两种采样 */
-    private var comparePts: List<com.espnav.app.data.GeoPoint> = emptyList()
-
-    /** 懒加载：只在切进「行程预览」时创建 WebView */
-    private fun ensureCompare() {
-        if (compareView != null) return
-        try {
-            val wv = android.webkit.WebView(this)
-            wv.settings.javaScriptEnabled = true
-            wv.setBackgroundColor(0xFF181818.toInt())
-            wv.webViewClient = object : android.webkit.WebViewClient() {
-                override fun onPageFinished(view: android.webkit.WebView, url: String?) {
-                    pushPathToCompare()      /* 页面就绪后再注入，否则 window.setPath 尚未定义 */
-                }
-            }
-            wv.loadUrl("file:///android_asset/sampling_compare.html")
-            binding.pageCompare.addView(
-                wv,
-                android.widget.LinearLayout.LayoutParams(
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                )
-            )
-            compareView = wv
-            log("行程预览页已加载")
-        } catch (t: Throwable) {
-            log("行程预览页加载失败：" + t.message)
-        }
-    }
-
-    /** 切走时释放渲染内存（下次进入重新加载） */
-    private fun releaseCompare() {
-        compareView?.let { runCatching { it.loadUrl("about:blank") } }
-    }
-
-    /** 把最近一次算出的路径注入对比页（[[lon,lat],...]） */
-    private fun pushPathToCompare() {
-        val wv = compareView ?: return
-        if (comparePts.isEmpty()) return
-        val json = comparePts.joinToString(",", "[", "]") {
-            String.format(java.util.Locale.US, "[%.6f,%.6f]", it.lon, it.lat)
-        }
-        wv.evaluateJavascript("window.setPath($json)", null)
     }
 
     private fun showTab(nav: Boolean) {
@@ -594,7 +534,6 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         fun ed(id: Int) = v.findViewById<android.widget.EditText>(id)
         val cbAutoConn = v.findViewById<android.widget.CheckBox>(R.id.setAutoConnect)
         val cbAutoCity = v.findViewById<android.widget.CheckBox>(R.id.setAutoCity)
-        val rgSampler = v.findViewById<android.widget.RadioGroup>(R.id.setSamplerMode)
 
         ed(R.id.setHost).setText(appPrefs.host)
         ed(R.id.setPort).setText(appPrefs.port.toString())
@@ -605,11 +544,6 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         ed(R.id.setCity).setText(appPrefs.geoCity)
         ed(R.id.setZoom).setText(appPrefs.defaultZoom.toString())
         ed(R.id.setLogLines).setText(appPrefs.maxLogLines.toString())
-        if (appPrefs.samplerMode == com.espnav.app.data.PolylineSampler.MODE_DP) {
-            rgSampler.check(R.id.setSamplerDp)
-        } else {
-            rgSampler.check(R.id.setSamplerVw)
-        }
         v.findViewById<android.widget.TextView>(R.id.tvPermState).text =
             if (hasLocationPermission()) getString(R.string.set_perm_granted)
             else getString(R.string.set_perm_denied)
@@ -638,10 +572,6 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 appPrefs.geoCity = ed(R.id.setCity).text.toString().trim().ifBlank { "北京" }
                 appPrefs.defaultZoom = (ed(R.id.setZoom).text.toString().trim().toFloatOrNull() ?: 16f).coerceIn(3f, 19f)
                 appPrefs.maxLogLines = (ed(R.id.setLogLines).text.toString().trim().toIntOrNull() ?: 1000).coerceIn(100, 20000)
-                appPrefs.samplerMode =
-                    if (rgSampler.checkedRadioButtonId == R.id.setSamplerDp)
-                        com.espnav.app.data.PolylineSampler.MODE_DP
-                    else com.espnav.app.data.PolylineSampler.MODE_VW
                 applyPrefsToUi()
                 log(getString(R.string.set_saved))
             }
@@ -662,11 +592,10 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         val tab = binding.tabMain
         tab.addTab(tab.newTab().setText(R.string.tab_connect))
         tab.addTab(tab.newTab().setText(R.string.tab_nav))
-        tab.addTab(tab.newTab().setText(R.string.tab_compare))
         tab.addOnTabSelectedListener(object :
             com.google.android.material.tabs.TabLayout.OnTabSelectedListener {
             override fun onTabSelected(t: com.google.android.material.tabs.TabLayout.Tab) {
-                applyPage(t.position)
+                applyTabUi(t.position == 1)
             }
 
             override fun onTabUnselected(t: com.google.android.material.tabs.TabLayout.Tab) = Unit
@@ -1097,8 +1026,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             appPrefs.geoCity, emulate = true,
             fixedFrom = s0?.let { com.espnav.app.data.GeoPoint(it.latitude, it.longitude) },
             fixedTo = e0?.let { com.espnav.app.data.GeoPoint(it.latitude, it.longitude) },
-            wayPoints = vias,
-            samplerMode = appPrefs.samplerMode          /* 行程图采样方式（设置页可切换） */
+            wayPoints = vias
         )
         src.logSink = { msg -> runOnUiThread { log("高德: " + msg) } }
         src.onRouteReady = { len, sec, coords -> runOnUiThread { showRoutePreview(len, sec, coords) } }
@@ -1145,8 +1073,6 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         }
         previewLenM = len
         previewSecS = sec
-        comparePts = coords                       /* 供「行程预览」Tab 对比 VW / DP 采样 */
-        pushPathToCompare()
         val info = String.format(java.util.Locale.US, "全程 %.1f km · 预计 %d 分钟", len / 1000.0, sec / 60)
         binding.tvRouteInfo.text = info
         binding.btnStartNav.visibility = View.VISIBLE

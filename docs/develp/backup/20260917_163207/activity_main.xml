@@ -413,15 +413,6 @@
             android:layout_weight="1" />
     </LinearLayout>
 
-        <!-- 行程预览：内嵌 WebView 加载 assets/sampling_compare.html，
-             把刚算出的路径同时喂给 VW / DP 两种采样并排对比（调参与验证用） -->
-        <LinearLayout
-            android:id="@+id/pageCompare"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical"
-            android:visibility="gone" />
-
     </FrameLayout>
     <!-- ===== 日志区：独立于 Tab 的公共组件（两个 Tab 常驻可见，点标题可折叠）===== -->
     <LinearLayout

@@ -94,32 +94,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingTop="10dp"
-            android:text="@string/set_group_overview"
-            android:textStyle="bold" />
-
-        <RadioGroup
-            android:id="@+id/setSamplerMode"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
-
-            <RadioButton
-                android:id="@+id/setSamplerVw"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/set_overview_vw" />
-
-            <RadioButton
-                android:id="@+id/setSamplerDp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/set_overview_dp" />
-        </RadioGroup>
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="10dp"
             android:text="@string/set_group_log"
             android:textStyle="bold" />
 

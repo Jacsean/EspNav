@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EspNav 行程图采样对比（VW / DP）</title>
+<style>
+  body { background:#181818; color:#ddd; font-family:"Microsoft YaHei",sans-serif; margin:12px; }
+  h2 { font-size:17px; margin:4px 0 12px; }
+  h3 { font-size:14px; margin:4px 0 8px; color:#cfd8dc; }
+  .wrap { display:flex; flex-wrap:wrap; gap:14px; }
+  .panel { flex:1 1 320px; min-width:260px; background:#111; padding:10px; border-radius:10px; }
+  canvas { width:100%; height:auto; display:block; background:#0a0a0a; border-radius:6px; image-rendering:pixelated; }
+  .stat { font-size:12px; color:#9e9e9e; margin-top:8px; line-height:1.75; }
+  .stat b { color:#4fc3f7; }
+  .stat .warn { color:#ffb74d; }
+  .ctl { margin-top:14px; font-size:13px; line-height:2.2; }
+  input[type=number] { width:64px; background:#222; color:#eee; border:1px solid #444; border-radius:4px; padding:2px 4px; }
+  button { background:#1b5e20; color:#fff; border:0; border-radius:6px; padding:7px 13px; font-size:13px; }
+  textarea { width:100%; height:62px; background:#222; color:#eee; border:1px solid #444; border-radius:6px; box-sizing:border-box; padding:6px; }
+  .tip { color:#777; font-size:12px; margin-top:6px; }
+  .legend { font-size:12px; color:#9e9e9e; margin-top:10px; }
+  .legend i { display:inline-block; width:16px; height:3px; vertical-align:middle; margin-right:5px; }
+</style>
+</head>
+<body>
+<h2>行程图采样对比（ESP 屏右上角行程图）</h2>
+
+<div class="wrap">
+  <div class="panel">
+    <h3>① Visvalingam 面积删点 + 直角锁定（App 默认）</h3>
+    <canvas id="cvVw" width="400" height="320"></canvas>
+    <div class="stat" id="stVw">等待路径数据…</div>
+  </div>
+  <div class="panel">
+    <h3>② Douglas-Peucker 自适应 ε</h3>
+    <canvas id="cvDp" width="400" height="320"></canvas>
+    <div class="stat" id="stDp">等待路径数据…</div>
+  </div>
+</div>
+
+<div class="legend">
+  <i style="background:#3a3a3a"></i>原始路径（参考）&nbsp;&nbsp;
+  <i style="background:#e53935"></i>采样结果折线&nbsp;&nbsp;
+  <i style="background:#43a047"></i>起点&nbsp;&nbsp;
+  <i style="background:#e53935"></i>终点&nbsp;&nbsp;
+  <i style="background:#fdd835"></i>被删点（原路径）&nbsp;&nbsp;
+  虚线框＝行程图 100×80 显示区（等比 80×80 居中，放大 4 倍）
+</div>
+
+<div class="ctl">
+  maxN <input id="maxN" type="number" value="16" min="2" max="64">
+  直角锁定 <input id="lockDeg" type="number" value="45" min="0" max="179">°
+  <button onclick="run()">重算</button>
+</div>
+
+<div class="ctl">
+  <textarea id="paste" placeholder="电脑上使用：粘贴路径 JSON（形如 [[116.5,39.8],[116.6,39.9],...]）后点右侧按钮"></textarea>
+  <button onclick="usePaste()">解析粘贴数据</button>
+  <div class="tip">手机端：在「导航」页算好路线后切到本页，路径会自动注入。</div>
+</div>
+
+<script>
+/* ================= 与 App/固件一致的常量 ================= */
+var OV_SPAN = 200;            /* 与 NavStateMapper.OV_SPAN 一致 */
+var M_PER_LAT = 111320.0;
+var CANVAS_W = 400, CANVAS_H = 320;   /* 逻辑 100x80，放大 4 倍 */
+var LOGIC_PX_PER_UNIT = 80.0 / OV_SPAN;   /* 行程图上「每局部单位」对应多少逻辑像素 */
+
+var rawGeo = [];              /* [[lon,lat],...] */
+
+/* ================= 经纬度 -> 米制（含 cos 纬度折算） ================= */
+function toMeters(geo) {
+  if (!geo.length) return [];
+  var lat0 = geo[0][1], lon0 = geo[0][0];
+  var mPerLon = M_PER_LAT * Math.cos(lat0 * Math.PI / 180);
+  return geo.map(function (p) {
+    return { x: (p[0] - lon0) * mPerLon, y: (p[1] - lat0) * M_PER_LAT };
+  });
+}
+
+/* ================= 几何工具 ================= */
+function triArea(a, b, c) {
+  return 0.5 * Math.abs((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x));
+}
+function turnDeg(a, b, c) {
+  var v1x = b.x - a.x, v1y = b.y - a.y, v2x = c.x - b.x, v2y = c.y - b.y;
+  var l1 = Math.hypot(v1x, v1y), l2 = Math.hypot(v2x, v2y);
+  if (l1 < 1e-9 || l2 < 1e-9) return 0;
+  var cv = (v1x * v2x + v1y * v2y) / (l1 * l2);
+  cv = Math.max(-1, Math.min(1, cv));
+  return Math.acos(cv) * 180 / Math.PI;
+}
+function dist(a, b) { return Math.hypot(b.x - a.x, b.y - a.y); }
+function pointSegDist(p, a, b) {
+  var dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+  if (l2 < 1e-12) return dist(p, a);
+  var t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+function bboxDiag(pts) {
+  var x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (var i = 0; i < pts.length; i++) {
+    var p = pts[i];
+    if (p.x < x0) x0 = p.x; if (p.x > x1) x1 = p.x;
+    if (p.y < y0) y0 = p.y; if (p.y > y1) y1 = p.y;
+  }
+  return Math.hypot(x1 - x0, y1 - y0);
+}
+
+/* ================= A. Visvalingam-Whyatt + 直角锁定 ================= */
+function simplifyVw(pts, maxN, lockDeg, minLeg) {
+  var n = pts.length;
+  if (n <= maxN || maxN < 2) return pts.slice();
+  var alive = new Array(n), next = new Array(n), prev = new Array(n);
+  for (var i = 0; i < n; i++) { alive[i] = true; next[i] = i + 1; prev[i] = i - 1; }
+  var locked = new Array(n);
+  for (i = 0; i < n; i++) locked[i] = false;
+  locked[0] = true; locked[n - 1] = true;
+  for (i = 1; i < n - 1; i++) {
+    if (turnDeg(pts[i - 1], pts[i], pts[i + 1]) >= lockDeg &&
+        dist(pts[i - 1], pts[i]) >= minLeg && dist(pts[i], pts[i + 1]) >= minLeg) locked[i] = true;
+  }
+  var count = n;
+  while (count > maxN) {
+    var best = -1, bestArea = Infinity;
+    for (var k = next[0]; k !== n - 1; k = next[k]) {
+      if (locked[k]) continue;
+      var a = triArea(pts[prev[k]], pts[k], pts[next[k]]);
+      if (a < bestArea) { bestArea = a; best = k; }
+    }
+    if (best < 0) break;
+    alive[best] = false;
+    next[prev[best]] = next[best];
+    prev[next[best]] = prev[best];
+    count--;
+  }
+  return pts.filter(function (_, i2) { return alive[i2]; });
+}
+
+/* ================= B. Douglas-Peucker 自适应 ε ================= */
+function simplifyDp(pts, maxN) {
+  var n = pts.length;
+  if (n <= maxN || maxN < 2) return pts.slice();
+  var lo = 0, hi = bboxDiag(pts);
+  for (var t = 0; t < 40; t++) {
+    var mid = (lo + hi) / 2;
+    if (dpKeep(pts, mid).length > maxN) lo = mid; else hi = mid;
+  }
+  return dpKeep(pts, hi);
+}
+function dpKeep(pts, eps) {
+  var n = pts.length, keep = new Array(n);
+  for (var i = 0; i < n; i++) keep[i] = false;
+  keep[0] = true; keep[n - 1] = true;
+  var st = [[0, n - 1]];
+  while (st.length) {
+    var seg = st.pop(), i0 = seg[0], i1 = seg[1];
+    if (i1 - i0 < 2) continue;
+    var k = -1, dmax = 0;
+    for (var j = i0 + 1; j < i1; j++) {
+      var d = pointSegDist(pts[j], pts[i0], pts[i1]);
+      if (d > dmax) { dmax = d; k = j; }
+    }
+    if (k >= 0 && dmax > eps) { keep[k] = true; st.push([i0, k]); st.push([k, i1]); }
+  }
+  return pts.filter(function (_, i2) { return keep[i2]; });
+}
+
+/* ================= 行程图投影（等比、北在上） ================= */
+function makeProjector(meters) {
+  var x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (var i = 0; i < meters.length; i++) {
+    var p = meters[i];
+    if (p.x < x0) x0 = p.x; if (p.x > x1) x1 = p.x;
+    if (p.y < y0) y0 = p.y; if (p.y > y1) y1 = p.y;
+  }
+  var span = Math.max(x1 - x0, y1 - y0);
+  if (!(span > 0)) span = 1;
+  var scale = (OV_SPAN - 4.0) / span;          /* 米 -> 局部单位 */
+  return {
+    scale: scale,
+    metersPerUnit: span / (OV_SPAN - 4.0),
+    unit2px: LOGIC_PX_PER_UNIT * 4.0,          /* 局部单位 -> 画布像素（放大 4 倍） */
+    x0: x0, y0: y0,
+    cx: CANVAS_W / 2.0,                        /* 等比 80x80 居中 */
+    toPx: function (p) {
+      var lx = (p.x - this.x0) * this.scale + 2.0;
+      var ly = (p.y - this.y0) * this.scale + 2.0;
+      return [this.cx + (lx - OV_SPAN / 2) * this.unit2px,
+              (OV_SPAN - ly) * this.unit2px];   /* 北在上 */
+    }
+  };
+}
+
+/* ================= 绘制 ================= */
+function drawPanel(cvId, stId, name, rawMeters, simp, proj, ms) {
+  var cv = document.getElementById(cvId);
+  var ctx = cv.getContext('2d');
+  var S = 4;                                     /* 放大倍数 */
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.fillStyle = '#0a0a0a';
+  ctx.fillRect(0, 0, cv.width, cv.height);
+
+  /* 行程图 100x80 显示区 + 10px 网格（等比 80x80 居中） */
+  ctx.strokeStyle = '#1f2d24';
+  ctx.lineWidth = 1;
+  for (var g = 0; g <= 8; g++) {
+    var gx = proj.cx - 40 * S + g * 10 * S;
+    var gy = g * 10 * S;
+    ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, 80 * S); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(proj.cx - 40 * S, gy); ctx.lineTo(proj.cx + 40 * S, gy); ctx.stroke();
+  }
+  ctx.strokeStyle = '#2e4a3a';
+  ctx.strokeRect(proj.cx - 40 * S + 0.5, 0.5, 80 * S - 1, 80 * S - 1);
+
+  /* 原始路径（细灰线） */
+  ctx.strokeStyle = '#3a3a3a';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (var i = 0; i < rawMeters.length; i++) {
+    var q = proj.toPx(rawMeters[i]);
+    if (i === 0) ctx.moveTo(q[0], q[1]); else ctx.lineTo(q[0], q[1]);
+  }
+  ctx.stroke();
+
+  /* 被删点（黄色小点，帮助看清"哪些点被舍弃"） */
+  ctx.fillStyle = '#fdd835';
+  for (i = 0; i < rawMeters.length; i++) {
+    var rm = rawMeters[i];
+    var kept = false;
+    for (var j = 0; j < simp.length; j++) {
+      if (rm.x === simp[j].x && rm.y === simp[j].y) { kept = true; break; }
+    }
+    if (!kept) {
+      var p = proj.toPx(rm);
+      ctx.fillRect(p[0] - 1.5, p[1] - 1.5, 3, 3);
+    }
+  }
+
+  /* 采样结果折线（红色，宽） */
+  ctx.strokeStyle = '#e53935';
+  ctx.lineWidth = 2.5;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  for (i = 0; i < simp.length; i++) {
+    var s = proj.toPx(simp[i]);
+    if (i === 0) ctx.moveTo(s[0], s[1]); else ctx.lineTo(s[0], s[1]);
+  }
+  ctx.stroke();
+
+  /* 采样点 */
+  ctx.fillStyle = '#ff8a80';
+  for (i = 0; i < simp.length; i++) {
+    var sp = proj.toPx(simp[i]);
+    ctx.fillRect(sp[0] - 2, sp[1] - 2, 4, 4);
+  }
+
+  /* 起 / 终点 */
+  if (rawMeters.length) {
+    var s0 = proj.toPx(rawMeters[0]);
+    var s1 = proj.toPx(rawMeters[rawMeters.length - 1]);
+    ctx.fillStyle = '#43a047';
+    ctx.fillRect(s0[0] - 3.5, s0[1] - 3.5, 7, 7);
+    ctx.fillStyle = '#e53935';
+    ctx.fillRect(s1[0] - 3.5, s1[1] - 3.5, 7, 7);
+  }
+
+  /* 统计：最大偏差（原路径点到简化折线的最大距离） */
+  var maxDevM = 0;
+  for (i = 0; i < rawMeters.length; i++) {
+    var best2 = Infinity;
+    for (j = 0; j + 1 < simp.length; j++) {
+      var d2 = pointSegDist(rawMeters[i], simp[j], simp[j + 1]);
+      if (d2 < best2) best2 = d2;
+    }
+    if (best2 !== Infinity && best2 > maxDevM) maxDevM = best2;
+  }
+  var maxDevPx = maxDevM * proj.scale * proj.unit2px;
+
+  document.getElementById(stId).innerHTML =
+    '<b>' + name + '</b><br>' +
+    '输出点数 <b>' + simp.length + '</b> / 原始 ' + rawMeters.length + '<br>' +
+    '最大偏差 <b>' + maxDevPx.toFixed(2) + ' px</b>（' + maxDevM.toFixed(1) + ' m）<br>' +
+    '耗时 <b>' + ms.toFixed(1) + ' ms</b>';
+}
+
+/* ================= 主流程 ================= */
+function run() {
+  var maxN = parseInt(document.getElementById('maxN').value) || 16;
+  var lockDeg = parseFloat(document.getElementById('lockDeg').value) || 45;
+  var meters = toMeters(rawGeo);
+  if (meters.length < 2) {
+    document.getElementById('stVw').textContent = '等待路径数据…（先在导航页算一条路线）';
+    document.getElementById('stDp').textContent = '等待路径数据…（先在导航页算一条路线）';
+    return;
+  }
+  var proj = makeProjector(meters);
+  var minLeg = 5.0 * proj.metersPerUnit;       /* 行程图上约 2px 对应的米数 */
+
+  var t0 = performance.now();
+  var vw = simplifyVw(meters, maxN, lockDeg, minLeg);
+  var t1 = performance.now();
+  var dp = simplifyDp(meters, maxN);
+  var t2 = performance.now();
+
+  drawPanel('cvVw', 'stVw', 'Visvalingam + 直角锁定', meters, vw, proj, t1 - t0);
+  drawPanel('cvDp', 'stDp', 'Douglas-Peucker', meters, dp, proj, t2 - t1);
+}
+
+function usePaste() {
+  try {
+    var arr = JSON.parse(document.getElementById('paste').value);
+    rawGeo = arr.map(function (p) { return [Number(p[0]), Number(p[1])]; });
+    run();
+  } catch (e) {
+    alert('JSON 解析失败：' + e.message);
+  }
+}
+
+/* App（WebView）注入入口：[[lon,lat],...] */
+window.setPath = function (arr) {
+  if (!arr || !arr.length) return;
+  rawGeo = arr.map(function (p) { return [Number(p[0]), Number(p[1])]; });
+  run();
+};
+
+/* 浏览器直接打开时给一份内置演示数据（含长直 + 长弧 + 直角，便于比对两种算法） */
+(function demo() {
+  if (/Android/i.test(navigator.userAgent)) return;   /* App 内由 setPath 注入真实路径，不显示演示数据 */
+  var pts = [], i;
+  for (i = 0; i <= 40; i++) pts.push([116.5000 + i * 0.00005, 39.8000]);              /* 长直 */
+  var cx = 116.5020, cy = 39.8000, R = 0.0008;
+  for (i = 0; i <= 40; i++) {                                                         /* 长弧（无拐点） */
+    var a = Math.PI + i * Math.PI / 40;
+    pts.push([cx + R * Math.cos(a) * 1.28, cy + R * Math.sin(a)]);
+  }
+  for (i = 1; i <= 25; i++) pts.push([cx + R * 1.28, cy - R + i * 0.00005]);          /* 直角后的直段 */
+  rawGeo = pts;
+  run();
+})();
+</script>
+</body>
+</html>

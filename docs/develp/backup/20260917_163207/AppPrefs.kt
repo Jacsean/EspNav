@@ -57,11 +57,6 @@ class AppPrefs(ctx: Context) {
         get() = sp.getInt(K_LOG, 1000)
         set(v) = sp.edit().putInt(K_LOG, v).apply()
 
-    /** 行程图采样方式：PolylineSampler.MODE_VW（Visvalingam，默认）/ MODE_DP（道格拉斯-普克） */
-    var samplerMode: String
-        get() = sp.getString(K_SAMPLER, PolylineSampler.MODE_VW) ?: PolylineSampler.MODE_VW
-        set(v) = sp.edit().putString(K_SAMPLER, v).apply()
-
     companion object {
         private const val NAME = "espnav_prefs"
         private const val K_HOST = "host"
@@ -73,7 +68,6 @@ class AppPrefs(ctx: Context) {
         private const val K_CITY = "geo_city"
         private const val K_ZOOM = "default_zoom"
         private const val K_LOG = "max_log_lines"
-        private const val K_SAMPLER = "sampler_mode"
 
         const val DEF_HOST = "192.168.4.1"
         const val DEF_PORT = 8899

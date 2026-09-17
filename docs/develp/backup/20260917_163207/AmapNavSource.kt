@@ -37,9 +37,7 @@ class AmapNavSource(
     private val fixedFrom: GeoPoint? = null,
     private val fixedTo: GeoPoint? = null,
     /** 途经点（按顺序生效，最多 3 个；骑行算路原生支持 wayPoints） */
-    private val wayPoints: List<GeoPoint> = emptyList(),
-    /** 行程图采样方式：PolylineSampler.MODE_VW（默认）/ MODE_DP，由设置页决定 */
-    private val samplerMode: String = PolylineSampler.MODE_VW
+    private val wayPoints: List<GeoPoint> = emptyList()
 ) : NavSource, SimpleNaviListener() {
 
     companion object {
@@ -236,9 +234,7 @@ class AmapNavSource(
                 totalMeters = len
                 val raw = path.coordList ?: emptyList()
                 pathAllCoords = raw.map { GeoPoint(it.latitude, it.longitude) }
-                /* 行程图采样：按几何重要性取点（VW/DP 由设置决定），替代原先的等间隔降采样 ——
-                 * 等间隔会在长直段浪费点数，并可能整段跳过某个拐弯（用户实测"拐弯不准"）。 */
-                pathCoords = PolylineSampler.sampleGeo(pathAllCoords, samplerMode, MAX_PATH_PTS)
+                pathCoords = downsample(pathAllCoords, MAX_PATH_PTS)
                 state = state.copy(totalDistMeters = len)
                 log("路径点 " + raw.size + " -> 采样 " + pathCoords.size +
                     "；全程 " + len + " 米，预计 " + sec + " 秒")
@@ -313,15 +309,11 @@ class AmapNavSource(
             .ifEmpty { listOf(pathCoords.first()) }
         val pxPerMeter = (NavStateMapper.NEAR_Y - NavStateMapper.FAR_Y).toDouble() / VIEW_METERS
         val screen = NavStateMapper.project(near, origin, state.headingDeg, pxPerMeter = pxPerMeter)
-        // 小地图：整条路线，北向上，按包围盒等比自适应（含 cos 纬度折算，修正东西向拉伸）
-        val proj = NavStateMapper.overviewProjectorFor(pathCoords)
+        // 小地图：整条路线，北向上，按包围盒自适应
         state = state.copy(
             remainPath = screen,
             passedPath = screen.take(2),
-            overviewPath = proj?.let { pr -> pathCoords.map { pr.project(it) } } ?: emptyList(),
-            /* 黄点：用【当前定位】直接投影到行程图坐标系（与路径点同一套变换）。
-             * 此前按"进度 × 数组索引"取点，采样后点距不再均匀，会表现为黄点跳变/卡住。 */
-            overviewDotPos = proj?.project(origin)
+            overviewPath = NavStateMapper.miniMapFromGeo(pathCoords)
         )
     }
 

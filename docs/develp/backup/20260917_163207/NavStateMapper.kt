@@ -11,7 +11,7 @@ import kotlin.math.sin
  *
  * 屏幕几何与固件/HTML V2 冻结一致：320x240；路面近端 y=144、远端 y=30；
  * 车标 pos 固定 (160,110)；主路半宽 62、支路半宽 35。
- * 小地图（overview）用"局部坐标 0..OV_SPAN（200），y 向上"，y 翻转由固件完成。
+ * 小地图（overview）用"局部坐标 0..40，y 向上"，y 翻转由固件完成。
  */
 object NavStateMapper {
 
@@ -23,7 +23,7 @@ object NavStateMapper {
     const val CAR_Y = 110            // 车标固定（协议：pos 固定）
     const val TPL_MAIN_HALF = 62
     const val TPL_SIDE_HALF = 35
-    const val OV_SPAN = 200          // 小地图局部坐标跨度（原 40：长路线下相邻路口会重叠成一个点）
+    const val OV_SPAN = 40           // 小地图局部坐标跨度
 
     /**
      * 文本清洗：固件字库已覆盖 **GB2312 全部 6763 汉字 + ASCII**（2026-09 扩容后），
@@ -164,50 +164,26 @@ object NavStateMapper {
     }
 
     /**
-     * 行程图投影器：经纬度 -> 局部坐标（0..[OV_SPAN]，北在上、等比、居中，留 2 单位边距）。
-     *
-     * **关键修正**：x 方向先按 cos(纬度) 折算成"等效纬度"再与 y 一起等比缩放。
-     * 此前直接用 `Δlon` 与 `Δlat` 混合缩放，导致东西向形状被拉伸（北京纬度约 30%），转弯角度失真。
-     *
-     * 同一个实例既用于「整条路线」，也用于「当前位置黄点」，保证二者坐标一致。
+     * 经纬度路径 -> 小地图局部坐标（0..40，y 向上；固件绘制时做 40-y 翻转）。
+     * 按路径包围盒**自适应缩放**并居中，保证整条路线都能画进小地图（北在上）。
      */
-    class OverviewProjector(
-        private val latMin: Double,
-        private val lonMin: Double,
-        private val kx: Double,          // 经度 -> 等效纬度（cos 折算）
-        private val scale: Double
-    ) {
-        fun project(p: GeoPoint): Pair<Int, Int> {
-            val x = ((p.lon - lonMin) * kx * scale + 2.0).roundToInt().coerceIn(0, OV_SPAN)
-            val y = ((p.lat - latMin) * scale + 2.0).roundToInt().coerceIn(0, OV_SPAN)   // 北在上
-            return x to y
-        }
-    }
-
-    /** 按整条路线的包围盒建立行程图投影器；无点时返回 null */
-    fun overviewProjectorFor(pts: List<GeoPoint>): OverviewProjector? {
-        if (pts.isEmpty()) return null
+    fun miniMapFromGeo(pts: List<GeoPoint>): List<Pair<Int, Int>> {
+        if (pts.isEmpty()) return emptyList()
         val latMin = pts.minOf { it.lat }
         val latMax = pts.maxOf { it.lat }
         val lonMin = pts.minOf { it.lon }
-        val kx = cos(Math.toRadians((latMin + latMax) / 2.0))
-        val xSpan = (pts.maxOf { it.lon } - lonMin) * kx       // 折算后的东西向跨度
-        val ySpan = latMax - latMin                            // 南北向跨度
-        val span = maxOf(xSpan, ySpan).coerceAtLeast(1e-9)
-        val scale = (OV_SPAN - 4.0) / span                     // 留 2 单位边距
-        return OverviewProjector(latMin, lonMin, kx, scale)
+        val lonMax = pts.maxOf { it.lon }
+        val latSpan = (latMax - latMin).coerceAtLeast(1e-6)
+        val lonSpan = (lonMax - lonMin).coerceAtLeast(1e-6)
+        val scale = (OV_SPAN - 4.0) / maxOf(latSpan, lonSpan)     // 留 2 单位边距
+        return pts.map { p ->
+            val x = ((p.lon - lonMin) * scale + 2.0).roundToInt().coerceIn(0, OV_SPAN)
+            val y = ((p.lat - latMin) * scale + 2.0).roundToInt().coerceIn(0, OV_SPAN)  // 北在上
+            x to y
+        }
     }
 
-    /**
-     * 经纬度路径 -> 小地图局部坐标（0..[OV_SPAN]，y 向上；固件绘制时做 OV_SPAN-y 翻转）。
-     * 按路径包围盒**等比自适应缩放**并居中，保证整条路线都能画进小地图（北在上）。
-     */
-    fun miniMapFromGeo(pts: List<GeoPoint>): List<Pair<Int, Int>> {
-        val pr = overviewProjectorFor(pts) ?: return emptyList()
-        return pts.map { pr.project(it) }
-    }
-
-    /** 屏幕路径 -> 小地图局部坐标（0..[OV_SPAN]，y 向上；固件绘制时会做 OV_SPAN-y 翻转） */
+    /** 屏幕路径 -> 小地图局部坐标（0..40，y 向上；固件绘制时会做 40-y 翻转） */
     fun miniMap(pts: List<Pair<Int, Int>>): List<Pair<Int, Int>> =
         pts.take(16).map { (x, y) ->
             val mx = (x * OV_SPAN / W).coerceIn(0, OV_SPAN)
@@ -250,9 +226,11 @@ object NavStateMapper {
             routeCenter = rc,
             pos = CX to CAR_Y,
             overview = mini,
-            /* 当前位置黄点：优先用 AmapNavSource 按【当前定位】投影出的坐标（精确、平滑）；
-             * 回退到"路线末点"。此前按"进度 × 数组索引"取点，采样后点距不均会让黄点跳变。 */
-            overviewDot = s.overviewDotPos ?: mini.lastOrNull(),
+            /* 当前位置 = 在【整条路线】上按行进进度取点（此前误用末点 -> 黄点画在了终点上，
+             * 导致“看不到当前位置点”） */
+            overviewDot = mini.takeIf { it.isNotEmpty() }?.let { m ->
+                m[((progress / 100.0) * (m.size - 1)).toInt().coerceIn(0, m.size - 1)]
+            },
             road = roadOf(s),
             speedKmh = s.speedKmh,
             roadName = safe(s.currentRoad),        /* 过滤字库外汉字（待扩字库后可完整显示） */
