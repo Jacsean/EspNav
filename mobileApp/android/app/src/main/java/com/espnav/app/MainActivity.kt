@@ -80,6 +80,12 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         binding.btnConnect.setOnClickListener { doConnect() }
         binding.btnQuickConnect.setOnClickListener { quickConnect() }
         binding.btnOpenProv.setOnClickListener { openProvPage() }
+        /* 日志区是公共组件（两个 Tab 都可见），点标题可折叠/展开 */
+        binding.logHeader.setOnClickListener {
+            val show = binding.svLog.visibility != View.VISIBLE
+            binding.svLog.visibility = if (show) View.VISIBLE else View.GONE
+            binding.tvLogTitle.text = getString(R.string.label_log) + (if (show) "  ▾" else "  ▸")
+        }
         binding.btnDisconnect.setOnClickListener {
             stopMock()
             send(OutMsg.bye())
@@ -565,6 +571,13 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             st.radiusFillColor(0x2200aa66)
             am.myLocationStyle = st
             am.isMyLocationEnabled = true
+            /* 骑行友好样式：不要路况、不要建筑物与室内图，保留路名文字（单车到不了的高速/高架/地铁等
+             * 需在高德控制台“个性化地图”样式里配置，拿到 styleId 后再接入 setCustomMapStyleID） */
+            am.isTrafficEnabled = false
+            am.mapType = com.amap.api.maps.AMap.MAP_TYPE_NORMAL
+            am.showBuildings(false)
+            am.showIndoorMap(false)
+            am.showMapText(true)
             /* 首次拿到定位后：以当前位置为中心，并缩放到骑行合理范围（方圆约 20~30 公里） */
             am.setOnMyLocationChangeListener { loc ->
                 if (loc != null && !mapCenteredOnce) {

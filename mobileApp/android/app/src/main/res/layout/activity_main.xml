@@ -223,42 +223,6 @@
             android:text="@string/label_anim" />
 
         <!-- 日志 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:paddingTop="8dp">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/label_log"
-                android:textStyle="bold"
-                android:gravity="center_vertical" />
-
-            <Button
-                android:id="@+id/btnCopyLog"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/btn_copy_log" />
-        </LinearLayout>
-
-        <ScrollView
-            android:id="@+id/svLog"
-            android:layout_width="match_parent"
-            android:layout_height="220dp"
-            android:background="#111111">
-
-            <TextView
-                android:id="@+id/tvLog"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:padding="6dp"
-                android:textColor="#DDDDDD"
-                android:textSize="12sp"
-                android:typeface="monospace" />
-        </ScrollView>
     </LinearLayout>
     </ScrollView>
 
@@ -380,6 +344,57 @@
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1" />
+    </LinearLayout>
+
+    <!-- ===== 日志区：独立于 Tab 的公共组件（两个 Tab 常驻可见，点标题可折叠）===== -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#111111">
+
+        <LinearLayout
+            android:id="@+id/logHeader"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:clickable="true"
+            android:focusable="true">
+
+            <TextView
+                android:id="@+id/tvLogTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/label_log"
+                android:textStyle="bold"
+                android:textColor="#DDDDDD"
+                android:gravity="center_vertical" />
+
+            <Button
+                android:id="@+id/btnCopyLog"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/btn_copy_log" />
+        </LinearLayout>
+
+        <ScrollView
+            android:id="@+id/svLog"
+            android:layout_width="match_parent"
+            android:layout_height="140dp"
+            android:background="#111111">
+
+            <TextView
+                android:id="@+id/tvLog"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="6dp"
+                android:textColor="#DDDDDD"
+                android:textSize="12sp"
+                android:typeface="monospace" />
+        </ScrollView>
     </LinearLayout>
 
     </FrameLayout>
