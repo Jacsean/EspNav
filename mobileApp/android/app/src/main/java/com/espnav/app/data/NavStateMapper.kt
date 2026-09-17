@@ -146,14 +146,20 @@ object NavStateMapper {
         val rad = Math.toRadians(-headingDeg.toDouble())
         val cs = cos(rad)
         val sn = sin(rad)
-        return pts.map { p ->
+        return pts.mapNotNull { p ->
             val east = (p.lon - origin.lon) * mPerLon       // 东向（米）
             val north = (p.lat - origin.lat) * mPerLat      // 北向（米）
             val xr = east * cs - north * sn
             val yr = east * sn + north * cs
             val sx = CX + (xr * pxPerMeter).roundToInt()
             val sy = anchorY - (yr * pxPerMeter).roundToInt()   // 前方（北）朝屏幕上方
-            sx.coerceIn(0, W - 1) to sy.coerceIn(0, H - 1)
+            /* 【修复】越界点直接丢弃，不再 coerceIn 贴到屏幕边缘。
+             * 原因：已走过的点（车身后方）投影后 y 会远超屏幕高度，被 coerceIn 夹到边缘后，
+             * 每帧都会从车头连出一条"贴边斜线"，并随 heading 变化而漂移/旋转（用户实测）。
+             * 过滤范围用【道路有效区】而非整屏：整屏会放过 y=145..239 这类"在屏内但在道路外"的点。 */
+            if (sx < 0 || sx > W - 1) null
+            else if (sy < FAR_Y || sy > NEAR_Y) null
+            else sx to sy
         }
     }
 
