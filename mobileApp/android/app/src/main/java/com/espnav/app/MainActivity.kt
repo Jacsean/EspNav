@@ -738,10 +738,31 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             st.radiusFillColor(0x2200aa66)
             am.myLocationStyle = st
             am.isMyLocationEnabled = true
-            /* 地图样式/流畅性设置【已全部暂时移除】：用户实测开启后地图一片淡蓝。
-             * 按二分法排查 —— 先回到"什么都不设"的可用基线，确认能出图后，再分批加回。 */
+            /* 地图样式：确认"淡蓝"真凶是相机飞到海上（定位无效）后，这三项按用户要求加回。
+             * 仍放在地图加载完成后应用，最稳。 */
+            am.setOnMapLoadedListener {
+                runCatching {
+                    am.isTrafficEnabled = false      /* 不要路况色带（骑行无关） */
+                    am.showBuildings(false)          /* 不要建筑物色块 */
+                    am.showIndoorMap(false)          /* 不要室内图 */
+                    log("地图样式已应用：关路况/关建筑/关室内图（加载完成后）")
+                }
+            }
             /* 首次拿到定位后：以当前位置为中心，并缩放到骑行合理范围（方圆约 20~30 公里） */
             am.setOnMyLocationChangeListener { loc ->
+                if (loc != null) {
+                    val la = loc.latitude
+                    val lo = loc.longitude
+                    /* 坐标校验：非法或 (0,0) 时绝不移动相机 —— 否则相机会飞到海上（高德海面为淡蓝，
+                     * 表现就是整屏一片淡蓝，用户实测过） */
+                    val okCoord = la in -90.0..90.0 && lo in -180.0..180.0 &&
+                        (kotlin.math.abs(la) > 0.0001 || kotlin.math.abs(lo) > 0.0001)
+                    if (!okCoord) {
+                        log("⚠ 定位坐标无效(lat=" + la + " lon=" + lo + ")，已忽略，不移动相机")
+                        return@setOnMyLocationChangeListener
+                    }
+                    log("定位更新：lat=" + la + " lon=" + lo)
+                }
                 if (loc != null && !mapCenteredOnce) {
                     mapCenteredOnce = true
                     runCatching {

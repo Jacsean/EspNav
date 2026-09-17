@@ -590,11 +590,21 @@ static void draw_frame(const nav_frame_t *f, float anim)
         }
     }
     /* 已行驶 / 未行驶路径（绿） */
-    for (int i = 0; i + 1 < f->past_n; i++)
+    for (int i = 0; i + 1 < f->past_n; i++) {
+        if (!pt_in_screen(f->past_center[i]) || !pt_in_screen(f->past_center[i + 1])) continue;
         fb_line(f->past_center[i].x, f->past_center[i].y, f->past_center[i + 1].x, f->past_center[i + 1].y, PATH_GREEN);
-    for (int i = 0; i + 1 < f->route_n; i++)
+    }
+    for (int i = 0; i + 1 < f->route_n; i++) {
+        if (!pt_in_screen(f->route_center[i]) || !pt_in_screen(f->route_center[i + 1])) continue;
         fb_line(f->route_center[i].x, f->route_center[i].y, f->route_center[i + 1].x, f->route_center[i + 1].y, PATH_GREEN);
-    /* 车辆光标 */
+    }
+    /* 点是否在屏内：App 投影异常时会给出越界坐标，照画会出现"随机折线/图案漂移"，故一律跳过 */
+static bool pt_in_screen(npt_t p)
+{
+    return p.x >= 0 && p.x < FB_W && p.y >= 0 && p.y < FB_H;
+}
+
+/* 车辆光标 */
     /* 路线中轴线（绿色，贯通道路远端 NAV_FAR_Y 到近端 NAV_NEAR_Y；随后绘制车头 -> 车头压线） */
     fb_line(NAV_CX, NAV_FAR_Y, NAV_CX, NAV_NEAR_Y, RGB565_GREEN);
     if (f->pos_valid) fb_triangle(f->pos.x, f->pos.y, 14, RGB565_YELLOW);

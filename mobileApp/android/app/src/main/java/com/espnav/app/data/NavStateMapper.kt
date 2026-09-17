@@ -195,6 +195,18 @@ object NavStateMapper {
         }
         val cut = if (center.size <= 1) 1 else (1 + progress / 25).coerceIn(1, center.size - 1)
         val mini = s.overviewPath.ifEmpty { miniMap(center) }
+        /* 中心线（车头前后）：先算出变量并做越界诊断 —— App 投影异常时会给出屏外坐标，
+         * 固件若照画就会表现为"车头附近的随机折线/图案漂移" */
+        val pc = s.passedPath.ifEmpty { center.subList(0, cut) }
+        val rc = center.subList(cut, center.size)
+        run {
+            val bad = (pc + rc).filter {
+                it.first < 0 || it.first >= 320 || it.second < 0 || it.second >= 240
+            }
+            if (bad.isNotEmpty()) {
+                android.util.Log.w("NavStateMapper", "越界中心线点 " + bad.size + " 个，前几个=" + bad.take(4))
+            }
+        }
         return NavFrame(
             heading = ((s.headingDeg % 360) + 360) % 360,
             turnDist = s.turnDistMeters.coerceAtLeast(0),
@@ -204,11 +216,15 @@ object NavStateMapper {
             elapsedMin = s.elapsedSec / 60,
             etaTime = s.etaText,
             centerLine = center,
-            pastCenter = s.passedPath.ifEmpty { center.subList(0, cut) },
-            routeCenter = center.subList(cut, center.size),
+            pastCenter = pc,
+            routeCenter = rc,
             pos = CX to CAR_Y,
             overview = mini,
-            overviewDot = mini.lastOrNull(),
+            /* 当前位置 = 在【整条路线】上按行进进度取点（此前误用末点 -> 黄点画在了终点上，
+             * 导致“看不到当前位置点”） */
+            overviewDot = mini.takeIf { it.isNotEmpty() }?.let { m ->
+                m[((progress / 100.0) * (m.size - 1)).toInt().coerceIn(0, m.size - 1)]
+            },
             road = roadOf(s),
             speedKmh = s.speedKmh,
             roadName = safe(s.currentRoad),        /* 过滤字库外汉字（待扩字库后可完整显示） */
