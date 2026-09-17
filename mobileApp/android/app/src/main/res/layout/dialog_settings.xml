@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 设置对话框：习惯性配置（由连接页「⚙ 设置」打开） -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/set_group_conn"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/setHost"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/set_hint_host"
+            android:inputType="text"
+            android:importantForAutofill="no" />
+
+        <EditText
+            android:id="@+id/setPort"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/set_hint_port"
+            android:inputType="number"
+            android:importantForAutofill="no" />
+
+        <CheckBox
+            android:id="@+id/setAutoConnect"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/set_auto_connect" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="10dp"
+            android:text="@string/set_group_nav"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/setFrom"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/set_hint_from"
+            android:inputType="text"
+            android:importantForAutofill="no" />
+
+        <EditText
+            android:id="@+id/setTo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/set_hint_to"
+            android:inputType="text"
+            android:importantForAutofill="no" />
+
+        <CheckBox
+            android:id="@+id/setAutoCity"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/set_auto_city" />
+
+        <EditText
+            android:id="@+id/setCity"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/set_hint_city"
+            android:inputType="text"
+            android:importantForAutofill="no" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="10dp"
+            android:text="@string/set_group_map"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/setZoom"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/set_hint_zoom"
+            android:inputType="numberDecimal"
+            android:importantForAutofill="no" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="10dp"
+            android:text="@string/set_group_log"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/setLogLines"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/set_hint_log"
+            android:inputType="number"
+            android:importantForAutofill="no" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="10dp"
+            android:text="@string/set_group_perm"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvPermState"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:text="@string/set_perm_unknown" />
+
+        <Button
+            android:id="@+id/btnOpenAppSettings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/set_open_app_settings" />
+    </LinearLayout>
+</ScrollView>

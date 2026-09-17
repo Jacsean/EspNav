@@ -48,6 +48,9 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private val prefs by lazy { getSharedPreferences("espnav", MODE_PRIVATE) }
     private val pendingCandidates = ArrayDeque<String>()
     /** 连接尝试互斥：避免“候选链/自动重连/扫描”三者并发建连（多连接会互相踢，屏幕反复切画面） */
+    /** 习惯性配置（连接地址/默认起终点/城市/缩放/日志行数…），由「⚙ 设置」维护 */
+    private val appPrefs by lazy { com.espnav.app.data.AppPrefs(applicationContext) }
+
     private var connecting = false
     /** 主动断开标记：点「断开」/页面关闭时置位，用于跳过自动重连（否则会被立刻拉回连接） */
     private var intentionalDisconnect = false
@@ -77,11 +80,15 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         client.listener = this
         refreshActionStates()          /* 必须放在 client 初始化之后：内部会读 client.isConnected */
 
-        binding.etHost.setText(prefs.getString(KEY_LAST_IP, null) ?: DEFAULT_HOST)
-        binding.etPort.setText("8899")
-        binding.etFrom.setText(FROM_ADDRESS)
-        binding.etTo.setText(TO_ADDRESS)
+        binding.etHost.setText(prefs.getString(KEY_LAST_IP, null) ?: appPrefs.host)
+        binding.etPort.setText(appPrefs.port.toString())
+        binding.etFrom.setText(appPrefs.fromAddress)
+        binding.etTo.setText(appPrefs.toAddress)
         binding.btnDisconnect.isEnabled = false
+        if (appPrefs.autoConnectOnStart) {
+            log("配置项「启动后自动连接」已开启 → 自动发起一键连接")
+            binding.root.postDelayed({ if (!client.isConnected) quickConnect() }, 800)
+        }
 
         for (et in listOf(binding.etFrom, binding.etTo)) {
             et.doAfterTextChanged { updatePickState() }
@@ -89,6 +96,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         binding.btnConnect.setOnClickListener { doConnect() }
         binding.btnQuickConnect.setOnClickListener { quickConnect() }
         binding.btnOpenProv.setOnClickListener { openProvPage() }
+        binding.btnSettings.setOnClickListener { openSettings() }
         /* 摘要行「编辑」：展开/收起起终点输入框（默认收起，把屏幕让给地图） */
         binding.tvEditToggle.setOnClickListener {
             val show = binding.routeEditPanel.visibility != View.VISIBLE
@@ -329,9 +337,9 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             )
             return
         }
-        val from = binding.etFrom.text.toString().trim().ifBlank { FROM_ADDRESS }
-        val to = binding.etTo.text.toString().trim().ifBlank { TO_ADDRESS }
-        val src = AmapNavSource(applicationContext, from, to, "北京", emulate = true)
+        val from = binding.etFrom.text.toString().trim().ifBlank { appPrefs.fromAddress }
+        val to = binding.etTo.text.toString().trim().ifBlank { appPrefs.toAddress }
+        val src = AmapNavSource(applicationContext, from, to, appPrefs.geoCity, emulate = true)
         // 把高德内部日志转发到界面日志区（便于真机诊断）
         src.logSink = { msg -> runOnUiThread { log("高德: " + msg) } }
         launchNav(src, "高德骑行导航")
@@ -518,6 +526,66 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private fun showTab(nav: Boolean) {
         binding.tabMain.getTabAt(if (nav) 1 else 0)?.select()   /* 触发 onTabSelected -> applyTabUi */
         applyTabUi(nav)                                          /* 保险：Tab 被隐藏时也确保切页生效 */
+    }
+
+    /** 「⚙ 设置」：修改习惯性配置（持久化）；权限只能显示状态并跳系统设置（Android 不允许 App 自改） */
+    private fun openSettings() {
+        val v = layoutInflater.inflate(R.layout.dialog_settings, null)
+        fun ed(id: Int) = v.findViewById<android.widget.EditText>(id)
+        val cbAutoConn = v.findViewById<android.widget.CheckBox>(R.id.setAutoConnect)
+        val cbAutoCity = v.findViewById<android.widget.CheckBox>(R.id.setAutoCity)
+
+        ed(R.id.setHost).setText(appPrefs.host)
+        ed(R.id.setPort).setText(appPrefs.port.toString())
+        cbAutoConn.isChecked = appPrefs.autoConnectOnStart
+        ed(R.id.setFrom).setText(appPrefs.fromAddress)
+        ed(R.id.setTo).setText(appPrefs.toAddress)
+        cbAutoCity.isChecked = appPrefs.autoCity
+        ed(R.id.setCity).setText(appPrefs.geoCity)
+        ed(R.id.setZoom).setText(appPrefs.defaultZoom.toString())
+        ed(R.id.setLogLines).setText(appPrefs.maxLogLines.toString())
+        v.findViewById<android.widget.TextView>(R.id.tvPermState).text =
+            if (hasLocationPermission()) getString(R.string.set_perm_granted)
+            else getString(R.string.set_perm_denied)
+
+        v.findViewById<android.widget.Button>(R.id.btnOpenAppSettings).setOnClickListener {
+            runCatching {
+                startActivity(
+                    android.content.Intent(
+                        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        android.net.Uri.parse("package:" + packageName)
+                    )
+                )
+            }.onFailure { log("打不开系统设置：" + it.message) }
+        }
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(R.string.btn_settings)
+            .setView(v)
+            .setPositiveButton("保存") { _, _ ->
+                appPrefs.host = ed(R.id.setHost).text.toString().trim().ifBlank { com.espnav.app.data.AppPrefs.DEF_HOST }
+                appPrefs.port = ed(R.id.setPort).text.toString().trim().toIntOrNull() ?: com.espnav.app.data.AppPrefs.DEF_PORT
+                appPrefs.autoConnectOnStart = cbAutoConn.isChecked
+                appPrefs.fromAddress = ed(R.id.setFrom).text.toString().trim().ifBlank { com.espnav.app.data.AppPrefs.DEF_FROM }
+                appPrefs.toAddress = ed(R.id.setTo).text.toString().trim().ifBlank { com.espnav.app.data.AppPrefs.DEF_TO }
+                appPrefs.autoCity = cbAutoCity.isChecked
+                appPrefs.geoCity = ed(R.id.setCity).text.toString().trim().ifBlank { "北京" }
+                appPrefs.defaultZoom = (ed(R.id.setZoom).text.toString().trim().toFloatOrNull() ?: 16f).coerceIn(3f, 19f)
+                appPrefs.maxLogLines = (ed(R.id.setLogLines).text.toString().trim().toIntOrNull() ?: 1000).coerceIn(100, 20000)
+                applyPrefsToUi()
+                log(getString(R.string.set_saved))
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 把配置回填到界面控件 */
+    private fun applyPrefsToUi() {
+        binding.etHost.setText(appPrefs.host)
+        binding.etPort.setText(appPrefs.port.toString())
+        binding.etFrom.setText(appPrefs.fromAddress)
+        binding.etTo.setText(appPrefs.toAddress)
+        updatePickState()
     }
 
     private fun setupTabs() {
@@ -779,11 +847,11 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                         am.moveCamera(
                             com.amap.api.maps.CameraUpdateFactory.newLatLngZoom(
                                 com.amap.api.maps.model.LatLng(loc.latitude, loc.longitude),
-                                DEFAULT_ZOOM
+                                appPrefs.defaultZoom
                             )
                         )
                     }
-                    log("地图已定位到当前位置（缩放级别 " + DEFAULT_ZOOM + "，约方圆 20~30 公里）")
+                    log("地图已定位到当前位置（缩放级别 " + appPrefs.defaultZoom + "）")
                 }
             }
             am.setOnMapClickListener { ll -> askSetPoint(ll) }
@@ -841,7 +909,13 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                     200f,
                     com.amap.api.services.geocoder.GeocodeSearch.AMAP   // 高德坐标类型
                 )
-                gs.getFromLocation(q)?.formatAddress ?: ""
+                val addr = gs.getFromLocation(q)
+                val c = addr?.city ?: ""
+                if (c.isNotBlank() && appPrefs.autoCity && c != appPrefs.geoCity) {
+                    appPrefs.geoCity = c
+                    log("已按当前定位更新城市：" + c)
+                }
+                addr?.formatAddress ?: ""
             }.getOrDefault("")
             withContext(Dispatchers.Main) {
                 val text = addr.ifEmpty {
@@ -916,7 +990,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                     }
                     val pt = runCatching {
                         gs.getFromLocationName(
-                            com.amap.api.services.geocoder.GeocodeQuery(txt, "北京")
+                            com.amap.api.services.geocoder.GeocodeQuery(txt, appPrefs.geoCity)
                         )?.firstOrNull()?.latLonPoint
                     }.getOrNull()
                     if (pt == null) {
@@ -949,7 +1023,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             applicationContext,
             if (s0 != null) "" else fromText,      /* 地图选点优先，否则用地址文本 */
             if (e0 != null) "" else toText,
-            "北京", emulate = true,
+            appPrefs.geoCity, emulate = true,
             fixedFrom = s0?.let { com.espnav.app.data.GeoPoint(it.latitude, it.longitude) },
             fixedTo = e0?.let { com.espnav.app.data.GeoPoint(it.latitude, it.longitude) },
             wayPoints = vias
@@ -1059,7 +1133,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     private fun log(msg: String) {
         binding.tvLog.append(timeFmt.format(Date()) + "  " + msg + "\n")
-        if (binding.tvLog.lineCount > MAX_LOG_LINES) {
+        if (binding.tvLog.lineCount > appPrefs.maxLogLines) {
             val all = binding.tvLog.text.toString()
             binding.tvLog.text = all.substring(all.length / 3)   // 超限时丢弃最早 1/3
         }

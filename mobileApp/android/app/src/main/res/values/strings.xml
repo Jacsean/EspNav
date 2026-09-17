@@ -48,4 +48,24 @@
     <string name="via_sort_tip">长按途经点可排序</string>
     <string name="btn_up">↑ 上移</string>
     <string name="btn_down">↓ 下移</string>
+    <string name="btn_settings">⚙ 设置</string>
+    <string name="set_group_conn">连接</string>
+    <string name="set_hint_host">设备地址（如 192.168.43.117）</string>
+    <string name="set_hint_port">端口（默认 8899）</string>
+    <string name="set_auto_connect">App 启动后自动连接一次</string>
+    <string name="set_group_nav">导航默认</string>
+    <string name="set_hint_from">默认起点地址</string>
+    <string name="set_hint_to">默认终点地址</string>
+    <string name="set_auto_city">自动使用当前城市（推荐，用于地址解析）</string>
+    <string name="set_hint_city">地理编码城市（关闭自动时使用，如 北京）</string>
+    <string name="set_group_map">地图</string>
+    <string name="set_hint_zoom">默认缩放级别 10~19（16 较近，11 约 20 公里）</string>
+    <string name="set_group_log">日志</string>
+    <string name="set_hint_log">日志最多保留行数（默认 1000）</string>
+    <string name="set_group_perm">权限</string>
+    <string name="set_perm_unknown">权限状态：未知</string>
+    <string name="set_perm_granted">权限状态：已授予（定位可用）</string>
+    <string name="set_perm_denied">权限状态：未授予（蓝点/自动定位不可用）</string>
+    <string name="set_open_app_settings">前往系统设置授权（定位）</string>
+    <string name="set_saved">设置已保存</string>
 </resources>
