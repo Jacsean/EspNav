@@ -263,6 +263,22 @@ def check_unterminated_string(path, src):
     return issues
 
 
+def check_nested_function(path, src):
+    """函数定义落在另一个函数体内（C 不允许嵌套函数 -> 必然编译失败，如 -Werror 直接中断）"""
+    issues = []
+    body = strip_literals(strip_comments(src))
+    depth = 0
+    pat = re.compile(r'^static\s+[A-Za-z_\w*]+?\s*\*?\s*[A-Za-z_]\w*\s*\(')
+    for i, line in enumerate(body.split('\n'), 1):
+        st = line.strip()
+        if depth > 0 and st.startswith('static') and pat.match(st):
+            issues.append('line %d: nested function definition (C does not allow functions inside functions)' % i)
+        depth += line.count('{') - line.count('}')
+        if depth < 0:
+            depth = 0
+    return issues
+
+
 def check_color_macros(root):
     """使用了未定义的 RGB565_* 颜色宏（C 编译必报 undeclared identifier）"""
     defined, used = set(), {}
@@ -339,6 +355,10 @@ def main():
 
         for msg in check_sys_headers(c, raw):
             print('[missing sysheader] %s: %s' % (c, msg))
+            problems += 1
+
+        for msg in check_nested_function(c, raw):
+            print('[nested] %s: %s' % (c, msg))
             problems += 1
 
         for msg in check_unterminated_string(c, raw):
