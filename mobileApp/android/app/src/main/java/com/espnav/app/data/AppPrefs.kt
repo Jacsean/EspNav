@@ -64,10 +64,20 @@ class AppPrefs(ctx: Context) {
         get() = sp.getBoolean(K_DBG_ROAD, true)
         set(v) = sp.edit().putBoolean(K_DBG_ROAD, v).apply()
 
-    /** 是否绘制「App 传来的路径线」（center / route / past；ESP 上为红/青/蓝三色） */
-    var dbgShowPath: Boolean
-        get() = sp.getBoolean(K_DBG_PATH, true)
-        set(v) = sp.edit().putBoolean(K_DBG_PATH, v).apply()
+    /** 是否绘制「未走路径」折线 —— ESP 主视图上为**红色**（route_center） */
+    var dbgShowRoute: Boolean
+        get() = sp.getBoolean(K_DBG_ROUTE, true)
+        set(v) = sp.edit().putBoolean(K_DBG_ROUTE, v).apply()
+
+    /** 是否绘制「已走路径」折线 —— ESP 主视图上为**蓝色**（past_center） */
+    var dbgShowPast: Boolean
+        get() = sp.getBoolean(K_DBG_PAST, true)
+        set(v) = sp.edit().putBoolean(K_DBG_PAST, v).apply()
+
+    /** 是否绘制「车道中线虚线 + fallback 真实路形路面」—— ESP 主视图上为**青色**（center_line） */
+    var dbgShowCenterLn: Boolean
+        get() = sp.getBoolean(K_DBG_CLN, true)
+        set(v) = sp.edit().putBoolean(K_DBG_CLN, v).apply()
 
     /** 是否绘制「行程图」 */
     var dbgShowOverview: Boolean
@@ -97,7 +107,9 @@ class AppPrefs(ctx: Context) {
         private const val K_LOG = "max_log_lines"
         private const val K_SAMPLER = "sampler_mode"
         private const val K_DBG_ROAD = "dbg_road"
-        private const val K_DBG_PATH = "dbg_path"
+        private const val K_DBG_ROUTE = "dbg_route"
+        private const val K_DBG_PAST = "dbg_past"
+        private const val K_DBG_CLN = "dbg_cln"
         private const val K_DBG_OV = "dbg_overview"
         private const val K_DBG_CAR = "dbg_car"
 

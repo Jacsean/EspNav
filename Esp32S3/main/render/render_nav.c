@@ -297,6 +297,10 @@ static void draw_north8(int x, int y)
     }
 }
 
+/* 行程图区域：向左侧（文字提示区方向）拓宽 3 个网格 = 30px（用户要求，原 220..320）。 */
+#define OV_AX 190
+#define OV_AW 130
+
 /* 行程图局部坐标跨度：必须与 App 端 NavStateMapper.OV_SPAN 保持一致。
  * 原为 40 —— 长路线下相邻路口会被量化到同一个点，2026-09 提升到 200（分辨精度 x5）。 */
 #define OV_SPAN 200
@@ -307,14 +311,14 @@ static void draw_north8(int x, int y)
 /* 行程图局部坐标 -> 画布像素（等比、北在上） */
 static void ov_to_px(const npt_t *p, int *px, int *py)
 {
-    const int ax = 220, ay = 160;
+    const int ax = OV_AX, ay = 160;       /* 行程图区起点（向左拓宽后 190） */
     *px = ax + OV_OX + (int)p->x * OV_BOX / OV_SPAN;
     *py = ay + OV_OY + (OV_SPAN - (int)p->y) * OV_BOX / OV_SPAN;
 }
 
 static void draw_overview(const nav_frame_t *f)
 {
-    const int ax = 220, ay = 160, aw = 100, ah = 80;
+    const int ax = OV_AX, ay = 160, aw = OV_AW, ah = 80;
     const uint16_t grid = 0x2104;
     for (int x = ax; x < ax + aw; x += 10) fb_line(x, ay, x, ay + ah - 1, grid);
     for (int y = ay; y < ay + ah; y += 10) fb_line(ax, y, ax + aw - 1, y, grid);
@@ -337,9 +341,9 @@ static void draw_overview(const nav_frame_t *f)
         ov_to_px(&f->overview_dot, &dx, &dy);
         fb_fill_rect(dx - 2, dy - 2, dx + 2, dy + 2, RGB565_YELLOW);
     }
-    draw_north8(ax + 80, ay + 2);                        /* 右上角小号“北”（8px 点阵） */
+    draw_north8(ax + aw - 20, ay + 2);                   /* 右上角小号“北”（8px 点阵） */
     {   /* 十字线：位于“北”字下方；竖线上端带向上小箭头指向北 */
-        const int vx = ax + 84;                     /* 8px 北字中心 = 80 + 4 */
+        const int vx = ax + aw - 16;                /* 8px 北字中心 */
         const int yTop = ay + 13;                   /* 北字(ay+2..ay+9) 下方 3px 起 */
         const int ny = ay + 26;                     /* 十字中心（一个网格处） */
         fb_line(vx, yTop + 4, vx, ny + 9, PATH_GREEN);             /* 竖线（上端留箭头位） */
@@ -658,7 +662,7 @@ static void draw_frame(const nav_frame_t *f, float anim)
     if (!f || !f->valid) return;
     fb_clear(RGB565_BLACK);
     fb_line(0, 160, FB_W - 1, 160, RGB565_DGRAY);
-    fb_line(220, 160, 220, FB_H - 1, RGB565_DGRAY);
+    fb_line(OV_AX, 160, OV_AX, FB_H - 1, RGB565_DGRAY);
 
     if (f->road.present) {
         draw_road(f, anim);                        /* M4：路况模板（road 字段驱动） */

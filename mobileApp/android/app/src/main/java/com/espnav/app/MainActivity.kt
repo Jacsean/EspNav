@@ -478,9 +478,9 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private fun applyDbgMask(f: com.espnav.app.protocol.NavFrame): com.espnav.app.protocol.NavFrame =
         f.copy(
             road = if (appPrefs.dbgShowRoad) f.road else null,
-            centerLine = if (appPrefs.dbgShowPath) f.centerLine else emptyList(),
-            routeCenter = if (appPrefs.dbgShowPath) f.routeCenter else emptyList(),
-            pastCenter = if (appPrefs.dbgShowPath) f.pastCenter else emptyList(),
+            centerLine = if (appPrefs.dbgShowCenterLn) f.centerLine else emptyList(),
+            routeCenter = if (appPrefs.dbgShowRoute) f.routeCenter else emptyList(),
+            pastCenter = if (appPrefs.dbgShowPast) f.pastCenter else emptyList(),
             overview = if (appPrefs.dbgShowOverview) f.overview else emptyList(),
             overviewDot = if (appPrefs.dbgShowOverview) f.overviewDot else null,
             pos = if (appPrefs.dbgShowCar) f.pos else null
@@ -694,11 +694,15 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         val cbAutoCity = v.findViewById<android.widget.CheckBox>(R.id.setAutoCity)
         val rgSampler = v.findViewById<android.widget.RadioGroup>(R.id.setSamplerMode)
         val cbDbgRoad = v.findViewById<android.widget.CheckBox>(R.id.setDbgRoad)
-        val cbDbgPath = v.findViewById<android.widget.CheckBox>(R.id.setDbgPath)
+        val cbDbgRoute = v.findViewById<android.widget.CheckBox>(R.id.setDbgRoute)
+        val cbDbgPast = v.findViewById<android.widget.CheckBox>(R.id.setDbgPast)
+        val cbDbgCln = v.findViewById<android.widget.CheckBox>(R.id.setDbgCenterLn)
         val cbDbgOv = v.findViewById<android.widget.CheckBox>(R.id.setDbgOverview)
         val cbDbgCar = v.findViewById<android.widget.CheckBox>(R.id.setDbgCar)
         cbDbgRoad.isChecked = appPrefs.dbgShowRoad
-        cbDbgPath.isChecked = appPrefs.dbgShowPath
+        cbDbgRoute.isChecked = appPrefs.dbgShowRoute
+        cbDbgPast.isChecked = appPrefs.dbgShowPast
+        cbDbgCln.isChecked = appPrefs.dbgShowCenterLn
         cbDbgOv.isChecked = appPrefs.dbgShowOverview
         cbDbgCar.isChecked = appPrefs.dbgShowCar
 
@@ -749,7 +753,9 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                         com.espnav.app.data.PolylineSampler.MODE_DP
                     else com.espnav.app.data.PolylineSampler.MODE_VW
                 appPrefs.dbgShowRoad = cbDbgRoad.isChecked
-                appPrefs.dbgShowPath = cbDbgPath.isChecked
+                appPrefs.dbgShowRoute = cbDbgRoute.isChecked
+                appPrefs.dbgShowPast = cbDbgPast.isChecked
+                appPrefs.dbgShowCenterLn = cbDbgCln.isChecked
                 appPrefs.dbgShowOverview = cbDbgOv.isChecked
                 appPrefs.dbgShowCar = cbDbgCar.isChecked
                 applyPrefsToUi()

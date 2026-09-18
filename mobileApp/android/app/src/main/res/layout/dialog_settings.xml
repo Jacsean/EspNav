@@ -130,10 +130,22 @@
             android:text="@string/set_dbg_road" />
 
         <CheckBox
-            android:id="@+id/setDbgPath"
+            android:id="@+id/setDbgRoute"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/set_dbg_path" />
+            android:text="@string/set_dbg_route" />
+
+        <CheckBox
+            android:id="@+id/setDbgPast"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/set_dbg_past" />
+
+        <CheckBox
+            android:id="@+id/setDbgCenterLn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/set_dbg_centerln" />
 
         <CheckBox
             android:id="@+id/setDbgOverview"
