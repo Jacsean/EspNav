@@ -223,12 +223,13 @@ object NavStateMapper {
         val center = s.remainPath.ifEmpty {
             listOf(CX to NEAR_Y, CX to 118, CX to 86, CX to 54, CX to FAR_Y)
         }
-        val cut = if (center.size <= 1) 1 else (1 + progress / 25).coerceIn(1, center.size - 1)
         val mini = s.overviewPath.ifEmpty { miniMap(center) }
-        /* 中心线（车头前后）：先算出变量并做越界诊断 —— App 投影异常时会给出屏外坐标，
-         * 固件若照画就会表现为"车头附近的随机折线/图案漂移" */
-        val pc = s.passedPath.ifEmpty { center.subList(0, cut) }
-        val rc = center.subList(cut, center.size)
+        /* 【修复·折线根因之一】不再用"行程进度百分比"去切分 center：
+         * center = s.remainPath 本身已经是"从车当前位置沿路径向前"的连续点
+         * （AmapNavSource 按最近点索引沿路径取），而用 progress 算出的第 cut 个点
+         * 与"车此刻在哪里"毫无关系 —— 会让未走线从车侧/车后起画，表现为车头附近的漂移折线。 */
+        val pc = s.passedPath
+        val rc = center
         run {
             val bad = (pc + rc).filter {
                 it.first < 0 || it.first >= 320 || it.second < 0 || it.second >= 240

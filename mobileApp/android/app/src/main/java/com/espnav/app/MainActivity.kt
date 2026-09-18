@@ -509,6 +509,10 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     private var aMap: com.amap.api.maps.AMap? = null
     private var previewLine: com.amap.api.maps.model.Polyline? = null
+
+    /** 预览路线的起终点标记（算路后按路径首末点自动补；与"地图选点"用的 start/endMarker 分开，互不干扰） */
+    private var previewStartMarker: com.amap.api.maps.model.Marker? = null
+    private var previewEndMarker: com.amap.api.maps.model.Marker? = null
     private var previewSource: AmapNavSource? = null
     private var mapReady = false
     private var mapCenteredOnce = false
@@ -1201,6 +1205,22 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 pts.forEach { b.include(it) }
                 am.moveCamera(com.amap.api.maps.CameraUpdateFactory.newLatLngBounds(b.build(), 60))
             }
+            /* 起终点标记：地址输入模式下没有"选点 marker"，这里按路径首末点自动补一对，
+             * 否则用户看到的只是一条光秃秃的线，不知道哪头是起点（用户实测反馈）。 */
+            runCatching {
+                previewStartMarker?.remove()
+                previewEndMarker?.remove()
+                previewStartMarker = null
+                previewEndMarker = null
+                if (pts.size >= 2) {
+                    previewStartMarker = am.addMarker(
+                        com.amap.api.maps.model.MarkerOptions().position(pts.first()).title("起点")
+                    )
+                    previewEndMarker = am.addMarker(
+                        com.amap.api.maps.model.MarkerOptions().position(pts.last()).title("终点")
+                    )
+                }
+            }
         }
         previewLenM = len
         previewSecS = sec
@@ -1210,6 +1230,10 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         binding.tvRouteInfo.text = info
         binding.btnStartNav.visibility = View.VISIBLE
         binding.btnGiveUp.visibility = View.VISIBLE
+        /* 【修复】必须刷新一次操作可用性：btnStartNav 的 isEnabled 只在 updatePickState() 里计算，
+         * 此前这里只设了 visibility，于是按钮"看得见但点不动"（灰的），要等用户点过「清除标记」
+         * 触发 updatePickState 才变可用 —— 正是用户实测的现象。 */
+        updatePickState()
         log("路线预览：" + info + " → 确认请点「开始导航」")
     }
 

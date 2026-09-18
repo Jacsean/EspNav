@@ -33,6 +33,14 @@ static float       s_anim = 0.0f;    /* 虚线相位 */
 #define ROAD_GRAY     0x73AE  /* #777777 -> RGB565 */
 #define PATH_GREEN    0x07E0
 
+/* ---- 绘制来源颜色分离（用户建议：每个元素用不同颜色，折线漂移时一眼看出是谁画的）----
+ * 排查完成后可以把它们改回绿色，但保留分离对后续定位更有利。 */
+#define DBG_ROUTE     0xF800   /* App 未走路径      ：红 */
+#define DBG_PAST      0x001F   /* App 已走路径      ：蓝 */
+#define DBG_ROADPATH  0xF81F   /* 道路模板中心绿线：品红 */
+#define DBG_CENTERLN  0x07FF   /* fallback 车道中线 ：青 */
+#define DBG_OVERVIEW  0x780F   /* 行程图轨迹        ：紫 */
+
 void render_nav_clear(void)
 {
     s_blank_req = true;      /* CLEAR_SCREEN：由显示任务执行清屏 */
@@ -265,7 +273,7 @@ static void draw_overview(const nav_frame_t *f)
         int x0, y0, x1, y1;
         ov_to_px(&f->overview[i], &x0, &y0);
         ov_to_px(&f->overview[i + 1], &x1, &y1);
-        fb_line(x0, y0, x1, y1, PATH_GREEN);
+        fb_line(x0, y0, x1, y1, DBG_OVERVIEW);      /* 紫：与主视图各线区分 */
     }
     /* 起终点标记：轨迹首点=起点(绿)、末点=终点(红)；当前位置仍为黄点（App 实时更新） */
     if (f->overview_n >= 2) {
@@ -360,27 +368,24 @@ static void road_edges(const npt_t *pts, int n, float half, bool flow, float ani
 }
 
 /* 绿路径（投影后双层描边） */
+/* 按【画布像素】判断是否在屏内（pt_in_screen 判的是协议点，这里判投影后的像素） */
+static bool px_in_screen(int x, int y)
+{
+    return x >= 0 && x < FB_W && y >= 0 && y < FB_H;
+}
+
 static void road_path(const npt_t *pts, int n)
 {
     if (n < 2) return;
     gpt_t pr[NAV_MAX_PTS];
     for (int i = 0; i < n; i++) { gpt_t g = { (float)pts[i].x, (float)pts[i].y }; pr[i] = geo_proj_pt(g); }
-    /* 【临时探针】模板点首末坐标（用户报告"绿色折线漂移、进某路段后消失"）：
-     * 与 past_center 的探针配合，用来确定到底是哪个数组给出了越界坐标。 */
-    {
-        static uint32_t rp_log_n = 0;
-        if (n > 0 && (rp_log_n++ % 30u) == 0u) {
-            ESP_LOGW(TAG, "road pts n=%d 首=(%d,%d) 末=(%d,%d)",
-                     n, pts[0].x, pts[0].y, pts[n - 1].x, pts[n - 1].y);
-        }
-    }
     for (int pass = 0; pass < 2; pass++) {
         for (int i = 0; i + 1 < n; i++) {
-            /* 越界点直接跳过（宁可少画一段，也不把线画到文字/行程图区域去） */
-            if (!pt_in_screen(pts[i]) || !pt_in_screen(pts[i + 1])) continue;
             int x0 = (int)pr[i].x, y0 = (int)pr[i].y, x1 = (int)pr[i+1].x, y1 = (int)pr[i+1].y;
-            if (pass == 0) { fb_line(x0, y0, x1, y1, 0x0320); fb_line(x0, y0+1, x1, y1+1, 0x0320); }
-            else           { fb_line(x0, y0, x1, y1, PATH_GREEN); fb_line(x0+1, y0, x1+1, y1, PATH_GREEN); }
+            /* 越界一律按【投影后】的坐标判断：此前误用未投影的模板坐标，判的和画的不是同一套数 */
+            if (!px_in_screen(x0, y0) || !px_in_screen(x1, y1)) continue;
+            if (pass == 0) { fb_line(x0, y0, x1, y1, DBG_ROADPATH); fb_line(x0, y0+1, x1, y1+1, DBG_ROADPATH); }
+            else           { fb_line(x0, y0, x1, y1, DBG_ROADPATH); fb_line(x0+1, y0, x1+1, y1, DBG_ROADPATH); }
         }
     }
 }
@@ -619,35 +624,24 @@ static void draw_frame(const nav_frame_t *f, float anim)
         for (int i = 0; i + 1 < f->center_n; i++) {
             fb_dashed_line_off(f->center_line[i].x, f->center_line[i].y,
                                f->center_line[i + 1].x, f->center_line[i + 1].y,
-                               RGB565_WHITE, 5, 7, anim);
+                               DBG_CENTERLN, 5, 7, anim);
         }
     }
-    /* 已行驶 / 未行驶路径（绿） */
-    /* ---- 临时排查（用户线索：漂移绿色折线只在"车头下方"）----
-     * past_center = App 发来的"已走过路径"，屏幕上位于车头【下方】，与该现象吻合。
-     * ① 打印其真实坐标（每 30 帧一次，避免刷屏）② 暂时屏蔽绘制，验证折线是否随之消失。
-     * 验证完成后：删除 #if 0 / #endif 即可恢复绘制。 */
-    if (f->past_n > 0) {
-        static uint32_t past_log_n = 0;
-        if ((past_log_n++ % 30u) == 0u) {
-            ESP_LOGW(TAG, "past_center n=%d 首=(%d,%d) 末=(%d,%d)",
-                     f->past_n, f->past_center[0].x, f->past_center[0].y,
-                     f->past_center[f->past_n - 1].x, f->past_center[f->past_n - 1].y);
-        }
-    }
-#if 0   /* 【临时屏蔽】验证"车头下方绿色折线漂移"是否由 past_center 绘制产生 */
+    /* 已走路径 = 蓝；未走路径 = 红（颜色分离：漂移时一眼看出是哪条线） */
     for (int i = 0; i + 1 < f->past_n; i++) {
         if (!pt_in_screen(f->past_center[i]) || !pt_in_screen(f->past_center[i + 1])) continue;
-        fb_line(f->past_center[i].x, f->past_center[i].y, f->past_center[i + 1].x, f->past_center[i + 1].y, PATH_GREEN);
+        fb_line(f->past_center[i].x, f->past_center[i].y,
+                f->past_center[i + 1].x, f->past_center[i + 1].y, DBG_PAST);
     }
-#endif
     for (int i = 0; i + 1 < f->route_n; i++) {
         if (!pt_in_screen(f->route_center[i]) || !pt_in_screen(f->route_center[i + 1])) continue;
-        fb_line(f->route_center[i].x, f->route_center[i].y, f->route_center[i + 1].x, f->route_center[i + 1].y, PATH_GREEN);
+        fb_line(f->route_center[i].x, f->route_center[i].y,
+                f->route_center[i + 1].x, f->route_center[i + 1].y, DBG_ROUTE);
     }
 /* 车辆光标 */
-    /* 路线中轴线（绿色，贯通道路远端 NAV_FAR_Y 到近端 NAV_NEAR_Y；随后绘制车头 -> 车头压线） */
-    fb_line(NAV_CX, NAV_FAR_Y, NAV_CX, NAV_NEAR_Y, RGB565_GREEN);
+    /* 【用户要求·临时暂停】车头恒定竖线不绘制，便于排查"车头附近折线漂移"到底是谁画的。
+     * 恢复：把下面这行注释打开即可（原先为贯通 NAV_FAR_Y -> NAV_NEAR_Y 的绿色中轴线）。 */
+    /* fb_line(NAV_CX, NAV_FAR_Y, NAV_CX, NAV_NEAR_Y, RGB565_GREEN); */
     if (f->pos_valid) fb_triangle(f->pos.x, f->pos.y, 14, RGB565_YELLOW);
 
 #if RENDER_TEXT

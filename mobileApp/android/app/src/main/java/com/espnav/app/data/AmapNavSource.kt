@@ -54,6 +54,8 @@ class AmapNavSource(
         private const val MAX_PREVIEW_PTS = 200
         /** 主视图显示“前方多少米”的路径（决定路面/绿线的缩放） */
         private const val VIEW_METERS = 400.0
+        /** 车身后方额外保留的路径长度（米），用于"已走过"绿线 */
+        private const val BEHIND_METERS = 60.0
     }
 
     private var navi: AMapNavi? = null
@@ -305,24 +307,70 @@ class AmapNavSource(
      * 位置/朝向更新时调用。
      */
     private fun refreshPathProjection() {
-        if (pathCoords.isEmpty()) return
-        val origin = lastOrigin ?: pathCoords.first()
+        if (pathAllCoords.isEmpty()) return
+        val origin = lastOrigin ?: pathAllCoords.first()
 
-        // 主视图：只投影“前方 VIEW_METERS 米内”的路径，缩放自适应该视野（近端 y=144）
-        val near = pathCoords.filter { metersBetween(origin, it) <= VIEW_METERS }
-            .ifEmpty { listOf(pathCoords.first()) }
+        /* 【修复·主视图折线根因】此前用【整条路线的 16 点降采样】去过滤"前方 400 m"：
+         * 5 km 路线点距约 333 m，400 m 内常常只剩 1~2 点，于是路面绿线又粗又飘。
+         * 现在改为：先在【全量路径】上定位离车最近的索引 i0，再沿路径顺序向前/向后取点 ——
+         * 取出的点必然连续且顺序正确（不再出现"车前车后混在一起、横穿屏幕"的错线）。
+         */
+        val i0 = nearestIndex(origin)
+
+        /* 前方：沿路径前进，累计到 VIEW_METERS 米 */
+        val aheadRaw = ArrayList<GeoPoint>()
+        aheadRaw.add(pathAllCoords[i0])
+        var acc = 0.0
+        var j = i0
+        while (j + 1 < pathAllCoords.size && acc < VIEW_METERS) {
+            acc += metersBetween(pathAllCoords[j], pathAllCoords[j + 1])
+            j++
+            aheadRaw.add(pathAllCoords[j])
+        }
+
+        /* 车身后方一小段：用于"已走过"线（投影后一般落在屏幕下沿之外，不靠贴边造线） */
+        val behindRaw = ArrayList<GeoPoint>()
+        var b = i0
+        var bacc = 0.0
+        while (b - 1 >= 0 && bacc < BEHIND_METERS) {
+            bacc += metersBetween(pathAllCoords[b], pathAllCoords[b - 1])
+            b--
+            behindRaw.add(0, pathAllCoords[b])
+        }
+
+        /* 协议单帧数组上限 16：用 DP 压缩（局部保真优先），而不是等间隔降采样 */
         val pxPerMeter = (NavStateMapper.NEAR_Y - NavStateMapper.FAR_Y).toDouble() / VIEW_METERS
-        val screen = NavStateMapper.project(near, origin, state.headingDeg, pxPerMeter = pxPerMeter)
-        // 小地图：整条路线，北向上，按包围盒等比自适应（含 cos 纬度折算，修正东西向拉伸）
+        val screen = NavStateMapper.project(squeezeToLimit(aheadRaw), origin, state.headingDeg, pxPerMeter = pxPerMeter)
+        val past = NavStateMapper.project(squeezeToLimit(behindRaw), origin, state.headingDeg, pxPerMeter = pxPerMeter)
+
+        // 小地图：整条路线（采样后的 <=16 点），北向上，按包围盒等比自适应（含 cos 纬度折算）
         val proj = NavStateMapper.overviewProjectorFor(pathCoords)
         state = state.copy(
             remainPath = screen,
-            passedPath = screen.take(2),
+            passedPath = past,
             overviewPath = proj?.let { pr -> pathCoords.map { pr.project(it) } } ?: emptyList(),
-            /* 黄点：用【当前定位】直接投影到行程图坐标系（与路径点同一套变换）。
-             * 此前按"进度 × 数组索引"取点，采样后点距不再均匀，会表现为黄点跳变/卡住。 */
+            /* 黄点：用【当前定位】直接投影到行程图坐标系（与路径点同一套变换） */
             overviewDotPos = proj?.project(origin)
         )
+    }
+
+    /** 离当前位置最近的路径点索引（路径点通常 < 2000，线性扫描足够） */
+    private fun nearestIndex(origin: GeoPoint): Int {
+        var best = 0
+        var bestD = Double.MAX_VALUE
+        for (i in pathAllCoords.indices) {
+            val d = metersBetween(origin, pathAllCoords[i])
+            if (d < bestD) { bestD = d; best = i }
+        }
+        return best
+    }
+
+    /** 把一段路径压到协议单帧上限（MAX_PATH_PTS）以内：超过则用 DP（保留局部形状） */
+    private fun squeezeToLimit(pts: List<GeoPoint>): List<GeoPoint> {
+        if (pts.size <= MAX_PATH_PTS) return pts
+        val o = pts.first()
+        val meters = PolylineSampler.toMeters(pts, o)
+        return PolylineSampler.toGeo(PolylineSampler.simplifyDp(meters, MAX_PATH_PTS), o)
     }
 
     /** 两点间近似距离（米） */
