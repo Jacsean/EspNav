@@ -52,6 +52,9 @@
     <string name="label_via">途经</string>
     <string name="menu_set_via">设为途经点</string>
     <string name="via_limit_tip">最多 3 个途经点</string>
+    <string name="btn_add_via_paid">＋ 途经点（收费能力·暂不可用）</string>
+    <string name="menu_set_via_paid">设为途经点（收费能力·暂不可用）</string>
+    <string name="via_paid_tip">高德「骑行途经点算路」为收费接口，未开通时会导致算路超时；如需启用请通过高德工单申请</string>
     <string name="via_sort_tip">长按途经点可排序</string>
     <string name="btn_up">↑ 上移</string>
     <string name="btn_down">↓ 下移</string>

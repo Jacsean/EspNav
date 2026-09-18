@@ -105,6 +105,11 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         }
         binding.btnBackToConnect.setOnClickListener { showTab(false) }
         binding.btnAddVia.setOnClickListener { addVia() }
+        /* 高德官方对 calculateRideRoute(NaviPoi, List<NaviPoi>, NaviPoi, TravelStrategy) 的原文：
+         * "当前接口为收费接口" —— 未开通时调用不返回，表现为"预览算路超时"。
+         * 故暂时置灰并标注（用户要求）。 */
+        binding.btnAddVia.isEnabled = false
+        binding.btnAddVia.text = getString(R.string.btn_add_via_paid)
         /* 日志区是公共组件（两个 Tab 都可见），点标题可折叠/展开 */
         binding.logHeader.setOnClickListener {
             val show = binding.svLog.visibility != View.VISIBLE
@@ -1017,7 +1022,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private fun askSetPoint(ll: com.amap.api.maps.model.LatLng) {
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle(String.format(java.util.Locale.US, "%.5f, %.5f", ll.latitude, ll.longitude))
-            .setItems(arrayOf("设为起点", "设为终点", getString(R.string.menu_set_via))) { _, which ->
+            .setItems(arrayOf("设为起点", "设为终点", getString(R.string.menu_set_via_paid))) { _, which ->
                 if (which == 0) {
                     startLatLng = ll
                     setMarker(true)
@@ -1027,7 +1032,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                     setMarker(false)
                     reverseGeocode(ll, false)
                 } else {
-                    setViaFromMap(ll)
+                    toast(getString(R.string.via_paid_tip))   /* 途经点为高德收费能力，暂不启用 */
                 }
                 updatePickState()
             }

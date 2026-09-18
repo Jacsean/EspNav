@@ -56,6 +56,12 @@ class AmapNavSource(
         private const val VIEW_METERS = 400.0
         /** 车身后方额外保留的路径长度（米），用于"已走过"绿线 */
         private const val BEHIND_METERS = 60.0
+
+        /** AMapNavi 是**进程级单例**，而 onInitNaviSuccess() 只在首次初始化成功时回调一次：
+         *  第二次 getInstance() 不会再触发 —— 于是算路永不发起，表现为"导航一次后再点启动毫无反应，
+         *  必须重启 App"（用户实测）。用这个进程内标记在"已初始化过"时直接算路，不再依赖该回调。 */
+        @Volatile
+        private var sNaviInited = false
     }
 
     private var navi: AMapNavi? = null
@@ -112,10 +118,16 @@ class AmapNavSource(
 
             val n = AMapNavi.getInstance(context)
             navi = n
+            runCatching { n.removeAMapNaviListener(this) }   /* 幂等：避免重复注册导致回调重复/串实例 */
             n.addAMapNaviListener(this)
             started = true
             log("AMapNavi 初始化完成 起点=" + fromAddress.ifBlank { "当前定位" } +
                 " 终点=" + toAddress + " 模拟行进=" + emulate)
+            /* 单例已就绪过 → onInitNaviSuccess() 不会再回调，必须自己发起算路 */
+            if (sNaviInited) {
+                log("导航 SDK 已就绪过（单例复用）→ 直接发起算路")
+                beginRoute()
+            }
         } catch (e: Exception) {
             logE("初始化失败：" + e.message)
         }
@@ -138,6 +150,12 @@ class AmapNavSource(
 
     override fun onInitNaviSuccess() {
         log("onInitNaviSuccess：SDK 就绪")
+        sNaviInited = true
+        beginRoute()
+    }
+
+    /** 真正发起算路 —— onInitNaviSuccess（首次初始化）与"单例复用"两条路径共用同一份逻辑 */
+    private fun beginRoute() {
         if (fixedTo != null) {
             log("使用地图选点坐标算路：起点=" + (fixedFrom?.toString() ?: "当前定位") + " 终点=" + fixedTo)
             calculateRoute(fixedFrom)
@@ -283,10 +301,15 @@ class AmapNavSource(
             headingDeg = l.bearing.toInt(),
             speedKmh = (l.speed * 3.6f).toInt()          // Location.speed 单位 m/s
         )
-        // 起点用当前定位且尚未算路：拿到首个定位后开始算路
-        if (!routeRequested && fromAddress.isBlank() && c != null) {
+        /* 只有"起点用定位 + 终点用地址"这一种情形，才在拿到首个定位后自动算路。
+         * 之前漏判 fixedTo/fixedFrom：地图选点时 fromAddress/toAddress 都为空，
+         * 会误走 calculateAutoDest()，算出一条"当前位置向北 2km"的假路线（表现为算路不对/超时）。 */
+        if (!routeRequested && c != null &&
+            fixedTo == null && fixedFrom == null &&
+            fromAddress.isBlank() && toAddress.isNotBlank()
+        ) {
             routeRequested = true
-            if (toAddress.isNotBlank()) geocodeAndRoute() else calculateAutoDest()
+            geocodeAndRoute()
         }
         refreshPathProjection()
         } catch (t: Throwable) { logE("onLocationChange 异常：" + t.message) }
@@ -338,10 +361,23 @@ class AmapNavSource(
             behindRaw.add(0, pathAllCoords[b])
         }
 
-        /* 协议单帧数组上限 16：用 DP 压缩（局部保真优先），而不是等间隔降采样 */
+        /* 到达终点附近时"前方"可能只剩 1 个点 → 固件因 center_n < 2 而整段不画路面
+         * （用户实测"最后一个路段道路消失、导航结束后路面完全没了"）。这里补足到 2 点。 */
+        if (aheadRaw.size < 2) {
+            val a = aheadRaw[0]
+            val b = behindRaw.lastOrNull()
+            if (b != null && (b.lat != a.lat || b.lon != a.lon)) aheadRaw.add(0, b)
+            else aheadRaw.add(origin)
+        }
+
+        /* 【投影基准】改用【路径在车当前位置的前进方向】，而不是 GPS bearing：
+         * bearing 在低速/模拟行进下会抖动甚至反向，导致整条路径线绕车头旋转 —— 就是用户实测的
+         * "车头附近折线漂移"（红=未走、蓝=已走两条线都在转）；用路径切线则让路径线始终"顺着屏幕
+         * 向上延伸"，与固定模板路面的语义一致。 */
+        val baseHeading = pathHeadingAt(i0)
         val pxPerMeter = (NavStateMapper.NEAR_Y - NavStateMapper.FAR_Y).toDouble() / VIEW_METERS
-        val screen = NavStateMapper.project(squeezeToLimit(aheadRaw), origin, state.headingDeg, pxPerMeter = pxPerMeter)
-        val past = NavStateMapper.project(squeezeToLimit(behindRaw), origin, state.headingDeg, pxPerMeter = pxPerMeter)
+        val screen = NavStateMapper.project(squeezeToLimit(aheadRaw), origin, baseHeading, pxPerMeter = pxPerMeter)
+        val past = NavStateMapper.project(squeezeToLimit(behindRaw), origin, baseHeading, pxPerMeter = pxPerMeter)
 
         // 小地图：整条路线（采样后的 <=16 点），北向上，按包围盒等比自适应（含 cos 纬度折算）
         val proj = NavStateMapper.overviewProjectorFor(pathCoords)
@@ -352,6 +388,19 @@ class AmapNavSource(
             /* 黄点：用【当前定位】直接投影到行程图坐标系（与路径点同一套变换） */
             overviewDotPos = proj?.project(origin)
         )
+    }
+
+    /** 路径在索引 i 处的前进方向（度，0=北、顺时针）；用前后各 3 点求方向，避免单点抖动 */
+    private fun pathHeadingAt(i: Int): Int {
+        val n = pathAllCoords.size
+        if (n < 2) return state.headingDeg
+        val a = pathAllCoords[(i - 3).coerceAtLeast(0)]
+        val b = pathAllCoords[(i + 3).coerceAtMost(n - 1)]
+        val dLat = b.lat - a.lat
+        val dLon = (b.lon - a.lon) * kotlin.math.cos(Math.toRadians(a.lat))
+        if (kotlin.math.abs(dLat) < 1e-12 && kotlin.math.abs(dLon) < 1e-12) return state.headingDeg
+        val deg = Math.toDegrees(Math.atan2(dLon, dLat))
+        return ((deg.toInt() % 360) + 360) % 360
     }
 
     /** 离当前位置最近的路径点索引（路径点通常 < 2000，线性扫描足够） */

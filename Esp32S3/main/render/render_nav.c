@@ -613,7 +613,16 @@ static void draw_frame(const nav_frame_t *f, float anim)
 
     if (f->road.present) {
         draw_road(f, anim);                        /* M4：路况模板（road 字段驱动） */
-    } else if (f->center_n >= 2) {
+    } else if (f->center_n < 2) {
+        /* 兜底：无路况模板、且中心线不足 2 点（例如刚到达终点/App 只发了终点帧）→
+         * 画一段默认竖直路面，避免整个路面区空白（用户实测"导航结束后道路图案完全消失"）。 */
+        int qx[4] = { NAV_CX - NAV_NEAR_HALF, NAV_CX + NAV_NEAR_HALF,
+                      NAV_CX + NAV_FAR_HALF,  NAV_CX - NAV_FAR_HALF };
+        int qy[4] = { NAV_NEAR_Y, NAV_NEAR_Y, NAV_FAR_Y, NAV_FAR_Y };
+        fb_fill_quad(qx, qy, ROAD_GRAY);
+        fb_dashed_line_off(qx[0], qy[0], qx[3], qy[3], RGB565_WHITE, 8, 6, anim);
+        fb_dashed_line_off(qx[1], qy[1], qx[2], qy[2], RGB565_WHITE, 8, 6, anim);
+    } else {
         int qx[4], qy[4];
         quad_from_centerline(f, NAV_NEAR_HALF, NAV_FAR_HALF, qx, qy);
         fb_fill_quad(qx, qy, ROAD_GRAY);
