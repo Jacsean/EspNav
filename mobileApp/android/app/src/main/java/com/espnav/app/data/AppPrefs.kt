@@ -57,6 +57,28 @@ class AppPrefs(ctx: Context) {
         get() = sp.getInt(K_LOG, 1000)
         set(v) = sp.edit().putInt(K_LOG, v).apply()
 
+    /* ---- 调试：ESP 屏显示哪些元素（用于逐个模块定位绘制问题；默认全开）---- */
+
+    /** 是否绘制「道路图案」（road 模板）。关掉后固件改用真实路径画路面，可对比两种路形。 */
+    var dbgShowRoad: Boolean
+        get() = sp.getBoolean(K_DBG_ROAD, true)
+        set(v) = sp.edit().putBoolean(K_DBG_ROAD, v).apply()
+
+    /** 是否绘制「App 传来的路径线」（center / route / past；ESP 上为红/青/蓝三色） */
+    var dbgShowPath: Boolean
+        get() = sp.getBoolean(K_DBG_PATH, true)
+        set(v) = sp.edit().putBoolean(K_DBG_PATH, v).apply()
+
+    /** 是否绘制「行程图」 */
+    var dbgShowOverview: Boolean
+        get() = sp.getBoolean(K_DBG_OV, true)
+        set(v) = sp.edit().putBoolean(K_DBG_OV, v).apply()
+
+    /** 是否绘制「车头三角」 */
+    var dbgShowCar: Boolean
+        get() = sp.getBoolean(K_DBG_CAR, true)
+        set(v) = sp.edit().putBoolean(K_DBG_CAR, v).apply()
+
     /** 行程图采样方式：PolylineSampler.MODE_VW（Visvalingam，默认）/ MODE_DP（道格拉斯-普克） */
     var samplerMode: String
         get() = sp.getString(K_SAMPLER, PolylineSampler.MODE_VW) ?: PolylineSampler.MODE_VW
@@ -74,6 +96,10 @@ class AppPrefs(ctx: Context) {
         private const val K_ZOOM = "default_zoom"
         private const val K_LOG = "max_log_lines"
         private const val K_SAMPLER = "sampler_mode"
+        private const val K_DBG_ROAD = "dbg_road"
+        private const val K_DBG_PATH = "dbg_path"
+        private const val K_DBG_OV = "dbg_overview"
+        private const val K_DBG_CAR = "dbg_car"
 
         const val DEF_HOST = "192.168.4.1"
         const val DEF_PORT = 8899

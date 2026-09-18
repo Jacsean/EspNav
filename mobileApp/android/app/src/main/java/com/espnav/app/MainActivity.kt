@@ -461,7 +461,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         mockJob = lifecycleScope.launch {
             while (isActive) {
                 val f = NavStateMapper.toFrame(navSource.latest())
-                client.queue(OutMsg.navFrame(f))
+                client.queue(OutMsg.navFrame(applyDbgMask(f)))
                 binding.tvStage.text =
                     "${label}：剩余 ${f.turnDist} m  进度 ${f.progressPct}%  ${f.hint}"
                 /* 导航画面：与发帧同频刷新（失败不影响推流） */
@@ -473,6 +473,18 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         }
         log("开始 $label（每 ${FRAME_INTERVAL_MS}ms 一帧）")
     }
+
+    /** 按「设置 → ESP 显示元素」开关过滤发往 ESP 的帧：逐个关掉即可定位是哪一类图元在出问题 */
+    private fun applyDbgMask(f: com.espnav.app.protocol.NavFrame): com.espnav.app.protocol.NavFrame =
+        f.copy(
+            road = if (appPrefs.dbgShowRoad) f.road else null,
+            centerLine = if (appPrefs.dbgShowPath) f.centerLine else emptyList(),
+            routeCenter = if (appPrefs.dbgShowPath) f.routeCenter else emptyList(),
+            pastCenter = if (appPrefs.dbgShowPath) f.pastCenter else emptyList(),
+            overview = if (appPrefs.dbgShowOverview) f.overview else emptyList(),
+            overviewDot = if (appPrefs.dbgShowOverview) f.overviewDot else null,
+            pos = if (appPrefs.dbgShowCar) f.pos else null
+        )
 
     private fun stopMock() {
         mockJob?.cancel()
@@ -535,6 +547,9 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private var navLastHeading = -999
     private var previewSource: AmapNavSource? = null
     private var mapReady = false
+
+    /** 最后一次已知定位（用于"进导航页立即按 defaultZoom 居中"，避免先闪一下全城比例） */
+    private var lastLocLatLng: com.amap.api.maps.model.LatLng? = null
     private var mapCenteredOnce = false
     private var savedBundle: Bundle? = null
     private var startMarker: com.amap.api.maps.model.Marker? = null
@@ -678,6 +693,14 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         val cbAutoConn = v.findViewById<android.widget.CheckBox>(R.id.setAutoConnect)
         val cbAutoCity = v.findViewById<android.widget.CheckBox>(R.id.setAutoCity)
         val rgSampler = v.findViewById<android.widget.RadioGroup>(R.id.setSamplerMode)
+        val cbDbgRoad = v.findViewById<android.widget.CheckBox>(R.id.setDbgRoad)
+        val cbDbgPath = v.findViewById<android.widget.CheckBox>(R.id.setDbgPath)
+        val cbDbgOv = v.findViewById<android.widget.CheckBox>(R.id.setDbgOverview)
+        val cbDbgCar = v.findViewById<android.widget.CheckBox>(R.id.setDbgCar)
+        cbDbgRoad.isChecked = appPrefs.dbgShowRoad
+        cbDbgPath.isChecked = appPrefs.dbgShowPath
+        cbDbgOv.isChecked = appPrefs.dbgShowOverview
+        cbDbgCar.isChecked = appPrefs.dbgShowCar
 
         ed(R.id.setHost).setText(appPrefs.host)
         ed(R.id.setPort).setText(appPrefs.port.toString())
@@ -725,6 +748,10 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                     if (rgSampler.checkedRadioButtonId == R.id.setSamplerDp)
                         com.espnav.app.data.PolylineSampler.MODE_DP
                     else com.espnav.app.data.PolylineSampler.MODE_VW
+                appPrefs.dbgShowRoad = cbDbgRoad.isChecked
+                appPrefs.dbgShowPath = cbDbgPath.isChecked
+                appPrefs.dbgShowOverview = cbDbgOv.isChecked
+                appPrefs.dbgShowCar = cbDbgCar.isChecked
                 applyPrefsToUi()
                 log(getString(R.string.set_saved))
             }
@@ -994,6 +1021,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                         log("⚠ 定位坐标无效(lat=" + la + " lon=" + lo + ")，已忽略，不移动相机")
                         return@setOnMyLocationChangeListener
                     }
+                    lastLocLatLng = com.amap.api.maps.model.LatLng(la, lo)
                     log("定位更新：lat=" + la + " lon=" + lo)
                 }
                 if (loc != null && !mapCenteredOnce) {
@@ -1008,6 +1036,16 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                     }
                     log("地图已定位到当前位置（缩放级别 " + appPrefs.defaultZoom + "）")
                 }
+            }
+            /* 已有缓存定位 → 创建后立即居中到 defaultZoom，避免先显示"全城比例"再跳 */
+            lastLocLatLng?.let { ll ->
+                mapCenteredOnce = true
+                runCatching {
+                    am.moveCamera(
+                        com.amap.api.maps.CameraUpdateFactory.newLatLngZoom(ll, appPrefs.defaultZoom)
+                    )
+                }
+                log("地图按缓存定位立即居中（缩放级别 " + appPrefs.defaultZoom + "）")
             }
             am.setOnMapClickListener { ll -> askSetPoint(ll) }
             am.setOnMapLongClickListener { ll -> askSetPoint(ll) }   /* 长按也可选点（更灵敏） */

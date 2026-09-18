@@ -98,19 +98,68 @@ void render_nav_demo(void)
     ESP_LOGI(TAG, "demo frame set (built-in straight sample, rendered by display task)");
 }
 
-static void quad_from_centerline(const nav_frame_t *f, int nearHalf, int farHalf, int *qx, int *qy)
+/* ---- 屏幕坐标版路面填充/边界：每个点用【自己的相邻点方向】求局部法线，半宽沿路径收窄。
+ * 为什么不再用 quad_from_centerline：它只拿【首末点】算一条法线去撑开四边形，
+ * 路径一弯（尤其终点前那段），整个四边形会跟着那条法线一起旋转偏移（用户实测）。
+ * 输入点已是屏幕坐标，这里不再做 geo_proj 投影。 ---- */
+static void loc_normal(const npt_t *p, int n, int i, float *nx, float *ny)
 {
-    float dx = (float)(f->center_line[f->center_n - 1].x - f->center_line[0].x);
-    float dy = (float)(f->center_line[f->center_n - 1].y - f->center_line[0].y);
+    int a = (i > 0) ? (i - 1) : i;
+    int b = (i < n - 1) ? (i + 1) : i;
+    float dx = (float)(p[b].x - p[a].x);
+    float dy = (float)(p[b].y - p[a].y);
     float len = sqrtf(dx * dx + dy * dy);
-    if (len < 0.1f) { qx[0]=qx[1]=qx[2]=qx[3]=f->center_line[0].x; qy[0]=qy[1]=qy[2]=qy[3]=f->center_line[0].y; return; }
-    float nx = -dy / len, ny = dx / len;
-    int x0 = f->center_line[0].x, y0 = f->center_line[0].y;
-    int x1 = f->center_line[f->center_n - 1].x, y1 = f->center_line[f->center_n - 1].y;
-    qx[0] = x0 + (int)(nx * nearHalf); qy[0] = y0 + (int)(ny * nearHalf);
-    qx[1] = x0 - (int)(nx * nearHalf); qy[1] = y0 - (int)(ny * nearHalf);
-    qx[2] = x1 - (int)(nx * farHalf);  qy[2] = y1 - (int)(ny * farHalf);
-    qx[3] = x1 + (int)(nx * farHalf);  qy[3] = y1 + (int)(ny * farHalf);
+    if (len < 0.001f) { *nx = 1.0f; *ny = 0.0f; return; }
+    *nx = -dy / len;
+    *ny = dx / len;
+}
+
+static float half_at(int i, int n, int nearHalf, int farHalf)
+{
+    float t = (float)i / (float)(n - 1);
+    return (float)nearHalf + ((float)farHalf - (float)nearHalf) * t;
+}
+
+static void road_fill_screen(const npt_t *pts, int n, int nearHalf, int farHalf, uint16_t color)
+{
+    if (n < 2) return;
+    int xs[64], ys[64];
+    int k = 0;
+    for (int i = 0; i < n; i++) {
+        float nx, ny;
+        loc_normal(pts, n, i, &nx, &ny);
+        float hw = half_at(i, n, nearHalf, farHalf);
+        xs[k] = pts[i].x + (int)(nx * hw);
+        ys[k] = pts[i].y + (int)(ny * hw);
+        k++;
+    }
+    for (int i = n - 1; i >= 0; i--) {
+        float nx, ny;
+        loc_normal(pts, n, i, &nx, &ny);
+        float hw = half_at(i, n, nearHalf, farHalf);
+        xs[k] = pts[i].x - (int)(nx * hw);
+        ys[k] = pts[i].y - (int)(ny * hw);
+        k++;
+    }
+    fb_fill_poly(xs, ys, k, color);
+}
+
+static void road_edges_screen(const npt_t *pts, int n, int nearHalf, int farHalf, float anim)
+{
+    if (n < 2) return;
+    for (int i = 0; i + 1 < n; i++) {
+        float n0x, n0y, n1x, n1y;
+        loc_normal(pts, n, i, &n0x, &n0y);
+        loc_normal(pts, n, i + 1, &n1x, &n1y);
+        float h0 = half_at(i, n, nearHalf, farHalf);
+        float h1 = half_at(i + 1, n, nearHalf, farHalf);
+        fb_dashed_line_off(pts[i].x + (int)(n0x * h0), pts[i].y + (int)(n0y * h0),
+                           pts[i + 1].x + (int)(n1x * h1), pts[i + 1].y + (int)(n1y * h1),
+                           RGB565_WHITE, 8, 6, anim);
+        fb_dashed_line_off(pts[i].x - (int)(n0x * h0), pts[i].y - (int)(n0y * h0),
+                           pts[i + 1].x - (int)(n1x * h1), pts[i + 1].y - (int)(n1y * h1),
+                           RGB565_WHITE, 8, 6, anim);
+    }
 }
 
 
@@ -623,12 +672,8 @@ static void draw_frame(const nav_frame_t *f, float anim)
         fb_dashed_line_off(qx[0], qy[0], qx[3], qy[3], RGB565_WHITE, 8, 6, anim);
         fb_dashed_line_off(qx[1], qy[1], qx[2], qy[2], RGB565_WHITE, 8, 6, anim);
     } else {
-        int qx[4], qy[4];
-        quad_from_centerline(f, NAV_NEAR_HALF, NAV_FAR_HALF, qx, qy);
-        fb_fill_quad(qx, qy, ROAD_GRAY);
-        /* 边界虚线（带流动相位：offset 增大 -> 向近端/下方滚动） */
-        fb_dashed_line_off(qx[0], qy[0], qx[3], qy[3], RGB565_WHITE, 8, 6, anim);
-        fb_dashed_line_off(qx[1], qy[1], qx[2], qy[2], RGB565_WHITE, 8, 6, anim);
+        road_fill_screen(f->center_line, f->center_n, NAV_NEAR_HALF, NAV_FAR_HALF, ROAD_GRAY);
+        road_edges_screen(f->center_line, f->center_n, NAV_NEAR_HALF, NAV_FAR_HALF, anim);
         /* 车道中线虚线（沿 centerLine 折线） */
         for (int i = 0; i + 1 < f->center_n; i++) {
             fb_dashed_line_off(f->center_line[i].x, f->center_line[i].y,

@@ -120,6 +120,37 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingTop="10dp"
+            android:text="@string/set_group_debug"
+            android:textStyle="bold" />
+
+        <CheckBox
+            android:id="@+id/setDbgRoad"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/set_dbg_road" />
+
+        <CheckBox
+            android:id="@+id/setDbgPath"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/set_dbg_path" />
+
+        <CheckBox
+            android:id="@+id/setDbgOverview"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/set_dbg_overview" />
+
+        <CheckBox
+            android:id="@+id/setDbgCar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/set_dbg_car" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="10dp"
             android:text="@string/set_group_log"
             android:textStyle="bold" />
 

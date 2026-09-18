@@ -73,6 +73,11 @@
     <string name="set_group_overview">行程图</string>
     <string name="set_overview_vw">Visvalingam 高保真（长弧线优先保留）</string>
     <string name="set_overview_dp">Douglas-Peucker 误差有界（实现简单）</string>
+    <string name="set_group_debug">ESP 显示元素（排查用）</string>
+    <string name="set_dbg_road">绘制道路图案（关掉=改用真实路形画路面）</string>
+    <string name="set_dbg_path">绘制 App 路径线（红/青/蓝三条）</string>
+    <string name="set_dbg_overview">绘制行程图</string>
+    <string name="set_dbg_car">绘制车头三角</string>
     <string name="set_group_log">日志</string>
     <string name="set_hint_log">日志最多保留行数（默认 1000）</string>
     <string name="set_group_perm">权限</string>

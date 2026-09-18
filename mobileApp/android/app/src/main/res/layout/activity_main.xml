@@ -411,7 +411,10 @@
             android:layout_height="0dp"
             android:layout_weight="1">
 
-            <com.amap.api.maps.MapView
+            <!-- 必须用 TextureMapView：MapView 基于 GLSurfaceView，会脱离 View 层级独立合成，
+                 导致"切到连接页后地图残留在上面盖住内容""Tab 点不动""缩放后不刷新"（用户实测）。
+                 TextureMapView 遵守 View 层级与触摸分发。 -->
+            <com.amap.api.maps.TextureMapView
                 android:id="@+id/mapView"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent" />
