@@ -74,7 +74,8 @@
     <string name="set_overview_vw">Visvalingam 高保真（长弧线优先保留）</string>
     <string name="set_overview_dp">Douglas-Peucker 误差有界（实现简单）</string>
     <string name="set_group_debug">ESP 显示元素（排查用）</string>
-    <string name="set_dbg_road">绘制道路图案（关掉=改用真实路形画路面）</string>
+    <string name="set_dbg_all_off">★ 一键全关（只留文字/罗盘）——判断漂移线归属</string>
+    <string name="set_dbg_road">绘制道路图案（含品红中心线；关掉=改用真实路形画路面）</string>
     <string name="set_dbg_route">绘制未走路径（红）</string>
     <string name="set_dbg_past">绘制已走路径（蓝）</string>
     <string name="set_dbg_centerln">绘制车道中线+真实路形路面（青）</string>

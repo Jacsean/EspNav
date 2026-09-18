@@ -475,8 +475,20 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     /** 按「设置 → ESP 显示元素」开关过滤发往 ESP 的帧：逐个关掉即可定位是哪一类图元在出问题 */
-    private fun applyDbgMask(f: com.espnav.app.protocol.NavFrame): com.espnav.app.protocol.NavFrame =
-        f.copy(
+    private fun applyDbgMask(f: com.espnav.app.protocol.NavFrame): com.espnav.app.protocol.NavFrame {
+        /* 一键全关：只留文字/罗盘。若这样 ESP 上仍有漂移线，说明它不属于下列任何一类图元。 */
+        if (appPrefs.dbgAllOff) {
+            return f.copy(
+                centerLine = emptyList(),
+                routeCenter = emptyList(),
+                pastCenter = emptyList(),
+                overview = emptyList(),
+                overviewDot = null,
+                pos = null,
+                road = null
+            )
+        }
+        return f.copy(
             road = if (appPrefs.dbgShowRoad) f.road else null,
             centerLine = if (appPrefs.dbgShowCenterLn) f.centerLine else emptyList(),
             routeCenter = if (appPrefs.dbgShowRoute) f.routeCenter else emptyList(),
@@ -485,6 +497,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             overviewDot = if (appPrefs.dbgShowOverview) f.overviewDot else null,
             pos = if (appPrefs.dbgShowCar) f.pos else null
         )
+    }
 
     private fun stopMock() {
         mockJob?.cancel()
@@ -693,12 +706,14 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         val cbAutoConn = v.findViewById<android.widget.CheckBox>(R.id.setAutoConnect)
         val cbAutoCity = v.findViewById<android.widget.CheckBox>(R.id.setAutoCity)
         val rgSampler = v.findViewById<android.widget.RadioGroup>(R.id.setSamplerMode)
+        val cbDbgAllOff = v.findViewById<android.widget.CheckBox>(R.id.setDbgAllOff)
         val cbDbgRoad = v.findViewById<android.widget.CheckBox>(R.id.setDbgRoad)
         val cbDbgRoute = v.findViewById<android.widget.CheckBox>(R.id.setDbgRoute)
         val cbDbgPast = v.findViewById<android.widget.CheckBox>(R.id.setDbgPast)
         val cbDbgCln = v.findViewById<android.widget.CheckBox>(R.id.setDbgCenterLn)
         val cbDbgOv = v.findViewById<android.widget.CheckBox>(R.id.setDbgOverview)
         val cbDbgCar = v.findViewById<android.widget.CheckBox>(R.id.setDbgCar)
+        cbDbgAllOff.isChecked = appPrefs.dbgAllOff
         cbDbgRoad.isChecked = appPrefs.dbgShowRoad
         cbDbgRoute.isChecked = appPrefs.dbgShowRoute
         cbDbgPast.isChecked = appPrefs.dbgShowPast
@@ -752,6 +767,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                     if (rgSampler.checkedRadioButtonId == R.id.setSamplerDp)
                         com.espnav.app.data.PolylineSampler.MODE_DP
                     else com.espnav.app.data.PolylineSampler.MODE_VW
+                appPrefs.dbgAllOff = cbDbgAllOff.isChecked
                 appPrefs.dbgShowRoad = cbDbgRoad.isChecked
                 appPrefs.dbgShowRoute = cbDbgRoute.isChecked
                 appPrefs.dbgShowPast = cbDbgPast.isChecked

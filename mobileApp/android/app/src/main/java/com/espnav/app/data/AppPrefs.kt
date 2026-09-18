@@ -59,6 +59,12 @@ class AppPrefs(ctx: Context) {
 
     /* ---- 调试：ESP 屏显示哪些元素（用于逐个模块定位绘制问题；默认全开）---- */
 
+    /** 一键全关：只留文字与罗盘。用来一步判断"折线漂移"是否来自这些可控图元 ——
+     *  若全关后漂移线仍在，说明它不属于道路图案/路径线/行程图/车头这几类。 */
+    var dbgAllOff: Boolean
+        get() = sp.getBoolean(K_DBG_ALLOFF, false)
+        set(v) = sp.edit().putBoolean(K_DBG_ALLOFF, v).apply()
+
     /** 是否绘制「道路图案」（road 模板）。关掉后固件改用真实路径画路面，可对比两种路形。 */
     var dbgShowRoad: Boolean
         get() = sp.getBoolean(K_DBG_ROAD, true)
@@ -110,6 +116,7 @@ class AppPrefs(ctx: Context) {
         private const val K_DBG_ROUTE = "dbg_route"
         private const val K_DBG_PAST = "dbg_past"
         private const val K_DBG_CLN = "dbg_cln"
+        private const val K_DBG_ALLOFF = "dbg_all_off"
         private const val K_DBG_OV = "dbg_overview"
         private const val K_DBG_CAR = "dbg_car"
 

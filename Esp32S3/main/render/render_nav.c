@@ -304,8 +304,8 @@ static void draw_north8(int x, int y)
 /* 行程图局部坐标跨度：必须与 App 端 NavStateMapper.OV_SPAN 保持一致。
  * 原为 40 —— 长路线下相邻路口会被量化到同一个点，2026-09 提升到 200（分辨精度 x5）。 */
 #define OV_SPAN 200
-#define OV_BOX  72      /* 内容等比正方形边长（画布 100x80 内） */
-#define OV_OX   4       /* 内容区相对画布左上偏移（留边距 + 给右上角"北"指示留位置） */
+#define OV_BOX  72      /* 内容等比正方形边长 */
+#define OV_OX   ((OV_AW - OV_BOX) / 2)   /* 内容在区域宽度内【居中】（用户要求：不要紧贴左边） */
 #define OV_OY   4
 
 /* 行程图局部坐标 -> 画布像素（等比、北在上） */
@@ -341,9 +341,9 @@ static void draw_overview(const nav_frame_t *f)
         ov_to_px(&f->overview_dot, &dx, &dy);
         fb_fill_rect(dx - 2, dy - 2, dx + 2, dy + 2, RGB565_YELLOW);
     }
-    draw_north8(ax + aw - 20, ay + 2);                   /* 右上角小号“北”（8px 点阵） */
+    draw_north8(ax + OV_OX + OV_BOX + 6, ay + 2);        /* 「北」紧跟内容右侧 */
     {   /* 十字线：位于“北”字下方；竖线上端带向上小箭头指向北 */
-        const int vx = ax + aw - 16;                /* 8px 北字中心 */
+        const int vx = ax + OV_OX + OV_BOX + 10;    /* 8px 北字中心 */
         const int yTop = ay + 13;                   /* 北字(ay+2..ay+9) 下方 3px 起 */
         const int ny = ay + 26;                     /* 十字中心（一个网格处） */
         fb_line(vx, yTop + 4, vx, ny + 9, PATH_GREEN);             /* 竖线（上端留箭头位） */

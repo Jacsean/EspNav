@@ -124,6 +124,12 @@
             android:textStyle="bold" />
 
         <CheckBox
+            android:id="@+id/setDbgAllOff"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/set_dbg_all_off" />
+
+        <CheckBox
             android:id="@+id/setDbgRoad"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
