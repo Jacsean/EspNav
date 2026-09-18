@@ -1439,18 +1439,20 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         if (o == null) return
         val cur = com.amap.api.maps.model.LatLng(o.lat, o.lon)
 
-        /* 相机跟随：位置移动 > 5m 或朝向变化 > 8° 才动（避免抖动 + 省电） */
+        /* 相机跟随：位置移动 > 2m 或朝向变化 > 3° 就更新。
+         * 用 moveCamera（立即生效）而不是 animateCamera —— 后者的 280ms 动画会被本方法
+         * 每 200ms 的下一次调用打断，表现为"地图方向不跟随行进方向"（用户实测）。 */
         val moved = navLastLat.isNaN() ||
             com.amap.api.maps.AMapUtils.calculateLineDistance(
                 com.amap.api.maps.model.LatLng(navLastLat, navLastLon), cur
-            ) > 5f
-        val turned = kotlin.math.abs(((head - navLastHeading + 540) % 360) - 180) > 8
+            ) > 2f
+        val turned = kotlin.math.abs(((head - navLastHeading + 540) % 360) - 180) > 3
         if (moved || turned) {
             runCatching {
-                am.animateCamera(
+                am.moveCamera(
                     com.amap.api.maps.CameraUpdateFactory.newCameraPosition(
                         com.amap.api.maps.model.CameraPosition(cur, 17f, head.toFloat(), 45f)
-                    ), 280, null
+                    )
                 )
             }
             navLastLat = o.lat
