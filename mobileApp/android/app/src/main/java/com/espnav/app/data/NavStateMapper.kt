@@ -70,7 +70,11 @@ object NavStateMapper {
             TurnType.SLIGHT_RIGHT, TurnType.RIGHT, TurnType.SHARP_RIGHT -> specFor(RoadType.CURVE, s)
             TurnType.ROUNDABOUT -> specFor(RoadType.ROUNDABOUT, s)
             TurnType.FORK_LEFT, TurnType.FORK_RIGHT, TurnType.MERGE -> specFor(RoadType.FORK, s)
-            TurnType.UTURN, TurnType.ARRIVE -> null
+            /* 【修复·最后路段道路图案漂移】掉头/到达终点也发一个固定模板：
+             * 若发 null，固件会退回"用 App 传来的真实路径画路面"（fallback），
+             * 而那条路形是随车头方向投影的 —— 于是最后路段看起来"道路图案在旋转偏移"。
+             * 用户期望：方向转 → 罗盘动、道路图案不动。 */
+            TurnType.UTURN, TurnType.ARRIVE -> specFor(RoadType.STRAIGHT, s)
         }
     }
 

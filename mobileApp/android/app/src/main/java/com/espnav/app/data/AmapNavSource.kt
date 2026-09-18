@@ -370,11 +370,10 @@ class AmapNavSource(
             else aheadRaw.add(origin)
         }
 
-        /* 【投影基准】改用【路径在车当前位置的前进方向】，而不是 GPS bearing：
-         * bearing 在低速/模拟行进下会抖动甚至反向，导致整条路径线绕车头旋转 —— 就是用户实测的
-         * "车头附近折线漂移"（红=未走、蓝=已走两条线都在转）；用路径切线则让路径线始终"顺着屏幕
-         * 向上延伸"，与固定模板路面的语义一致。 */
-        val baseHeading = pathHeadingAt(i0)
+        /* 【投影基准】用【车头朝向 bearing】：这样"车头前方的路"始终在屏幕上方，路的左右弯曲才真实
+         * （与真实导航屏一致）。曾一度改用"路径切线"，会让路永远笔直向上、看不出前方转弯，
+         * 而且那两条折线已按用户要求删除，不再有"随车头旋转的折线"问题。 */
+        val baseHeading = state.headingDeg
         val pxPerMeter = (NavStateMapper.NEAR_Y - NavStateMapper.FAR_Y).toDouble() / VIEW_METERS
         val screen = NavStateMapper.project(squeezeToLimit(aheadRaw), origin, baseHeading, pxPerMeter = pxPerMeter)
         val past = NavStateMapper.project(squeezeToLimit(behindRaw), origin, baseHeading, pxPerMeter = pxPerMeter)

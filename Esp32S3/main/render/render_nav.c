@@ -326,20 +326,23 @@ static void draw_overview(const nav_frame_t *f)
         int x0, y0, x1, y1;
         ov_to_px(&f->overview[i], &x0, &y0);
         ov_to_px(&f->overview[i + 1], &x1, &y1);
-        fb_line(x0, y0, x1, y1, DBG_OVERVIEW);      /* 紫：与主视图各线区分 */
+        /* 3 倍粗（用户要求）：偏移画 3 条 */
+        fb_line(x0, y0, x1, y1, DBG_OVERVIEW);
+        fb_line(x0, y0 - 1, x1, y1 - 1, DBG_OVERVIEW);
+        fb_line(x0 + 1, y0, x1 + 1, y1, DBG_OVERVIEW);
     }
     /* 起终点标记：轨迹首点=起点(绿)、末点=终点(红)；当前位置仍为黄点（App 实时更新） */
     if (f->overview_n >= 2) {
         int sx, sy, tx, ty;
         ov_to_px(&f->overview[0], &sx, &sy);
         ov_to_px(&f->overview[f->overview_n - 1], &tx, &ty);
-        fb_fill_rect(sx - 2, sy - 2, sx + 2, sy + 2, RGB565_GREEN);
-        fb_fill_rect(tx - 2, ty - 2, tx + 2, ty + 2, RGB565_RED);
+        fb_fill_rect(sx - 4, sy - 4, sx + 4, sy + 4, RGB565_GREEN);
+        fb_fill_rect(tx - 4, ty - 4, tx + 4, ty + 4, RGB565_RED);
     }
     if (f->overview_dot_valid) {
         int dx, dy;
         ov_to_px(&f->overview_dot, &dx, &dy);
-        fb_fill_rect(dx - 2, dy - 2, dx + 2, dy + 2, RGB565_YELLOW);
+        fb_fill_rect(dx - 4, dy - 4, dx + 4, dy + 4, RGB565_YELLOW);
     }
     draw_north8(ax + OV_OX + OV_BOX + 6, ay + 2);        /* 「北」紧跟内容右侧 */
     {   /* 十字线：位于“北”字下方；竖线上端带向上小箭头指向北 */
@@ -685,12 +688,16 @@ static void draw_frame(const nav_frame_t *f, float anim)
                                DBG_CENTERLN, 5, 7, anim);
         }
     }
-    /* 已走路径 = 蓝；未走路径 = 红（颜色分离：漂移时一眼看出是哪条线） */
+    /* 【用户要求删除】主视图上的"已走路径/未走路径"两条折线（蓝/红）：
+     * 它们在屏幕上随车头方向旋转，效果不好，不再绘制。道路走向由「道路图案」表达。
+     * 恢复：把两个 if (0) 去掉即可。 */
+    if (0)
     for (int i = 0; i + 1 < f->past_n; i++) {
         if (!pt_in_screen(f->past_center[i]) || !pt_in_screen(f->past_center[i + 1])) continue;
         fb_line(f->past_center[i].x, f->past_center[i].y,
                 f->past_center[i + 1].x, f->past_center[i + 1].y, DBG_PAST);
     }
+    if (0)
     for (int i = 0; i + 1 < f->route_n; i++) {
         if (!pt_in_screen(f->route_center[i]) || !pt_in_screen(f->route_center[i + 1])) continue;
         fb_line(f->route_center[i].x, f->route_center[i].y,
