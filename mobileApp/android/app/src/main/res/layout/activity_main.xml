@@ -406,11 +406,63 @@
                 android:text="@string/btn_map_clear" />
         </LinearLayout>
 
-        <com.amap.api.maps.MapView
-            android:id="@+id/mapView"
+        <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1" />
+            android:layout_weight="1">
+
+            <com.amap.api.maps.MapView
+                android:id="@+id/mapView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <!-- 导航覆盖层：转向提示 + 剩余/预计 + 结束导航（与百度/高德顶部信息条对应） -->
+            <LinearLayout
+                android:id="@+id/navOverlay"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top"
+                android:background="#CC101010"
+                android:orientation="vertical"
+                android:padding="8dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/tvNavHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/nav_hint_default"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvNavInfo"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/nav_info_default"
+                    android:textColor="#B3FFFFFF"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/btnStopNav"
+                    style="?android:attr/borderlessButtonStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="0dp"
+                    android:text="@string/btn_stop_nav"
+                    android:textColor="#FF8A80" />
+            </LinearLayout>
+
+            <!-- 行程图卡片：整条路线缩略 + 当前位置（与 ESP 屏右上角行程图对应） -->
+            <com.espnav.app.ui.TripOverviewView
+                android:id="@+id/tripView"
+                android:layout_width="132dp"
+                android:layout_height="104dp"
+                android:layout_gravity="bottom|end"
+                android:layout_margin="10dp"
+                android:visibility="gone" />
+        </FrameLayout>
     </LinearLayout>
 
         <!-- 行程预览：内嵌 WebView 加载 assets/sampling_compare.html，

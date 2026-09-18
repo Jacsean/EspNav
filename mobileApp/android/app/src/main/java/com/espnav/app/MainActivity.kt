@@ -459,6 +459,10 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 client.queue(OutMsg.navFrame(f))
                 binding.tvStage.text =
                     "${label}：剩余 ${f.turnDist} m  进度 ${f.progressPct}%  ${f.hint}"
+                /* 导航画面：与发帧同频刷新（失败不影响推流） */
+                (navSource as? AmapNavSource)?.let { s ->
+                    if (navActive) runCatching { updateNavUi(s) }
+                }
                 delay(FRAME_INTERVAL_MS)
             }
         }
@@ -513,6 +517,17 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     /** 预览路线的起终点标记（算路后按路径首末点自动补；与"地图选点"用的 start/endMarker 分开，互不干扰） */
     private var previewStartMarker: com.amap.api.maps.model.Marker? = null
     private var previewEndMarker: com.amap.api.maps.model.Marker? = null
+
+    /* ---- 导航画面（与百度/高德对齐：相机跟随 / 路线分色 / 车头箭头 / 行程图卡片）---- */
+    private var navActive = false
+    private var navWalkedLine: com.amap.api.maps.model.Polyline? = null
+    private var navRemainLine: com.amap.api.maps.model.Polyline? = null
+    private var navCarMarker: com.amap.api.maps.model.Marker? = null
+    private var navCarIcon: com.amap.api.maps.model.BitmapDescriptor? = null
+    private var navLastSplit = -1
+    private var navLastLat = Double.NaN
+    private var navLastLon = Double.NaN
+    private var navLastHeading = -999
     private var previewSource: AmapNavSource? = null
     private var mapReady = false
     private var mapCenteredOnce = false
@@ -739,6 +754,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         binding.btnUseMapNav.setOnClickListener { previewRoute() }
         binding.btnStartNav.setOnClickListener { startConfirmedNav() }
         binding.btnGiveUp.setOnClickListener { giveUpPreview() }
+        binding.btnStopNav.setOnClickListener { endNav() }
         binding.btnMapClear.setOnClickListener {
             startMarker?.remove()
             endMarker?.remove()
@@ -1187,6 +1203,168 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     /** 预览成功：地图画蓝色路线 + 显示全程/时间 + 出现「开始导航/放弃」 */
+    // ---------------- 导航画面（与 ESP 屏对应） ----------------
+
+    /** 导航态开关：显示/隐藏覆盖层与行程图卡片，收起"选路"控件把屏幕让给地图 */
+    private fun setNavUi(active: Boolean) {
+        navActive = active
+        binding.navOverlay.visibility = if (active) View.VISIBLE else View.GONE
+        binding.tripView.visibility = if (active) View.VISIBLE else View.GONE
+        val idle = if (active) View.GONE else View.VISIBLE
+        binding.tvRouteSummary.visibility = idle
+        binding.tvEditToggle.visibility = idle
+        binding.tvPickState.visibility = idle
+        binding.btnUseMapNav.visibility = idle
+        binding.btnMapClear.visibility = idle
+        if (active) {
+            binding.routeEditPanel.visibility = View.GONE
+        } else {
+            runCatching { navWalkedLine?.remove() }
+            runCatching { navRemainLine?.remove() }
+            runCatching { navCarMarker?.remove() }
+            navWalkedLine = null
+            navRemainLine = null
+            navCarMarker = null
+            navLastSplit = -1
+            navLastLat = Double.NaN
+            navLastLon = Double.NaN
+            navLastHeading = -999
+            binding.tripView.setData(emptyList(), 0)
+        }
+    }
+
+    /** 导航画面刷新：与发往 ESP32 的帧同频（200ms） */
+    private fun updateNavUi(src: AmapNavSource) {
+        val am = aMap ?: return
+        val head = src.currentHeading()
+        val o = src.currentOrigin()
+        binding.tvNavHint.text = src.currentHint()
+        binding.tvNavInfo.text = String.format(
+            java.util.Locale.US, "剩余 %.1f km · 预计 %d 分钟 · %s",
+            src.currentRemainMeters() / 1000.0, previewSecS / 60,
+            if (o == null) "等待定位" else "地图跟随中"
+        )
+
+        /* 已走(灰)/未走(蓝) 分色 + 行程图卡片：切分点变化 >=3 才重建（每帧重建 polyline 会卡） */
+        val all = src.fullPath()
+        val i0 = if (o != null) src.currentPathIndex() else 0
+        if (all.size >= 2 && (navLastSplit < 0 || kotlin.math.abs(i0 - navLastSplit) >= 3)) {
+            navLastSplit = i0
+            runCatching {
+                navWalkedLine?.remove()
+                navRemainLine?.remove()
+                val ll = { p: com.espnav.app.data.GeoPoint ->
+                    com.amap.api.maps.model.LatLng(p.lat, p.lon)
+                }
+                val walked = all.subList(0, (i0 + 1).coerceAtMost(all.size)).map(ll)
+                val remain = all.subList(i0.coerceAtMost(all.size - 1), all.size).map(ll)
+                if (walked.size >= 2) {
+                    navWalkedLine = am.addPolyline(
+                        com.amap.api.maps.model.PolylineOptions().addAll(walked)
+                            .width(16f).color(0xFF9E9E9E.toInt()).zIndex(1f)
+                    )
+                }
+                if (remain.size >= 2) {
+                    navRemainLine = am.addPolyline(
+                        com.amap.api.maps.model.PolylineOptions().addAll(remain)
+                            .width(16f).color(0xFF1E88E5.toInt()).zIndex(2f)
+                    )
+                }
+            }
+        }
+        if (all.isNotEmpty()) binding.tripView.setData(all, i0)
+
+        if (o == null) return
+        val cur = com.amap.api.maps.model.LatLng(o.lat, o.lon)
+
+        /* 相机跟随：位置移动 > 5m 或朝向变化 > 8° 才动（避免抖动 + 省电） */
+        val moved = navLastLat.isNaN() ||
+            com.amap.api.maps.AMapUtils.calculateLineDistance(
+                com.amap.api.maps.model.LatLng(navLastLat, navLastLon), cur
+            ) > 5f
+        val turned = kotlin.math.abs(((head - navLastHeading + 540) % 360) - 180) > 8
+        if (moved || turned) {
+            runCatching {
+                am.animateCamera(
+                    com.amap.api.maps.CameraUpdateFactory.newCameraPosition(
+                        com.amap.api.maps.model.CameraPosition(cur, 17f, head.toFloat(), 45f)
+                    ), 280, null
+                )
+            }
+            navLastLat = o.lat
+            navLastLon = o.lon
+            navLastHeading = head
+        }
+
+        /* 车头箭头：地图已随车头旋转（bearing = heading），因此箭头固定朝屏幕上方 */
+        val mk = navCarMarker
+        if (mk == null) {
+            navCarMarker = runCatching {
+                am.addMarker(
+                    com.amap.api.maps.model.MarkerOptions()
+                        .position(cur)
+                        .anchor(0.5f, 0.5f)
+                        .icon(carIcon())
+                        .zIndex(20f)
+                )
+            }.getOrNull()
+        } else {
+            mk.position = cur
+        }
+    }
+
+    /** 结束导航：停推流、清导航图形、恢复预览态与正北视角 */
+    private fun endNav() {
+        mockJob?.cancel()
+        mockJob = null
+        runCatching { navSource.stop() }
+        /* 数据源已停止：清掉预览引用并刷新按钮状态，否则「开始导航」看起来可点、点了却失败。
+         * 要再导航时重新点「预览路线」即可（会重建数据源与新折线）。 */
+        previewSource = null
+        binding.tvRouteInfo.text = getString(R.string.tip_route_info)
+        updatePickState()
+        setNavUi(false)
+        val am = aMap
+        if (am != null) {
+            runCatching {
+                val t = am.cameraPosition.target
+                am.animateCamera(
+                    com.amap.api.maps.CameraUpdateFactory.newCameraPosition(
+                        com.amap.api.maps.model.CameraPosition(t, appPrefs.defaultZoom, 0f, 0f)
+                    )
+                )
+            }
+        }
+        log("已结束导航")
+    }
+
+    /** 车头箭头图标（黄色三角，朝上）；缓存一次，避免每帧重建 Bitmap */
+    private fun carIcon(): com.amap.api.maps.model.BitmapDescriptor {
+        navCarIcon?.let { return it }
+        val size = 56
+        val bmp = android.graphics.Bitmap.createBitmap(
+            size, size, android.graphics.Bitmap.Config.ARGB_8888
+        )
+        val c = android.graphics.Canvas(bmp)
+        val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        val path = android.graphics.Path()
+        path.moveTo(size / 2f, size * 0.08f)
+        path.lineTo(size * 0.82f, size * 0.92f)
+        path.lineTo(size / 2f, size * 0.70f)
+        path.lineTo(size * 0.18f, size * 0.92f)
+        path.close()
+        p.style = android.graphics.Paint.Style.FILL
+        p.color = 0xFFFDD835.toInt()
+        c.drawPath(path, p)
+        p.style = android.graphics.Paint.Style.STROKE
+        p.strokeWidth = 3f
+        p.color = 0xFF212121.toInt()
+        c.drawPath(path, p)
+        val d = com.amap.api.maps.model.BitmapDescriptorFactory.fromBitmap(bmp)
+        navCarIcon = d
+        return d
+    }
+
     private fun showRoutePreview(len: Int, sec: Int, coords: List<com.espnav.app.data.GeoPoint>) {
         routeTimeoutJob?.cancel()
         routeTimeoutJob = null
@@ -1253,6 +1431,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         launchNav(src, "高德骑行导航(地图选点)")
         binding.btnStartNav.visibility = View.GONE
         binding.btnGiveUp.visibility = View.GONE
+        setNavUi(true)                       /* 切入"导航画面"：相机跟随 + 分色 + 车头箭头 + 行程图卡片 */
         /* 状态栏：不要停留在“尚未算路”（用户反馈不合理） */
         binding.tvRouteInfo.text = String.format(
             java.util.Locale.US, "导航中 · 全程 %.1f km · 预计 %d 分钟",

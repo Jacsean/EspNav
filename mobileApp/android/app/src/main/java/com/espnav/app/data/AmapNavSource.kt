@@ -373,6 +373,35 @@ class AmapNavSource(
         return PolylineSampler.toGeo(PolylineSampler.simplifyDp(meters, MAX_PATH_PTS), o)
     }
 
+    /* ---------------- 供导航态地图使用（相机跟随 / 分色 / 车头箭头 / 行程图卡片）---------------- */
+
+    /** 当前定位；尚未拿到定位时返回 null */
+    fun currentOrigin(): GeoPoint? = lastOrigin
+
+    /** 当前车头朝向（度，0=北，顺时针） */
+    fun currentHeading(): Int = state.headingDeg
+
+    /** 当前转向提示（与发往 ESP32 的 hint 完全一致） */
+    fun currentHint(): String = NavStateMapper.hintOf(state)
+
+    /** 剩余距离（米） */
+    fun currentRemainMeters(): Int = state.remainDistMeters
+
+    /** 整条路线（全量坐标） */
+    fun fullPath(): List<GeoPoint> = pathAllCoords
+
+    /** 当前定位在整条路线上的最近点索引（用于"已走/未走"分色与行程图黄点） */
+    fun currentPathIndex(): Int {
+        val o = lastOrigin ?: return 0
+        var best = 0
+        var bestD = Double.MAX_VALUE
+        for (i in pathAllCoords.indices) {
+            val d = metersBetween(o, pathAllCoords[i])
+            if (d < bestD) { bestD = d; best = i }
+        }
+        return best
+    }
+
     /** 两点间近似距离（米） */
     private fun metersBetween(a: GeoPoint, b: GeoPoint): Double {
         val dLat = (b.lat - a.lat) * 111_320.0
