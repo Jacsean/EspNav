@@ -491,8 +491,6 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         return f.copy(
             road = if (appPrefs.dbgShowRoad) f.road else null,
             centerLine = if (appPrefs.dbgShowCenterLn) f.centerLine else emptyList(),
-            routeCenter = if (appPrefs.dbgShowRoute) f.routeCenter else emptyList(),
-            pastCenter = if (appPrefs.dbgShowPast) f.pastCenter else emptyList(),
             overview = if (appPrefs.dbgShowOverview) f.overview else emptyList(),
             overviewDot = if (appPrefs.dbgShowOverview) f.overviewDot else null,
             pos = if (appPrefs.dbgShowCar) f.pos else null
@@ -708,15 +706,11 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         val rgSampler = v.findViewById<android.widget.RadioGroup>(R.id.setSamplerMode)
         val cbDbgAllOff = v.findViewById<android.widget.CheckBox>(R.id.setDbgAllOff)
         val cbDbgRoad = v.findViewById<android.widget.CheckBox>(R.id.setDbgRoad)
-        val cbDbgRoute = v.findViewById<android.widget.CheckBox>(R.id.setDbgRoute)
-        val cbDbgPast = v.findViewById<android.widget.CheckBox>(R.id.setDbgPast)
         val cbDbgCln = v.findViewById<android.widget.CheckBox>(R.id.setDbgCenterLn)
         val cbDbgOv = v.findViewById<android.widget.CheckBox>(R.id.setDbgOverview)
         val cbDbgCar = v.findViewById<android.widget.CheckBox>(R.id.setDbgCar)
         cbDbgAllOff.isChecked = appPrefs.dbgAllOff
         cbDbgRoad.isChecked = appPrefs.dbgShowRoad
-        cbDbgRoute.isChecked = appPrefs.dbgShowRoute
-        cbDbgPast.isChecked = appPrefs.dbgShowPast
         cbDbgCln.isChecked = appPrefs.dbgShowCenterLn
         cbDbgOv.isChecked = appPrefs.dbgShowOverview
         cbDbgCar.isChecked = appPrefs.dbgShowCar
@@ -769,8 +763,6 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                     else com.espnav.app.data.PolylineSampler.MODE_VW
                 appPrefs.dbgAllOff = cbDbgAllOff.isChecked
                 appPrefs.dbgShowRoad = cbDbgRoad.isChecked
-                appPrefs.dbgShowRoute = cbDbgRoute.isChecked
-                appPrefs.dbgShowPast = cbDbgPast.isChecked
                 appPrefs.dbgShowCenterLn = cbDbgCln.isChecked
                 appPrefs.dbgShowOverview = cbDbgOv.isChecked
                 appPrefs.dbgShowCar = cbDbgCar.isChecked
