@@ -85,10 +85,66 @@ class AppPrefs(ctx: Context) {
         get() = sp.getBoolean(K_DBG_CAR, true)
         set(v) = sp.edit().putBoolean(K_DBG_CAR, v).apply()
 
+    /** 导航仿真（模拟行进）：开启时由高德 SDK 按路线模拟推进 —— 室内/没上车也能看效果；
+     *  道路实测必须【关闭】，否则导航不跟你的真实位置（用户要求做成可切换）。 */
+    var emulate: Boolean
+        get() = sp.getBoolean(K_EMULATE, true)
+        set(v) = sp.edit().putBoolean(K_EMULATE, v).apply()
+
     /** 行程图采样方式：PolylineSampler.MODE_VW（Visvalingam，默认）/ MODE_DP（道格拉斯-普克） */
     var samplerMode: String
         get() = sp.getString(K_SAMPLER, PolylineSampler.MODE_VW) ?: PolylineSampler.MODE_VW
         set(v) = sp.edit().putString(K_SAMPLER, v).apply()
+
+    // ---------------- 独立配置文件（导出/导入） ----------------
+
+    /** 把当前全部配置导出成 JSON（供写入外部配置文件） */
+    fun exportToJson(): String = org.json.JSONObject().apply {
+        put("host", host)
+        put("port", port)
+        put("autoConnectOnStart", autoConnectOnStart)
+        put("fromAddress", fromAddress)
+        put("toAddress", toAddress)
+        put("autoCity", autoCity)
+        put("geoCity", geoCity)
+        put("defaultZoom", defaultZoom.toDouble())
+        put("maxLogLines", maxLogLines)
+        put("samplerMode", samplerMode)
+        put("emulate", emulate)
+        put("dbgAllOff", dbgAllOff)
+        put("dbgShowRoad", dbgShowRoad)
+        put("dbgShowCenterLn", dbgShowCenterLn)
+        put("dbgShowOverview", dbgShowOverview)
+        put("dbgShowCar", dbgShowCar)
+        put(
+            "savedAt",
+            java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+                .format(java.util.Date())
+        )
+    }.toString(2)
+
+    /** 用 JSON 覆盖当前配置；返回成功导入的项数（缺字段的项会保留原值） */
+    fun importFromJson(json: String): Int {
+        val o = runCatching { org.json.JSONObject(json) }.getOrNull() ?: return 0
+        var n = 0
+        if (o.has("host")) { host = o.optString("host", host); n++ }
+        if (o.has("port")) { port = o.optInt("port", port); n++ }
+        if (o.has("autoConnectOnStart")) { autoConnectOnStart = o.optBoolean("autoConnectOnStart", autoConnectOnStart); n++ }
+        if (o.has("fromAddress")) { fromAddress = o.optString("fromAddress", fromAddress); n++ }
+        if (o.has("toAddress")) { toAddress = o.optString("toAddress", toAddress); n++ }
+        if (o.has("autoCity")) { autoCity = o.optBoolean("autoCity", autoCity); n++ }
+        if (o.has("geoCity")) { geoCity = o.optString("geoCity", geoCity); n++ }
+        if (o.has("defaultZoom")) { defaultZoom = o.optDouble("defaultZoom", defaultZoom.toDouble()).toFloat(); n++ }
+        if (o.has("maxLogLines")) { maxLogLines = o.optInt("maxLogLines", maxLogLines); n++ }
+        if (o.has("samplerMode")) { samplerMode = o.optString("samplerMode", samplerMode); n++ }
+        if (o.has("emulate")) { emulate = o.optBoolean("emulate", emulate); n++ }
+        if (o.has("dbgAllOff")) { dbgAllOff = o.optBoolean("dbgAllOff", dbgAllOff); n++ }
+        if (o.has("dbgShowRoad")) { dbgShowRoad = o.optBoolean("dbgShowRoad", dbgShowRoad); n++ }
+        if (o.has("dbgShowCenterLn")) { dbgShowCenterLn = o.optBoolean("dbgShowCenterLn", dbgShowCenterLn); n++ }
+        if (o.has("dbgShowOverview")) { dbgShowOverview = o.optBoolean("dbgShowOverview", dbgShowOverview); n++ }
+        if (o.has("dbgShowCar")) { dbgShowCar = o.optBoolean("dbgShowCar", dbgShowCar); n++ }
+        return n
+    }
 
     companion object {
         private const val NAME = "espnav_prefs"
@@ -102,6 +158,7 @@ class AppPrefs(ctx: Context) {
         private const val K_ZOOM = "default_zoom"
         private const val K_LOG = "max_log_lines"
         private const val K_SAMPLER = "sampler_mode"
+        private const val K_EMULATE = "emulate"
         private const val K_DBG_ROAD = "dbg_road"
         private const val K_DBG_CLN = "dbg_cln"
         private const val K_DBG_ALLOFF = "dbg_all_off"

@@ -89,6 +89,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             log("配置项「启动后自动连接」已开启 → 自动发起一键连接")
             binding.root.postDelayed({ if (!client.isConnected) quickConnect() }, 800)
         }
+        /* 独立配置文件：启动时若在下载目录发现它，提示是否用来覆盖当前设置（用户要求） */
+        binding.root.postDelayed({ checkExternalConfig() }, 1200)
 
         for (et in listOf(binding.etFrom, binding.etTo)) {
             et.doAfterTextChanged { updatePickState() }
@@ -346,7 +348,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         val from = binding.etFrom.text.toString().trim().ifBlank { appPrefs.fromAddress }
         val to = binding.etTo.text.toString().trim().ifBlank { appPrefs.toAddress }
         val src = AmapNavSource(
-            applicationContext, from, to, appPrefs.geoCity, emulate = true,
+            applicationContext, from, to, appPrefs.geoCity,
+            emulate = appPrefs.emulate,                 /* 仿真/实测（设置页可切换） */
             samplerMode = appPrefs.samplerMode          /* 行程图采样方式（设置页可切换） */
         )
         // 把高德内部日志转发到界面日志区（便于真机诊断）
@@ -703,6 +706,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         fun ed(id: Int) = v.findViewById<android.widget.EditText>(id)
         val cbAutoConn = v.findViewById<android.widget.CheckBox>(R.id.setAutoConnect)
         val cbAutoCity = v.findViewById<android.widget.CheckBox>(R.id.setAutoCity)
+        val cbEmulate = v.findViewById<android.widget.CheckBox>(R.id.setEmulate)
         val rgSampler = v.findViewById<android.widget.RadioGroup>(R.id.setSamplerMode)
         val cbDbgAllOff = v.findViewById<android.widget.CheckBox>(R.id.setDbgAllOff)
         val cbDbgRoad = v.findViewById<android.widget.CheckBox>(R.id.setDbgRoad)
@@ -721,6 +725,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         ed(R.id.setFrom).setText(appPrefs.fromAddress)
         ed(R.id.setTo).setText(appPrefs.toAddress)
         cbAutoCity.isChecked = appPrefs.autoCity
+        cbEmulate.isChecked = appPrefs.emulate
         ed(R.id.setCity).setText(appPrefs.geoCity)
         ed(R.id.setZoom).setText(appPrefs.defaultZoom.toString())
         ed(R.id.setLogLines).setText(appPrefs.maxLogLines.toString())
@@ -744,6 +749,63 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             }.onFailure { log("打不开系统设置：" + it.message) }
         }
 
+        /* ---- 独立配置文件：保存 / 恢复 / 删除（删除前确认）/ 授权 ---- */
+        val tvCfg = v.findViewById<android.widget.TextView>(R.id.tvCfgState)
+        val btnCfgPerm = v.findViewById<android.widget.Button>(R.id.btnCfgPerm)
+        val btnCfgSave = v.findViewById<android.widget.Button>(R.id.btnCfgSave)
+        val btnCfgLoad = v.findViewById<android.widget.Button>(R.id.btnCfgLoad)
+        val btnCfgDel = v.findViewById<android.widget.Button>(R.id.btnCfgDel)
+        fun refreshCfg() {
+            tvCfg.text = (if (com.espnav.app.data.ConfigFile.exists()) getString(R.string.cfg_exists)
+            else getString(R.string.cfg_absent)) + "\n" + com.espnav.app.data.ConfigFile.pathText()
+            btnCfgPerm.visibility = if (com.espnav.app.data.ConfigFile.hasPermission()) View.GONE else View.VISIBLE
+        }
+        refreshCfg()
+        btnCfgPerm.setOnClickListener { requestAllFilesAccess() }
+        btnCfgSave.setOnClickListener {
+            if (!com.espnav.app.data.ConfigFile.hasPermission()) {
+                toast(getString(R.string.cfg_need_perm))
+                return@setOnClickListener
+            }
+            val ok = com.espnav.app.data.ConfigFile.save(appPrefs.exportToJson())
+            toast(if (ok) getString(R.string.cfg_saved_ok) else getString(R.string.cfg_save_fail))
+            log("配置保存到 " + com.espnav.app.data.ConfigFile.pathText() + " ok=" + ok)
+            refreshCfg()
+        }
+        btnCfgLoad.setOnClickListener {
+            val json = com.espnav.app.data.ConfigFile.load()
+            if (json == null) {
+                toast(getString(R.string.cfg_load_fail))
+                return@setOnClickListener
+            }
+            val n = appPrefs.importFromJson(json)
+            ed(R.id.setHost).setText(appPrefs.host)
+            ed(R.id.setPort).setText(appPrefs.port.toString())
+            cbAutoConn.isChecked = appPrefs.autoConnectOnStart
+            ed(R.id.setFrom).setText(appPrefs.fromAddress)
+            ed(R.id.setTo).setText(appPrefs.toAddress)
+            cbAutoCity.isChecked = appPrefs.autoCity
+            ed(R.id.setCity).setText(appPrefs.geoCity)
+            ed(R.id.setZoom).setText(appPrefs.defaultZoom.toString())
+            ed(R.id.setLogLines).setText(appPrefs.maxLogLines.toString())
+            toast(getString(R.string.cfg_load_ok) + "（" + n + " 项）")
+            log("从配置文件恢复 " + n + " 项设置")
+            refreshCfg()
+        }
+        btnCfgDel.setOnClickListener {
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle(R.string.cfg_del_title)
+                .setMessage(R.string.cfg_del_msg)
+                .setPositiveButton("删除") { _, _ ->
+                    val ok = com.espnav.app.data.ConfigFile.delete()
+                    toast(if (ok) getString(R.string.cfg_deleted) else getString(R.string.cfg_save_fail))
+                    log("删除配置文件 ok=" + ok)
+                    refreshCfg()
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle(R.string.btn_settings)
             .setView(v)
@@ -754,6 +816,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 appPrefs.fromAddress = ed(R.id.setFrom).text.toString().trim().ifBlank { com.espnav.app.data.AppPrefs.DEF_FROM }
                 appPrefs.toAddress = ed(R.id.setTo).text.toString().trim().ifBlank { com.espnav.app.data.AppPrefs.DEF_TO }
                 appPrefs.autoCity = cbAutoCity.isChecked
+                appPrefs.emulate = cbEmulate.isChecked
                 appPrefs.geoCity = ed(R.id.setCity).text.toString().trim().ifBlank { "北京" }
                 appPrefs.defaultZoom = (ed(R.id.setZoom).text.toString().trim().toFloatOrNull() ?: 16f).coerceIn(3f, 19f)
                 appPrefs.maxLogLines = (ed(R.id.setLogLines).text.toString().trim().toIntOrNull() ?: 1000).coerceIn(100, 20000)
@@ -814,6 +877,48 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     /** 刷新“起点/终点是否已选”的显眼状态行 */
+    // ---------------- 独立配置文件（/sdcard/Download/EspNav/espnav_config.json） ----------------
+
+    /** 启动时检测外部配置文件：存在且与当前不同 → 询问是否覆盖 */
+    private fun checkExternalConfig() {
+        if (!com.espnav.app.data.ConfigFile.exists()) return
+        if (!com.espnav.app.data.ConfigFile.hasPermission()) {
+            log("发现外部配置文件但无读取权限：" + com.espnav.app.data.ConfigFile.pathText())
+            return
+        }
+        val json = com.espnav.app.data.ConfigFile.load() ?: return
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(R.string.cfg_found_title)
+            .setMessage(com.espnav.app.data.ConfigFile.pathText() + "\n\n是否用它覆盖当前设置？")
+            .setPositiveButton("覆盖") { _, _ ->
+                val n = appPrefs.importFromJson(json)
+                applyPrefsToUi()
+                log("启动时已从配置文件恢复 " + n + " 项设置")
+            }
+            .setNegativeButton("不覆盖", null)
+            .show()
+    }
+
+    /** 跳系统设置授予「所有文件访问」权限（API 30+） */
+    private fun requestAllFilesAccess() {
+        val it = com.espnav.app.data.ConfigFile.permissionIntent(this)
+        if (it == null) {
+            toast("当前 Android 版本无需该权限")
+            return
+        }
+        runCatching { startActivity(it) }
+            .onFailure {
+                runCatching {
+                    startActivity(
+                        android.content.Intent(
+                            android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION
+                        )
+                    )
+                }.onFailure { e -> log("打不开权限设置：" + e.message) }
+            }
+        log("请在系统设置中允许「所有文件访问」，返回后即可自动读写配置文件")
+    }
+
     /** 按连接状态刷新所有操作可用性：未连接时除“连接/一键连接/配网页/复制日志”外一律置灰 */
     private fun refreshActionStates() {
         if (!::client.isInitialized) return        /* 防御：client 未初始化时不动作（避免启动即崩） */
@@ -1230,7 +1335,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             applicationContext,
             if (s0 != null) "" else fromText,      /* 地图选点优先，否则用地址文本 */
             if (e0 != null) "" else toText,
-            appPrefs.geoCity, emulate = true,
+            appPrefs.geoCity, emulate = appPrefs.emulate,
             fixedFrom = s0?.let { com.espnav.app.data.GeoPoint(it.latitude, it.longitude) },
             fixedTo = e0?.let { com.espnav.app.data.GeoPoint(it.latitude, it.longitude) },
             wayPoints = vias,
