@@ -110,7 +110,8 @@ docs/
 
 | 我想… | 打开 |
 | :--- | :--- |
-| **过段时间回来接着做** | **[docs/develp/进度与路线图.md](docs/develp/进度与路线图.md)** ← 先看这份 |
+| **下个任务开工**（交接单） | **[docs/develp/任务交接.md](docs/develp/任务交接.md)** ← **最先看这份** |
+| 看还剩什么、每项怎么入手 | [docs/develp/进度与路线图.md](docs/develp/进度与路线图.md) |
 | 装 / 用这套系统 | [docs/public/用户手册.md](docs/public/用户手册.md) |
 | 改代码（环境、编译、调试） | [docs/develp/开发指南.md](docs/develp/开发指南.md) |
 | 搞懂系统怎么搭的、数据怎么流 | [docs/develp/架构与数据流.md](docs/develp/架构与数据流.md) |
