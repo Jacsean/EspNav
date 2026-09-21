@@ -12,3 +12,5 @@ Esp32Nav/
 # agent build outputs
 release/
 _wt_*/
+
+out/
