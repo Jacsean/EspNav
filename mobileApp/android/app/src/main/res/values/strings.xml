@@ -114,6 +114,10 @@
     <string name="set_open_app_settings">前往系统设置授权（定位）</string>
     <string name="set_saved">设置已保存</string>
     <string name="set_screen_flip">屏幕内容水平翻转（分光镜 HUD 用，默认开）</string>
+    <string name="perm_guide_files_title">允许「媒体和文件」访问</string>
+    <string name="perm_guide_files_msg">用于读写配置文件 /sdcard/Download/EspNav/espnav_config.json（卸载重装不丢设置）。\n\n点「去开启」后，在系统页面里打开「允许管理所有文件」。</string>
+    <string name="perm_guide_go">去开启</string>
+    <string name="perm_guide_later">稍后</string>
     <string name="set_group_esp_map">ESP 屏地图底图（App 截图推送）</string>
     <string name="set_esp_map_shot">推送地图底图（关掉则 ESP 保持当前画面）</string>
     <string name="set_esp_map_shot_int">底图刷新间隔</string>

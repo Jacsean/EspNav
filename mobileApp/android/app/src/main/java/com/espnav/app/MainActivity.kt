@@ -92,6 +92,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         }
         /* 独立配置文件：启动时若在下载目录发现它，提示是否用来覆盖当前设置（用户要求） */
         binding.root.postDelayed({ checkExternalConfig() }, 1200)
+        /* 【M3.3】启动权限引导：位置 + 媒体和文件（缺则弹窗/跳系统页） */
+        binding.root.postDelayed({ runCatching { guidePermissionsIfNeeded() } }, 1500)
 
         for (et in listOf(binding.etFrom, binding.etTo)) {
             et.doAfterTextChanged { updatePickState() }
@@ -482,6 +484,12 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             } else {
                 log("定位权限被拒绝，无法使用高德导航")
             }
+        } else if (requestCode == REQ_PERM_GUIDE) {            /* 【M3.3】启动引导：只记日志，不触发任何动作 */
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                log("权限引导：定位权限已授予")
+            } else {
+                log("权限引导：定位权限被拒绝（导航/预览需要它，可在系统设置里开启）")
+            }
         } else if (requestCode == REQ_LOCATION_PREVIEW) {      /* 导航页：只继续预览，绝不启动导航 */
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 log("定位权限已授予，继续预览路线（不会自动开始导航）")
@@ -490,6 +498,39 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 log("定位权限被拒绝：预览路线需要定位（算路起点/显示当前位置）")
                 toast("预览路线需要定位权限，请在系统设置中允许")
             }
+        }
+    }
+
+    /* ================= 【M3.3】启动权限引导（位置 + 媒体和文件）=================
+     * 说明：Android **不允许** App 在安装时自动获得运行时权限与「所有文件访问」，
+     * 只能在首次进入时申请/引导。这里做成"启动即检查、缺就弹窗 + 一键跳系统页"，
+     * 效果上等价于"装完顺手开好"，之后 Settings 里也保留了手动入口。
+     *   · 位置：ACCESS_FINE/COARSE_LOCATION —— 高德导航与预览必需（运行时权限，可弹窗申请）
+     *   · 媒体和文件：MANAGE_EXTERNAL_STORAGE（所有文件访问）—— 读写
+     *     /sdcard/Download/EspNav/espnav_config.json（卸载重装不丢设置），只能跳系统页
+     * 注意：这里**不能**复用 REQ_LOCATION —— 那个请求码的回调会直接 startAmapNav()。 */
+    private fun guidePermissionsIfNeeded() {
+        /* ① 位置 */
+        if (!hasLocationPermission()) {
+            log("权限引导：申请定位权限（导航/预览必需）")
+            androidx.core.app.ActivityCompat.requestPermissions(
+                this,
+                arrayOf(
+                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                ),
+                REQ_PERM_GUIDE
+            )
+        }
+        /* ② 媒体和文件（所有文件访问） */
+        if (!com.espnav.app.data.ConfigFile.hasPermission()) {
+            log("权限引导：需要「媒体和文件」权限（读写配置文件）")
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle(R.string.perm_guide_files_title)
+                .setMessage(R.string.perm_guide_files_msg)
+                .setPositiveButton(R.string.perm_guide_go) { _, _ -> requestAllFilesAccess() }
+                .setNegativeButton(R.string.perm_guide_later, null)
+                .show()
         }
     }
 
@@ -1374,6 +1415,21 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 binding.mapView.requestLayout()
                 binding.mapView.postInvalidate()
             }
+            /* 【M3.3】地图"空白"修复：GL 上下文在切走/熄屏后可能失效，
+             * 只 requestLayout + postInvalidate 不够 —— 再把**当前相机参数原样设回去**，
+             * 强制高德重绘一帧（参数不变，所以不会改变用户视角）。 */
+            binding.mapView.postDelayed({
+                runCatching {
+                    binding.mapView.requestLayout()
+                    binding.mapView.postInvalidate()
+                    val am = aMap
+                    if (am != null) {
+                        val cp = am.cameraPosition
+                        am.moveCamera(com.amap.api.maps.CameraUpdateFactory.newCameraPosition(cp))
+                    }
+                    log("导航页地图已强制重绘（防空白）")
+                }
+            }, 120)
             return
         }
         try {
@@ -1918,6 +1974,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     companion object {
         private const val DEFAULT_HOST = "192.168.43.117"
+        /** 【M3.3】启动权限引导专用请求码（与 REQ_LOCATION 分开：后者会触发 startAmapNav） */
+        private const val REQ_PERM_GUIDE = 2048
         private const val REQ_LOCATION = 1001          /* 连接页：高德骑行导航 */
         private const val REQ_LOCATION_PREVIEW = 1003  /* 导航页：预览路线（必须与上面区分，否则授权后会误启导航） */
         private const val REQ_NOTIFY = 1002
