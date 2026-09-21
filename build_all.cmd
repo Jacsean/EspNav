@@ -40,6 +40,8 @@ pushd "%ROOT%Esp32S3"
 "%IDF_PYTHON_ENV_PATH%\Scripts\python.exe" "%IDF_PATH%\tools\idf.py" build
 if errorlevel 1 goto fail_fw
 copy /y "build\espnav.bin" "%OUT%\espnav.bin" >nul
+copy /y "build\bootloader\bootloader.bin" "%OUT%\bootloader.bin" >nul
+copy /y "build\partition_table\partition-table.bin" "%OUT%\partition-table.bin" >nul
 popd
 
 rem ---------- 2/2 APK ----------
