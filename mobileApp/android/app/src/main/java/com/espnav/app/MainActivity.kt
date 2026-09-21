@@ -76,6 +76,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         savedBundle = savedInstanceState
         installCrashHandler()
         setupTabs()
+        setupSettingsTab()          /* 【M5】设置页（Tab 4）一次性绑定，替代原「⚙ 设置」对话框 */
 
         client = EspNavClient(lifecycleScope)
         client.listener = this
@@ -101,14 +102,12 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         binding.btnConnect.setOnClickListener { doConnect() }
         binding.btnQuickConnect.setOnClickListener { quickConnect() }
         binding.btnOpenProv.setOnClickListener { openProvPage() }
-        binding.btnSettings.setOnClickListener { openSettings() }
         /* 摘要行「编辑」：展开/收起起终点输入框（默认收起，把屏幕让给地图） */
         binding.tvEditToggle.setOnClickListener {
             val show = binding.routeEditPanel.visibility != View.VISIBLE
             binding.routeEditPanel.visibility = if (show) View.VISIBLE else View.GONE
             binding.tvEditToggle.text = getString(if (show) R.string.btn_edit_collapse else R.string.btn_edit_points)
         }
-        binding.btnBackToConnect.setOnClickListener { showTab(false) }
         binding.btnAddVia.setOnClickListener { addVia() }
         /* 高德官方对 calculateRideRoute(NaviPoi, List<NaviPoi>, NaviPoi, TravelStrategy) 的原文：
          * "当前接口为收费接口" —— 未开通时调用不返回，表现为"预览算路超时"。
@@ -718,10 +717,14 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private fun applyPage(index: Int) {
         val nav = index == 1
         val cmp = index == 2
-        binding.tabMain.visibility = if (nav) View.GONE else View.VISIBLE
+        /* 【M5】Tab 栏**不再隐藏** —— 导航页也留在 Tab 内（原先是全屏 + 「返回连接」按钮）。
+         * 页面顺序：0 连接 / 1 导航 / 2 行程预览 / 3 测试 / 4 设置 */
+        binding.tabMain.visibility = View.VISIBLE
         binding.pageConnect.visibility = if (index == 0) View.VISIBLE else View.GONE
         binding.pageNav.visibility = if (nav) View.VISIBLE else View.GONE
         binding.pageCompare.visibility = if (cmp) View.VISIBLE else View.GONE
+        binding.pageTest.visibility = if (index == 3) View.VISIBLE else View.GONE
+        binding.pageSettings.visibility = if (index == 4) View.VISIBLE else View.GONE
         if (nav) ensureMap() else runCatching { binding.mapView.onPause() }
         if (cmp) ensureCompare() else releaseCompare()   /* 懒加载 + 切走释放，避免 WebView 常驻内存 */
         refreshActionStates()
@@ -841,8 +844,10 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     /** 「⚙ 设置」：修改习惯性配置（持久化）；权限只能显示状态并跳系统设置（Android 不允许 App 自改） */
-    private fun openSettings() {
-        val v = layoutInflater.inflate(R.layout.dialog_settings, null)
+    /** 【M5】设置页（Tab 4）：原「⚙ 设置」对话框的内容搬到这里，
+     *  改由页面底部的「保存设置」按钮触发写入（逻辑与原来的 setPositiveButton 一致）。 */
+    private fun setupSettingsTab() {
+        val v: android.view.View = binding.pageSettings
         fun ed(id: Int) = v.findViewById<android.widget.EditText>(id)
         val cbAutoConn = v.findViewById<android.widget.CheckBox>(R.id.setAutoConnect)
         val cbAutoCity = v.findViewById<android.widget.CheckBox>(R.id.setAutoCity)
@@ -1113,10 +1118,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 .show()
         }
 
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle(R.string.btn_settings)
-            .setView(v)
-            .setPositiveButton("保存") { _, _ ->
+        /* 【M5】原对话框「保存」的写入逻辑原样保留，改由设置页底部按钮触发 */
+        fun saveAll() {
                 appPrefs.host = ed(R.id.setHost).text.toString().trim().ifBlank { com.espnav.app.data.AppPrefs.DEF_HOST }
                 appPrefs.port = ed(R.id.setPort).text.toString().trim().toIntOrNull() ?: com.espnav.app.data.AppPrefs.DEF_PORT
                 appPrefs.autoConnectOnStart = cbAutoConn.isChecked
@@ -1146,8 +1149,9 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 applyPrefsToUi()
                 log(getString(R.string.set_saved))
             }
-            .setNegativeButton("取消", null)
-            .show()
+        }
+        v.findViewById<android.widget.Button>(R.id.btnSettingsSave)
+            .setOnClickListener { runCatching { saveAll() } }
     }
 
     /** 把配置回填到界面控件 */
@@ -1164,6 +1168,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         tab.addTab(tab.newTab().setText(R.string.tab_connect))
         tab.addTab(tab.newTab().setText(R.string.tab_nav))
         tab.addTab(tab.newTab().setText(R.string.tab_compare))
+        tab.addTab(tab.newTab().setText(R.string.tab_test))       /* 【M5】测试 */
+        tab.addTab(tab.newTab().setText(R.string.tab_settings))   /* 【M5】设置 */
         tab.addOnTabSelectedListener(object :
             com.google.android.material.tabs.TabLayout.OnTabSelectedListener {
             override fun onTabSelected(t: com.google.android.material.tabs.TabLayout.Tab) {
