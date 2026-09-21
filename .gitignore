@@ -8,3 +8,12 @@ Esp32Nav/
 *.log
 *.tmp
 *~
+
+# ---- 构建产物 / 交付产物（不入库）----
+release/
+release*/
+out/
+_wt_*/
+
+# ---- 静态图导航演示素材（用户提供，不入库）----
+docs/nav_*.jpg

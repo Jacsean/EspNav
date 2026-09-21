@@ -5,7 +5,7 @@
     <string name="label_from">起点</string>
     <string name="label_to">终点</string>
     <string name="label_port">端口</string>
-    <string name="hint_host">192.168.4.1</string>
+    <string name="hint_host">192.168.43.117</string>
 
     <string name="btn_connect">连接</string>
     <string name="btn_quick_connect">一键连接</string>
@@ -80,6 +80,15 @@
     <string name="set_dbg_centerln">绘制车道中线+真实路形路面（青）</string>
     <string name="set_dbg_overview">绘制行程图</string>
     <string name="set_dbg_car">绘制车头三角</string>
+
+    <string name="set_group_esp_style">ESP 屏叠加层（地图底图之上的可读性）</string>
+    <string name="set_esp_hint">透明度越大 = 底衬越透（背景越明显）；0 = 全黑底衬。改完立即下发生效，连接成功后也会自动下发一次。</string>
+    <string name="set_esp_scrim">半透明暗底衬总开关</string>
+    <string name="set_esp_scrim_compass">罗盘底衬透明度</string>
+    <string name="set_esp_scrim_text">文字底衬透明度（路名/提示/距离/统计）</string>
+    <string name="set_esp_scrim_route">行程图底衬透明度</string>
+    <string name="set_esp_scrim_clock">时间底衬透明度</string>
+    <string name="set_esp_grid">行程图网格亮度</string>
     <string name="set_group_cfg">配置文件（独立保存，卸载重装后仍在）</string>
     <string name="cfg_exists">配置文件：已存在</string>
     <string name="cfg_absent">配置文件：不存在</string>
@@ -104,4 +113,33 @@
     <string name="set_perm_denied">权限状态：未授予（蓝点/自动定位不可用）</string>
     <string name="set_open_app_settings">前往系统设置授权（定位）</string>
     <string name="set_saved">设置已保存</string>
+    <string name="set_screen_flip">屏幕内容水平翻转（分光镜 HUD 用，默认开）</string>
+    <string name="perm_guide_files_title">允许「媒体和文件」访问</string>
+    <string name="perm_guide_files_msg">用于读写配置文件 /sdcard/Download/EspNav/espnav_config.json（卸载重装不丢设置）。\n\n点「去开启」后，在系统页面里打开「允许管理所有文件」。</string>
+    <string name="perm_guide_go">去开启</string>
+    <string name="perm_guide_later">稍后</string>
+    <string name="set_group_esp_map">ESP 屏地图底图（App 截图推送）</string>
+    <string name="set_esp_map_shot">推送地图底图（关掉则 ESP 保持当前画面）</string>
+    <string name="set_esp_map_shot_int">底图刷新间隔</string>
+    <string name="set_group_esp_color">ESP 屏颜色（APK 里改，立即生效）</string>
+    <string name="set_esp_col_hint_text">从预设色板里选；选择即保存并一次性下发全部颜色。</string>
+    <string name="set_esp_col_main">主色（文字 / 罗盘 / 路名 / 统计 / 时间）</string>
+    <string name="set_esp_col_track">行程图轨迹线</string>
+    <string name="set_esp_col_grid">行程图网格基准色</string>
+    <string name="set_esp_col_road">路面灰</string>
+    <string name="set_esp_col_car">车头三角</string>
+    <string name="set_esp_col_hint">提示 / 警示行文字</string>
+    <string name="set_dbg_trip_card">显示 App 导航页右下角「行程图卡片」</string>
+    <string-array name="esp_color_names">
+        <item>绿 #00E676</item>
+        <item>蓝 #5CB0FF</item>
+        <item>青 #00E5FF</item>
+        <item>黄 #FFE000</item>
+        <item>橙 #FF9800</item>
+        <item>红 #FF5252</item>
+        <item>品红 #FF4FD8</item>
+        <item>白 #FFFFFF</item>
+        <item>浅灰 #BDBDBD</item>
+        <item>深灰 #616161</item>
+    </string-array>
 </resources>

@@ -11,6 +11,10 @@ uint16_t *fb_get(void);
 void fb_clear(uint16_t color);
 void fb_pixel(int x, int y, uint16_t color);
 void fb_fill_rect(int x0, int y0, int x1, int y1, uint16_t color);
+/* 【M1.0 静态图导航】半透明暗色底衬：把矩形区域按 trans（透明度 0..100）压暗。
+ * trans=0 → 全黑；trans=100 → 原样不变。
+ * 用于地图底图之上的罗盘/文字/行程图/时间四类底衬（参数来自 SET_CONFIG）。 */
+void fb_dim_rect(int x0, int y0, int x1, int y1, int trans);
 void fb_line(int x0, int y0, int x1, int y1, uint16_t color);
 void fb_dashed_line(int x0, int y0, int x1, int y1, uint16_t color, int dash, int gap);
 /* 带相位偏移的虚线（offset 增大 -> 图案向起点(x0,y0)方向滚动） */

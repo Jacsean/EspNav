@@ -8,6 +8,7 @@
 #include "config.h"
 #include "lcd_driver.h"
 #include "render_nav.h"
+#include "map_image.h"     /* 【M3.1】IMG_BEGIN/CHUNK/END 的接收接口 */
 
 static const char *TAG = "proto";
 static uint32_t s_err = 0;
@@ -34,22 +35,35 @@ void protocol_link_reset(void)
 uint32_t protocol_err_count(void) { return s_err; }
 void     protocol_err_reset(void) { s_err = 0; }
 
-/* 回 DEV_STATUS（协议 §4.1）：配置 + 版本 + 错误计数 */
+/* 回 DEV_STATUS（协议 §4.1）：配置 + 版本 + 错误计数
+ * 【M1】追加 7 项叠加层可读性参数，App 保存后用 GET_CONFIG 回读校验一致性。
+ * buf 由 240 提到 384：新增字段约 110 字符，避免 snprintf 截断（-Werror=format-truncation）。 */
 static void send_dev_status(proto_send_fn send, void *ctx)
 {
     const espnav_config_t *c = config_get();
-    char buf[240];
+    char buf[384];
     snprintf(buf, sizeof(buf),
              "{\"msg_type\":\"DEV_STATUS\",\"payload\":{"
              "\"lcd_brightness\":%u,\"dash_speed\":%u,\"anim_enable\":%s,"
-             "\"popup_timeout\":%u,\"firmware_ver\":\"%s\",\"err\":%lu}}\n",
+             "\"popup_timeout\":%u,"
+             "\"scrim_on\":%s,\"scrim_compass\":%u,\"scrim_text\":%u,"
+             "\"scrim_route\":%u,\"scrim_clock\":%u,\"grid_bright\":%u,\"map_area\":%u,"
+             "\"firmware_ver\":\"%s\",\"err\":%lu}}\n",
              (unsigned)c->lcd_brightness, (unsigned)c->dash_speed,
              c->anim_enable ? "true" : "false", (unsigned)c->popup_timeout,
+             c->scrim_on ? "true" : "false",
+             (unsigned)c->scrim_compass, (unsigned)c->scrim_text,
+             (unsigned)c->scrim_route, (unsigned)c->scrim_clock,
+             (unsigned)c->grid_bright, (unsigned)c->map_area,
              c->firmware_ver, (unsigned long)s_err);
     if (send) send(buf, ctx);
-    ESP_LOGI(TAG, "TX DEV_STATUS bright=%u dash=%u anim=%d popup=%u ver=%s err=%lu",
+    ESP_LOGI(TAG, "TX DEV_STATUS bright=%u dash=%u anim=%d popup=%u scrim=%d/%u,%u,%u,%u grid=%u area=%u ver=%s err=%lu",
              (unsigned)c->lcd_brightness, (unsigned)c->dash_speed, (int)c->anim_enable,
-             (unsigned)c->popup_timeout, c->firmware_ver, (unsigned long)s_err);
+             (unsigned)c->popup_timeout, (int)c->scrim_on,
+             (unsigned)c->scrim_compass, (unsigned)c->scrim_text,
+             (unsigned)c->scrim_route, (unsigned)c->scrim_clock,
+             (unsigned)c->grid_bright, (unsigned)c->map_area,
+             c->firmware_ver, (unsigned long)s_err);
 }
 
 /* SET_CONFIG（协议 §3.2）：逐项应用，立即生效 */
@@ -75,6 +89,66 @@ static void apply_set_config(const char *line)
     if (jl_get_int(line, "popup_timeout", -1, &v) && v >= 0) {
         config_set_popup_timeout((uint8_t)v);       /* 弹窗层 M7 使用 */
         ESP_LOGI(TAG, "apply popup_timeout=%d", v);
+    }
+    /* ---- M1：叠加层可读性（App 设置项下发；渲染每帧读 config，下一帧即生效）---- */
+    if (jl_get_bool(line, "scrim_on", &on)) {
+        config_set_scrim_on(on);
+        ESP_LOGI(TAG, "apply scrim_on=%d", (int)on);
+    }
+    if (jl_get_int(line, "scrim_compass", -1, &v) && v >= 0) {
+        config_set_scrim_compass((uint8_t)v);
+        ESP_LOGI(TAG, "apply scrim_compass=%d", v);
+    }
+    if (jl_get_int(line, "scrim_text", -1, &v) && v >= 0) {
+        config_set_scrim_text((uint8_t)v);
+        ESP_LOGI(TAG, "apply scrim_text=%d", v);
+    }
+    if (jl_get_int(line, "scrim_route", -1, &v) && v >= 0) {
+        config_set_scrim_route((uint8_t)v);
+        ESP_LOGI(TAG, "apply scrim_route=%d", v);
+    }
+    if (jl_get_int(line, "scrim_clock", -1, &v) && v >= 0) {
+        config_set_scrim_clock((uint8_t)v);
+        ESP_LOGI(TAG, "apply scrim_clock=%d", v);
+    }
+    if (jl_get_int(line, "grid_bright", -1, &v) && v >= 0) {
+        config_set_grid_bright((uint8_t)v);
+        ESP_LOGI(TAG, "apply grid_bright=%d", v);
+    }
+    if (jl_get_int(line, "map_area", -1, &v) && v >= 0) {
+        config_set_map_area((uint8_t)v);
+        ESP_LOGI(TAG, "apply map_area=%d", v);
+    }
+    /* ---- 【M2.4】ESP 屏颜色（0 = 用固件默认色；渲染端每帧读 config）---- */
+    if (jl_get_int(line, "col_main", -1, &v) && v >= 0) {
+        config_set_col_main((uint16_t)v);
+        ESP_LOGI(TAG, "apply col_main=%d", v);
+    }
+    if (jl_get_int(line, "col_track", -1, &v) && v >= 0) {
+        config_set_col_track((uint16_t)v);
+        ESP_LOGI(TAG, "apply col_track=%d", v);
+    }
+    if (jl_get_int(line, "col_grid", -1, &v) && v >= 0) {
+        config_set_col_grid((uint16_t)v);
+        ESP_LOGI(TAG, "apply col_grid=%d", v);
+    }
+    if (jl_get_int(line, "col_road", -1, &v) && v >= 0) {
+        config_set_col_road((uint16_t)v);
+        ESP_LOGI(TAG, "apply col_road=%d", v);
+    }
+    if (jl_get_int(line, "col_car", -1, &v) && v >= 0) {
+        config_set_col_car((uint16_t)v);
+        ESP_LOGI(TAG, "apply col_car=%d", v);
+    }
+    if (jl_get_int(line, "col_hint", -1, &v) && v >= 0) {
+        config_set_col_hint((uint16_t)v);
+        ESP_LOGI(TAG, "apply col_hint=%d", v);
+    }
+    /* ---- 【M2.5】分光镜 HUD：整屏水平镜像（App 设置项，默认开）---- */
+    if (jl_get_bool(line, "screen_flip", &on)) {
+        config_set_screen_flip(on);
+        lcd_ili9341_set_flip_x(on);              /* 直接作用于驱动，下次刷屏即生效 */
+        ESP_LOGI(TAG, "apply screen_flip=%d", (int)on);
     }
 }
 
@@ -112,6 +186,14 @@ void protocol_handle(const char *line, int len, proto_send_fn send, void *ctx)
         nav_frame_on_json_line(line, len);
         return;
     }
+    if (!strcmp(mt, "CLOCK")) {                      /* 【M2.6】时间下发（ESP 无 RTC）：待机/导航画面都显示 */
+        char cb[NAV_CLOCK_MAX + 1];
+        if (jl_get_str(line, "clock", cb, sizeof(cb))) {
+            render_nav_set_clock(cb);
+            ESP_LOGI(TAG, "RX CLOCK %s", cb);
+        }
+        return;
+    }
     if (!strcmp(mt, "PING")) {
         int ts = 0, v = 0;
         jl_get_int(line, "ts", 0, &v);
@@ -139,6 +221,33 @@ void protocol_handle(const char *line, int len, proto_send_fn send, void *ctx)
     }
     if (!strcmp(mt, "POPUP_MSG") || !strcmp(mt, "POPUP_CLOSE")) {
         ESP_LOGW(TAG, "%s 尚未实现（M7 弹窗层），已忽略", mt);
+        return;
+    }
+    /* ---- 【M3.1】地图截图通道：接收侧只累积 base64 字节 + 置标志，
+     * 不碰 framebuffer（解码/贴图由显示任务在 draw_frame 里做，见 fault_log F5 线程约定）---- */
+    if (!strcmp(mt, "IMG_BEGIN")) {
+        int seq = 0, w = 0, h = 0, x = 0, y = 0, bytes = 0;
+        jl_get_int(line, "seq", 0, &seq);
+        jl_get_int(line, "w", 320, &w);
+        jl_get_int(line, "h", 240, &h);
+        jl_get_int(line, "x", 0, &x);
+        jl_get_int(line, "y", 0, &y);
+        jl_get_int(line, "bytes", 0, &bytes);
+        map_image_begin(seq, w, h, x, y, bytes);
+        return;
+    }
+    if (!strcmp(mt, "IMG_CHUNK")) {
+        static char b64[MAP_IMG_B64_MAX];               /* static：不占 TCP 任务栈 */
+        int seq = 0;
+        jl_get_int(line, "seq", 0, &seq);
+        if (jl_get_str(line, "d", b64, sizeof(b64))) map_image_chunk(seq, b64);
+        else ESP_LOGW(TAG, "IMG_CHUNK 缺 d 字段");
+        return;
+    }
+    if (!strcmp(mt, "IMG_END")) {
+        int seq = 0;
+        jl_get_int(line, "seq", 0, &seq);
+        map_image_end(seq);
         return;
     }
     ESP_LOGD(TAG, "ignore unknown msg_type=%s（协议 §6.2）", mt);

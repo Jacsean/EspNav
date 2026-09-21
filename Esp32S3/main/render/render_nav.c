@@ -4,6 +4,7 @@
 #include <math.h>
 #include "esp_log.h"
 #include "config.h"
+#include "map_image.h"    /* 【M3.1】地图底图（App 截图通道） */
 #include "wifi_sta.h"      /* 屏幕显示网络状态（AP / STA 已连接） */
 #include "font.h"
 #include <stdio.h>
@@ -19,6 +20,7 @@ static bool        s_blank_req = false;
 static bool  s_hold_blank = false;   /* CLEAR_SCREEN 后保持黑屏，直到收到新导航帧（否则会被占位版式立刻覆盖） */  /* CLEAR_SCREEN 清屏请求（显示任务消费） */
 static bool        s_link_lost = false;  /* 链路断开：保留画面 + 中部“信号中断”提示 */
 static float       s_anim = 0.0f;    /* 虚线相位 */
+static char        s_clock[NAV_CLOCK_MAX + 1];   /* 【M2.6】CLOCK 报文缓存：待机画面也显示时间 */
 
 
 /* 临时二分开关：1=渲染文字层；0=跳过文字（用于定位黑屏/崩溃是否由文字渲染引起） */
@@ -30,8 +32,25 @@ static float       s_anim = 0.0f;    /* 虚线相位 */
 #define NAV_FAR_Y     28
 #define NAV_NEAR_HALF 75      /* 近宽 150 */
 #define NAV_FAR_HALF  18      /* 远宽 36  */
-#define ROAD_GRAY     0x73AE  /* #777777 -> RGB565 */
-#define PATH_GREEN    0x07E0
+/** 【M2.4】颜色改为"可配置"：draw_frame 每帧从 config 同步到下面这几个文件级变量，
+ *  于是全文所有 PATH_GREEN / ROAD_GRAY 用法自动跟随 App 设置（0 = 用默认色兜底）。
+ *  对应 App 设置项：主色 / 轨迹色 / 网格色 / 路面色 / 车头色 / 提示色。 */
+#define DEF_COL_MAIN   0x07E0   /* 绿：文字/罗盘/路名/统计/时间/fallback 中心线 */
+#define DEF_COL_ROAD   0x73AE   /* 灰：路面 */
+#define DEF_COL_TRACK  0x5D9F   /* 亮蓝：行程图轨迹（用户要求蓝色系） */
+#define DEF_COL_GRID   0x8450   /* 灰绿：行程图网格基准色（再乘 grid_bright） */
+#define DEF_COL_CAR    0xFFE0   /* 黄：车头三角 */
+#define DEF_COL_HINT   0xFFE0   /* 黄：提示/警示行 */
+
+static uint16_t s_col_main  = DEF_COL_MAIN;
+static uint16_t s_col_road  = DEF_COL_ROAD;
+static uint16_t s_col_track = DEF_COL_TRACK;
+static uint16_t s_col_grid0 = DEF_COL_GRID;   /* 网格基准色（亮度再乘 grid_bright） */
+static uint16_t s_col_car   = DEF_COL_CAR;
+static uint16_t s_col_hint  = DEF_COL_HINT;
+
+#define ROAD_GRAY     s_col_road  /* 路面灰（配置） */
+#define PATH_GREEN    s_col_main  /* 主文字/罗盘/中心线颜色（配置） */
 
 /* ---- 绘制来源颜色分离（用户建议：每个元素用不同颜色，折线漂移时一眼看出是谁画的）----
  * 排查完成后可以把它们改回绿色，但保留分离对后续定位更有利。 */
@@ -40,6 +59,14 @@ static float       s_anim = 0.0f;    /* 虚线相位 */
 #define DBG_ROADPATH  0xF81F   /* 道路模板中心绿线：品红 */
 #define DBG_CENTERLN  0x07FF   /* fallback 车道中线 ：青 */
 #define DBG_OVERVIEW  0x780F   /* 行程图轨迹        ：紫 */
+
+/* 【M2.6】记录 App 下发的当前时间（CLOCK 报文）；待机画面据此显示 */
+void render_nav_set_clock(const char *hhmmss)
+{
+    if (!hhmmss) return;
+    strncpy(s_clock, hhmmss, NAV_CLOCK_MAX);
+    s_clock[NAV_CLOCK_MAX] = 0;
+}
 
 void render_nav_clear(void)
 {
@@ -316,20 +343,49 @@ static void ov_to_px(const npt_t *p, int *px, int *py)
     *py = ay + OV_OY + (OV_SPAN - (int)p->y) * OV_BOX / OV_SPAN;
 }
 
+/* 【M1.3】行程图网格色：按 grid_bright(0-100) 从暗绿灰插值到亮绿灰（RGB565）
+ *   原固定 0x2104 ≈ #202020 在暗底衬上几乎看不见（用户要求"网格更醒目"）。
+ *   0% -> 0x2104(≈#202020)、100% -> 0xD6DA(≈#D4DAD4)；默认 55% ≈ #808680。
+ *   boost：主格线（每 50px）再亮一档（+25），形成结构感。 */
+static uint16_t grid_color(int bright, int boost)
+{
+    int v = bright + boost;
+    if (v < 0) v = 0;
+    if (v > 100) v = 100;
+    /* 【M2.4】以配置的"网格色"（s_col_grid0）为基准按亮度比例缩放 ——
+     * App 里改网格色直接生效，"网格亮度"仍可微调对比。 */
+    int r = ((s_col_grid0 >> 11) & 0x1F) * v / 100;
+    int g = ((s_col_grid0 >> 5)  & 0x3F) * v / 100;
+    int b = ( s_col_grid0        & 0x1F) * v / 100;
+    return (uint16_t)((r << 11) | (g << 5) | b);
+}
+
 static void draw_overview(const nav_frame_t *f)
 {
+    const espnav_config_t *cfg = config_get();
     const int ax = OV_AX, ay = 160, aw = OV_AW, ah = 80;
-    const uint16_t grid = 0x2104;
-    for (int x = ax; x < ax + aw; x += 10) fb_line(x, ay, x, ay + ah - 1, grid);
-    for (int y = ay; y < ay + ah; y += 10) fb_line(ax, y, ax + aw - 1, y, grid);
+    const uint16_t gc_minor = grid_color(cfg->grid_bright, 0);
+    const uint16_t gc_major = grid_color(cfg->grid_bright, 25);
+
+    /* 【M1.3】行程图区半透明暗底衬：先压暗再画网格，网格线才有对比可看
+     *   （此前这里没有任何背景，靠整屏清屏黑；接入地图底图后必须自己铺一层） */
+    if (cfg->scrim_on) fb_dim_rect(ax, ay, ax + aw - 1, ay + ah - 1, cfg->scrim_route);
+
+    /* 网格：次格线每 10px / 主格线每 50px；线宽固定 1px = ESP 屏 1 物理像素 */
+    for (int x = ax; x < ax + aw; x += 10)
+        fb_line(x, ay, x, ay + ah - 1, ((x - ax) % 50 == 0) ? gc_major : gc_minor);
+    for (int y = ay; y < ay + ah; y += 10)
+        fb_line(ax, y, ax + aw - 1, y, ((y - ay) % 50 == 0) ? gc_major : gc_minor);
     for (int i = 0; i + 1 < f->overview_n; i++) {
         int x0, y0, x1, y1;
         ov_to_px(&f->overview[i], &x0, &y0);
         ov_to_px(&f->overview[i + 1], &x1, &y1);
         /* 3 倍粗（用户要求）：偏移画 3 条 */
-        fb_line(x0, y0, x1, y1, DBG_OVERVIEW);
-        fb_line(x0, y0 - 1, x1, y1 - 1, DBG_OVERVIEW);
-        fb_line(x0 + 1, y0, x1 + 1, y1, DBG_OVERVIEW);
+        /* 【M2.4】行程图轨迹线颜色来自 App 配置（默认亮蓝 #5CB0FF = 0x5D9F）。
+         * 用户 2026-09-19 反馈"原紫色对比度不好，改用蓝色系"。 */
+        fb_line(x0, y0, x1, y1, s_col_track);
+        fb_line(x0, y0 - 1, x1, y1 - 1, s_col_track);
+        fb_line(x0 + 1, y0, x1 + 1, y1, s_col_track);
     }
     /* 起终点标记：轨迹首点=起点(绿)、末点=终点(红)；当前位置仍为黄点（App 实时更新） */
     if (f->overview_n >= 2) {
@@ -662,12 +718,31 @@ static void draw_road(const nav_frame_t *f, float anim)
 
 static void draw_frame(const nav_frame_t *f, float anim)
 {
+    const espnav_config_t *cfg = config_get();       /* 【M1.2/M1.3】叠加层可读性参数（App 下发） */
     if (!f || !f->valid) return;
-    fb_clear(RGB565_BLACK);
+
+    /* 【M2.4】从配置同步颜色（0 = 用默认兜底）——
+     * 下面所有 PATH_GREEN / ROAD_GRAY 用法因此自动跟随 App 里的颜色设置。 */
+    s_col_main  = cfg->col_main  ? cfg->col_main  : DEF_COL_MAIN;
+    s_col_road  = cfg->col_road  ? cfg->col_road  : DEF_COL_ROAD;
+    s_col_track = cfg->col_track ? cfg->col_track : DEF_COL_TRACK;
+    s_col_grid0 = cfg->col_grid  ? cfg->col_grid  : DEF_COL_GRID;
+    s_col_car   = cfg->col_car   ? cfg->col_car   : DEF_COL_CAR;
+    s_col_hint  = cfg->col_hint  ? cfg->col_hint  : DEF_COL_HINT;
+
+    /* 【M3.1】地图底图（App 截图通道）：① 有新图先解码（只在这里做 —— 符合"仅显示任务
+     * 碰帧缓冲"的约定）② 从底图副本整屏恢复；③ 有底图时不再画模板/兜底路面，
+     * 于是画面 = 地图截图 + 半透明底衬 + 罗盘/文字/行程图/时间。 */
+    map_image_apply();
+    const bool has_img = map_image_has();
+    if (has_img) map_image_restore();
+    else         fb_clear(RGB565_BLACK);
     fb_line(0, 160, FB_W - 1, 160, RGB565_DGRAY);
     fb_line(OV_AX, 160, OV_AX, FB_H - 1, RGB565_DGRAY);
 
-    if (f->road.present) {
+    if (has_img) {
+        /* 底图已铺好：跳过全部路面绘制 */
+    } else if (f->road.present) {
         draw_road(f, anim);                        /* M4：路况模板（road 字段驱动） */
     } else if (f->center_n < 2) {
         /* 兜底：无路况模板、且中心线不足 2 点（例如刚到达终点/App 只发了终点帧）→
@@ -707,9 +782,20 @@ static void draw_frame(const nav_frame_t *f, float anim)
     /* 【用户要求·临时暂停】车头恒定竖线不绘制，便于排查"车头附近折线漂移"到底是谁画的。
      * 恢复：把下面这行注释打开即可（原先为贯通 NAV_FAR_Y -> NAV_NEAR_Y 的绿色中轴线）。 */
     /* fb_line(NAV_CX, NAV_FAR_Y, NAV_CX, NAV_NEAR_Y, RGB565_GREEN); */
-    if (f->pos_valid) fb_triangle(f->pos.x, f->pos.y, 14, RGB565_YELLOW);
+    /* 【M2.4】车头三角颜色来自 App 配置（s_col_car） */
+    if (f->pos_valid) fb_triangle(f->pos.x, f->pos.y, 14, s_col_car);
 
 #if RENDER_TEXT
+    /* 【M1.2/M1.3】叠加层可读性：先铺四类半透明暗底衬（在内容之上、文字之下），
+     * 文字再靠 1px 黑描边保住对比度。参数全部来自 App 的 SET_CONFIG：
+     *   scrim_compass / scrim_text / scrim_route（draw_overview 内部自己铺）/ scrim_clock */
+    if (cfg->scrim_on) {
+        fb_dim_rect(0, 0, FB_W - 1, 21, cfg->scrim_compass);          /* 罗盘条：整行覆盖 */
+        fb_dim_rect(0, 21, 209, 78, cfg->scrim_text);                 /* 路名/hint/距离 三行 */
+        fb_dim_rect(0, 160, OV_AX - 1, FB_H - 1, cfg->scrim_text);    /* 左下统计 4 行 */
+    }
+    font_set_outline(true, RGB565_BLACK);                             /* 文字/罗盘统一带黑描边 */
+
     /* 罗盘 + 行程图 + 底部网络状态（不依赖 RENDER_TEXT 开关） */
     draw_compass(f);
     draw_net_status();
@@ -732,7 +818,8 @@ static void draw_frame(const nav_frame_t *f, float anim)
         if (f->notice[0]) {                                     /* 路况/设施提示（红绿灯倒计时若将来可得也放这里） */
             static char nb[40];
             font_clip_utf8(f->notice, 20 * 16, nb, sizeof(nb));
-            draw_line_scroll(2, 4, 84, nb, RGB565_YELLOW, 316);
+            /* 【M2.4】提示/警示行颜色来自 App 配置（s_col_hint） */
+            draw_line_scroll(2, 4, 84, nb, s_col_hint, 316);
         }
 
         int km = (int)(f->total_dist / 1000);
@@ -746,8 +833,24 @@ static void draw_frame(const nav_frame_t *f, float anim)
         snprintf(buf, sizeof(buf), "预计到达 %s", f->eta_time);
         font_draw_text(6, 200, buf, PATH_GREEN);
 
+        /* 【M1.2/M2.6】时间（时:分:秒）：主视图右下角，右对齐 x=316、y=138。
+         * ESP 无 RTC —— 字符串由 App 每秒下发。来源优先级：
+         *   ① 本帧 NAV_FRAME.clock（导航中）
+         *   ② 最近一次 CLOCK 报文的缓存 s_clock ← M2.6 补
+         * ② 必须有：固件启动时 app_main 会设置 demo 帧（s_have=1），因此"已连接但未导航"
+         * 时渲染的是 draw_frame(&s_cur)，render_nav_tick 的待机分支根本不会执行。 */
+        const char *clock_txt = f->clock[0] ? f->clock : s_clock;
+        if (clock_txt[0]) {
+            int cw = font_text_width(clock_txt);
+            int tx = 316 - cw;
+            if (tx < 0) tx = 0;
+            if (cfg->scrim_on) fb_dim_rect(tx - 4, 135, 316, 157, cfg->scrim_clock);
+            font_draw_text(tx, 138, clock_txt, PATH_GREEN);
+        }
+
         /* 北向标记统一由 draw_overview() 绘制（固定表示行程图方向），此处不再重复 */
     }
+    font_set_outline(false, 0);              /* 描边仅作用于导航画面的文字层 */
 
 #endif
     fb_flush();
@@ -780,6 +883,8 @@ void render_nav_tick(float dt)
         memset(&empty, 0, sizeof(empty));
         empty.valid = true;                  /* 用空帧驱动版式（路面/罗盘/行程图都在） */
         empty.heading = 0;
+        /* 【M2.6】待机画面也显示时间：用最近一次 CLOCK 报文的值（App 连接后每秒下发） */
+        memcpy(empty.clock, s_clock, sizeof(empty.clock));
         empty.pos.x = NAV_CX; empty.pos.y = 110; empty.pos_valid = true;
         s_anim += dt * 40.0f;                /* 虚线仍流动 */
         draw_frame(&empty, s_anim);
@@ -837,8 +942,8 @@ void render_nav_boot(int stage, const char *sub)
     fb_line(FB_W - 9, FB_H - 9, FB_W - 9, FB_H - 23, PATH_GREEN);
 
     /* 标题（3 倍放大并上移，避免与网格/副标题叠压）+ 副标题 */
-    w = font_text_width("EspNav v1.1") * 3;
-    font_draw_text_scaled((FB_W - w) / 2, 40, "EspNav v1.1", PATH_GREEN, 3);
+    w = font_text_width("EspNav v1.2") * 3;
+    font_draw_text_scaled((FB_W - w) / 2, 40, "EspNav v1.2", PATH_GREEN, 3);
     w = font_text_width("可穿戴导航屏·骑行版");
     font_draw_text((FB_W - w) / 2, 92, "可穿戴导航屏·骑行版", 0x7BEF);
 

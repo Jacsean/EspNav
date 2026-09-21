@@ -148,6 +148,14 @@ void lcd_ili9341_fill(uint16_t color)
 
 void lcd_ili9341_backlight(uint8_t pct) { bl_set(pct); }
 
+/* ---- 【M1.7】整屏水平镜像（分光镜 HUD）----
+ * 半透半反镜会让观察者看到的画面左右翻转，所以送屏前把每一行像素倒序即可还原。
+ * 为什么不用 MADCTL 的 MX 位：横屏下 MX/MY 的实际效果与位名相反、需真机试错；
+ * 软件倒序的"水平镜像"语义确定，且每行仅 320 次读写（相对整屏 SPI 传输 31ms 可忽略）。 */
+static bool s_flip_x = true;      /* 【M1.7】默认开：分光镜 HUD 场景（与 config.screen_flip 默认一致） */
+
+void lcd_ili9341_set_flip_x(bool on) { s_flip_x = on; }
+
 void lcd_ili9341_flush(const uint16_t *fb, int w, int h)
 {
     if (!s_spi || !fb) return;
@@ -157,9 +165,16 @@ void lcd_ili9341_flush(const uint16_t *fb, int w, int h)
     gpio_set_level(LCD_PIN_DC, 1);
     for (int y = 0; y < h; y++) {
         const uint16_t *src = &fb[y * w];
-        for (int x = 0; x < w; x++) {
-            uint16_t c = src[x];
-            s_line[x] = (uint16_t)((c >> 8) | (c << 8));
+        if (s_flip_x) {
+            for (int x = 0; x < w; x++) {
+                uint16_t c = src[w - 1 - x];              /* 左右倒序 = 水平镜像 */
+                s_line[x] = (uint16_t)((c >> 8) | (c << 8));
+            }
+        } else {
+            for (int x = 0; x < w; x++) {
+                uint16_t c = src[x];
+                s_line[x] = (uint16_t)((c >> 8) | (c << 8));
+            }
         }
         spi_transaction_t t = { .length = (size_t)w * 16, .tx_buffer = s_line };
         ESP_ERROR_CHECK(spi_device_transmit(s_spi, &t));

@@ -1,15 +1,17 @@
 /**
- * send_frames.js — PC 端测试脚本：向 ESP32 TCP :8899 发送协议帧（V1.10）
+ * send_frames.js — PC 端测试脚本：向 ESP32 TCP :8899 发送协议帧（V1.10 / V1.14）
  * 用法：
  *   node send_frames.js --demo                     # 条带帧序列（默认）
+ *   node send_frames.js --maptest                  # 【M1.3】叠加层可读性逐项验证：每 6s 换一组参数，
+ *                                                  #   控制台打印"现在应该看到什么"；时间每秒走动（推荐）
  *   node send_frames.js --road all                 # 依次演示全部路况模板
  *   node send_frames.js --road crossRight          # 只发某一种模板
  *   node send_frames.js --file frames.jsonl        # 每行一个完整 JSON 帧
- *   node send_frames.js --config2                  # M3 逐项慢速验证（每步 4s，幅度大，带观察提示）——推荐
+ *   node send_frames.js --config2                  # M3 逐项慢速验证（每步 4s，幅度大，带观察提示）
  *   node send_frames.js --config                   # M3 快速验证：PING/GET_CONFIG/SET_CONFIG/CLEAR_SCREEN
- *                                                    #   依次：亮度 30->100、虚线 80->20->40、anim 开关、清屏
  *   （可选 --host 192.168.4.1 --port 8899）
  * 真机语义：车标 pos 固定；两侧虚线滚动由渲染端按 dash_speed 驱动。
+ * 注：所有帧都带 clock（时:分:秒）—— ESP 无 RTC，时间由这里每秒下发（模拟 App 的行为）。
  */
 'use strict';
 const net = require('net');
@@ -25,6 +27,14 @@ const FILE = arg('file', null);
 const ROAD = arg('road', null);
 const CONFIG_TEST = process.argv.includes('--config');
 const CONFIG2 = process.argv.includes('--config2');
+const MAPTEST = process.argv.includes('--maptest');
+
+/* 【M1.2】时:分:秒（ESP 无 RTC，时间字符串由主机每秒下发） */
+function nowClock() {
+  const d = new Date();
+  const p = (n) => (n < 10 ? '0' : '') + n;
+  return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
 
 /* 模板样例（参数与 nav_sim_v2.html / 几何规格 V0.3 一致；近端 y=144） */
 const ROAD_SAMPLES = {
@@ -73,6 +83,7 @@ function basePayload(hint, key, idx) {
   return {
     heading: (idx * 40) % 360, turn_dist: 120, hint: hint,
     total_dist: 11400, progress_pct: 26, elapsed_min: 19, eta_time: '15:11',
+    clock: nowClock(),
     centerLine: [[160,144],[160,120],[160,90],[160,60],[160,34]],
     pastCenter: [[160,144],[160,120]],
     routeCenter: [[160,120],[160,90],[160,60],[160,34]],
@@ -85,6 +96,7 @@ function stripPayload(turnDist, hint, step) {
   const base = {
     heading: (turnDist * 3) % 360, turn_dist: turnDist, hint: hint,
     total_dist: 8200, progress_pct: 34, elapsed_min: 28, eta_time: '14:27',
+    clock: nowClock(),
     centerLine: center,
     pastCenter: center.slice(0, Math.max(2, Math.min(4, pc + 1))),
     routeCenter: center.slice(Math.max(1, pc)),
@@ -102,6 +114,33 @@ function roadList() {
 
 const sock = net.connect(PORT, HOST, () => {
   console.log('[ok] connected ' + HOST + ':' + PORT);
+  if (MAPTEST) {
+    /* 【M1.3】叠加层可读性逐项验证：每步 6 秒；每秒补发一帧让 clock 走动。
+     * 每步先打印"该看到什么"，你只需盯着屏幕对照。 */
+    const DEF = { scrim_on: true, scrim_compass: 65, scrim_text: 65, scrim_route: 40, scrim_clock: 65, grid_bright: 55 };
+    const steps = [
+      ['① 基线（默认档）：罗盘/文字/行程图/时间 各有一层半透明暗底；行程图网格可见（亮度 55%）', DEF],
+      ['② 底衬全关：只剩路面上的文字（应与改造前接近，但文字仍带黑描边）', { scrim_on: false }],
+      ['③ 底衬最透明（透明度 90）：背景最明显，文字靠黑描边保可读', { scrim_on: true, scrim_compass: 90, scrim_text: 90, scrim_route: 90, scrim_clock: 90 }],
+      ['④ 底衬最黑（透明度 10）：底衬几乎全黑，文字最清楚但把背景遮住', { scrim_on: true, scrim_compass: 10, scrim_text: 10, scrim_route: 10, scrim_clock: 10 }],
+      ['⑤ 网格亮度 0：行程图网格几乎看不见', { scrim_on: true, scrim_compass: 65, scrim_text: 65, scrim_route: 40, scrim_clock: 65, grid_bright: 0 }],
+      ['⑥ 网格亮度 100：网格最亮（主格线比次格线更亮一档）', { grid_bright: 100 }],
+      ['⑦ 行程图底衬最透明（20）：网格在浅底上还看得清吗？', { grid_bright: 55, scrim_route: 20 }],
+      ['⑧ 回到默认档（用来判定哪个档位最好看）', DEF],
+    ];
+    let step = 0;
+    const applyStep = () => {
+      const [tip, cfgp] = steps[step % steps.length];
+      console.log('---- ' + tip);
+      sock.write(JSON.stringify({ msg_type: 'SET_CONFIG', payload: cfgp }) + '\n');
+      step++;
+    };
+    applyStep();
+    setInterval(applyStep, 6000);
+    /* 每秒一帧：让主视图右下角的"时:分:秒"走动 */
+    setInterval(() => sock.write(frameObj(stripPayload(460, '前方460米直行', 3))), 1000);
+    return;
+  }
   if (CONFIG2) {
     /* 每步 4 秒、幅度大、带观察提示：便于肉眼逐项确认“哪个变化对应哪一步” */
     const steps = [

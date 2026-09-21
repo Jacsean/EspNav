@@ -45,6 +45,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private lateinit var client: EspNavClient
     private var navSource: NavSource = MockNavSource()
     private var mockJob: Job? = null
+    private var clockJob: Job? = null      /* 【M2.6】连接后每秒下发 CLOCK（ESP 无 RTC） */
     private val prefs by lazy { getSharedPreferences("espnav", MODE_PRIVATE) }
     private val pendingCandidates = ArrayDeque<String>()
     /** 连接尝试互斥：避免“候选链/自动重连/扫描”三者并发建连（多连接会互相踢，屏幕反复切画面） */
@@ -91,6 +92,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         }
         /* 独立配置文件：启动时若在下载目录发现它，提示是否用来覆盖当前设置（用户要求） */
         binding.root.postDelayed({ checkExternalConfig() }, 1200)
+        /* 【M3.3】启动权限引导：位置 + 媒体和文件（缺则弹窗/跳系统页） */
+        binding.root.postDelayed({ runCatching { guidePermissionsIfNeeded() } }, 1500)
 
         for (et in listOf(binding.etFrom, binding.etTo)) {
             et.doAfterTextChanged { updatePickState() }
@@ -223,9 +226,48 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         refreshActionStates()          /* 连接成功：相关操作解灰（用户要求：启动成功后刷新一次） */
         log("已连接 $addr")
         send(OutMsg.hello())                 /* 握手：告知 ESP32 “App 已上线” */
+        /* 【M2.6】连接后每秒下发 CLOCK：ESP 无 RTC；待机画面（已连接未导航）也据此显示时间 */
+        clockJob?.cancel()
+        clockJob = lifecycleScope.launch {
+            var clockLogged = false              /* 只记一条，避免日志区被每秒刷屏 */
+            while (isActive) {
+                val t = timeFmt.format(java.util.Date())
+                send(OutMsg.clock(t))
+                if (!clockLogged) { log("已开始下发时间（CLOCK）：$t"); clockLogged = true }
+                delay(1000)
+            }
+        }
+        /* 【M1】连上就下发一次 ESP 屏叠加层参数（底衬 4 类 + 网格亮度）——
+         * 这样装好 App 直接连上就能看到效果，不必先进设置页逐个调。 */
+        send(
+            OutMsg.setConfig(
+                scrimOn = appPrefs.espScrimOn,
+                scrimCompass = appPrefs.espScrimCompass,
+                scrimText = appPrefs.espScrimText,
+                scrimRoute = appPrefs.espScrimRoute,
+                scrimClock = appPrefs.espScrimClock,
+                gridBright = appPrefs.espGridBright,
+                screenFlip = appPrefs.screenFlip,
+                /* 【M2.4】颜色 6 项 */
+                colMain = appPrefs.espColMain,
+                colTrack = appPrefs.espColTrack,
+                colGrid = appPrefs.espColGrid,
+                colRoad = appPrefs.espColRoad,
+                colCar = appPrefs.espColCar,
+                colHint = appPrefs.espColHint
+            )
+        )
+        log(
+            "已下发 ESP 叠加层：底衬=${appPrefs.espScrimOn} " +
+                "罗盘/文字/行程图/时间=${appPrefs.espScrimCompass}/" +
+                "${appPrefs.espScrimText}/${appPrefs.espScrimRoute}/${appPrefs.espScrimClock} " +
+                "网格亮度=${appPrefs.espGridBright}"
+        )
     }
 
     override fun onDisconnected(reason: String) {
+        clockJob?.cancel()
+        clockJob = null
         stopMock()
         if (intentionalDisconnect) {                     /* 主动断开：不再自动重连 */
             intentionalDisconnect = false
@@ -257,7 +299,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     // ---------------- 操作 ----------------
 
-    /** 一键连接：依次尝试“上次成功的地址”和 192.168.4.1；4.5 秒未连上就换下一个 */
+    /** 一键连接：依次尝试“上次成功的地址”→ 192.168.43.117（手机热点）→ 192.168.4.1（softAP）；
+     *  4.5 秒未连上就换下一个 */
     private fun quickConnect() {
         if (client.isConnected) { log("已连接，无需重连"); return }
         if (connecting) { log("连接进行中，忽略重复请求"); return }
@@ -309,7 +352,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     private fun doConnect() {
-        val host = binding.etHost.text.toString().trim().ifBlank { "192.168.4.1" }
+        val host = binding.etHost.text.toString().trim().ifBlank { "192.168.43.117" }
         val port = binding.etPort.text.toString().trim().toIntOrNull() ?: 8899
         log("连接 $host:$port ...")
         client.connect(host, port)
@@ -441,6 +484,12 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             } else {
                 log("定位权限被拒绝，无法使用高德导航")
             }
+        } else if (requestCode == REQ_PERM_GUIDE) {            /* 【M3.3】启动引导：只记日志，不触发任何动作 */
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                log("权限引导：定位权限已授予")
+            } else {
+                log("权限引导：定位权限被拒绝（导航/预览需要它，可在系统设置里开启）")
+            }
         } else if (requestCode == REQ_LOCATION_PREVIEW) {      /* 导航页：只继续预览，绝不启动导航 */
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 log("定位权限已授予，继续预览路线（不会自动开始导航）")
@@ -452,7 +501,89 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         }
     }
 
+    /* ================= 【M3.3】启动权限引导（位置 + 媒体和文件）=================
+     * 说明：Android **不允许** App 在安装时自动获得运行时权限与「所有文件访问」，
+     * 只能在首次进入时申请/引导。这里做成"启动即检查、缺就弹窗 + 一键跳系统页"，
+     * 效果上等价于"装完顺手开好"，之后 Settings 里也保留了手动入口。
+     *   · 位置：ACCESS_FINE/COARSE_LOCATION —— 高德导航与预览必需（运行时权限，可弹窗申请）
+     *   · 媒体和文件：MANAGE_EXTERNAL_STORAGE（所有文件访问）—— 读写
+     *     /sdcard/Download/EspNav/espnav_config.json（卸载重装不丢设置），只能跳系统页
+     * 注意：这里**不能**复用 REQ_LOCATION —— 那个请求码的回调会直接 startAmapNav()。 */
+    private fun guidePermissionsIfNeeded() {
+        /* ① 位置 */
+        if (!hasLocationPermission()) {
+            log("权限引导：申请定位权限（导航/预览必需）")
+            androidx.core.app.ActivityCompat.requestPermissions(
+                this,
+                arrayOf(
+                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                ),
+                REQ_PERM_GUIDE
+            )
+        }
+        /* ② 媒体和文件（所有文件访问） */
+        if (!com.espnav.app.data.ConfigFile.hasPermission()) {
+            log("权限引导：需要「媒体和文件」权限（读写配置文件）")
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle(R.string.perm_guide_files_title)
+                .setMessage(R.string.perm_guide_files_msg)
+                .setPositiveButton(R.string.perm_guide_go) { _, _ -> requestAllFilesAccess() }
+                .setNegativeButton(R.string.perm_guide_later, null)
+                .show()
+        }
+    }
+
     /** 统一启动：切换数据源并按 5Hz 向屏幕发帧 */
+    /* ================= 【M3.1 最小可用版】地图底图：开始导航时截 1 张 =================
+     * 为什么是"单次"：M1 那条路是"每秒 1 张"的周期链路，出现过无法定位的闪退；
+     * 本版先只发 1 张（整条路线概览），用于验证
+     *   「SDK 截图 → 压暗/缩放 → JPEG → base64 分块 → TCP → ESP 解码贴图」
+     * 整条链路的稳定性；确认稳定后再决定要不要加周期性刷新。
+     * 注意：本版**完全不碰地图相机**（不 moveCamera / 不改 tilt），避免 M1 的相机耦合问题。 */
+    private val mapShotSeq = java.util.concurrent.atomic.AtomicInteger(0)
+    private var mapShotTick = 0          /* 【M3.2】主循环计数：每 N 帧推一张底图 */
+
+    private fun captureAndSendMapShot() {
+        val am = aMap ?: run { log("底图截图跳过：地图未就绪"); return }
+        if (!client.isConnected) { log("底图截图跳过：未连接"); return }
+        log("底图截图：调用 getMapScreenShot …")
+        binding.root.postDelayed({
+            runCatching {
+                am.getMapScreenShot(object : com.amap.api.maps.AMap.OnMapScreenShotListener {
+                    override fun onMapScreenShot(bitmap: android.graphics.Bitmap?) {
+                        handleMapShot(bitmap)
+                    }
+
+                    override fun onMapScreenShot(bitmap: android.graphics.Bitmap?, status: Int) {
+                        if (bitmap == null) log("底图截图返回空（status=$status）")
+                    }
+                })
+            }.onFailure { log("底图截图调用失败：${it.message}") }
+        }, 150L)
+    }
+
+    /** 截图回调（主线程）→ 图像处理与发送挪到后台线程 */
+    private fun handleMapShot(bitmap: android.graphics.Bitmap?) {
+        if (bitmap == null) {
+            log("底图截图失败：bitmap=null")
+            return
+        }
+        log("底图截图成功 ${bitmap.width}x${bitmap.height}，后台处理中…")
+        lifecycleScope.launch(Dispatchers.Default) {
+            val jpg = com.espnav.app.data.MapShotCapture.process(bitmap)
+            runCatching { bitmap.recycle() }
+            if (jpg == null || jpg.isEmpty()) {
+                runOnUiThread { log("底图处理失败（编码为空）") }
+                return@launch
+            }
+            val seq = mapShotSeq.incrementAndGet()
+            /* EspNavClient.queue() 内部是 Channel → 线程安全，可直接在后台线程调用 */
+            val chunks = com.espnav.app.data.MapShotCapture.send(jpg, seq) { client.queue(it) }
+            runOnUiThread { log("已推送地图底图：${jpg.size} B / $chunks 块 / seq=$seq") }
+        }
+    }
+
     private fun launchNav(source: NavSource, label: String) {
         if (mockJob?.isActive == true) return
         if (!client.isConnected) {
@@ -471,10 +602,19 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 (navSource as? AmapNavSource)?.let { s ->
                     if (navActive) runCatching { updateNavUi(s) }
                 }
+                /* 【M3.2】地图底图：按设置间隔推一张（默认 3s；开关关掉就完全不发） */
+                mapShotTick++
+                val shotEvery = (appPrefs.espMapShotIntervalMs / FRAME_INTERVAL_MS).coerceAtLeast(1)
+                if (appPrefs.espMapShotOn && mapShotTick >= shotEvery) {
+                    mapShotTick = 0
+                    runCatching { captureAndSendMapShot() }
+                }
                 delay(FRAME_INTERVAL_MS)
             }
         }
         log("开始 $label（每 ${FRAME_INTERVAL_MS}ms 一帧）")
+        /* 【M3.1 最小可用版】开始导航后延迟 1.2s 截 1 张地图底图推给 ESP（单次，不做周期刷新） */
+        binding.root.postDelayed({ runCatching { captureAndSendMapShot() } }, 1200)
     }
 
     /** 按「设置 → ESP 显示元素」开关过滤发往 ESP 的帧：逐个关掉即可定位是哪一类图元在出问题 */
@@ -719,6 +859,173 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         cbDbgOv.isChecked = appPrefs.dbgShowOverview
         cbDbgCar.isChecked = appPrefs.dbgShowCar
 
+        /* ---- 【M1】ESP 屏叠加层可读性（罗盘/文字/行程图/时间底衬 + 网格亮度）----
+         * 拖动滑杆：立即写 AppPrefs + 若已连接则立刻下发 SET_CONFIG（屏幕上马上能看到变化）。
+         * 未连接时只保存，连接成功后由 onConnected() 自动补发一次。 */
+        val cbEspScrimOn = v.findViewById<android.widget.CheckBox>(R.id.setEspScrimOn)
+        val skEspScrimCompass = v.findViewById<android.widget.SeekBar>(R.id.seekEspScrimCompass)
+        val skEspScrimText = v.findViewById<android.widget.SeekBar>(R.id.seekEspScrimText)
+        val skEspScrimRoute = v.findViewById<android.widget.SeekBar>(R.id.seekEspScrimRoute)
+        val skEspScrimClock = v.findViewById<android.widget.SeekBar>(R.id.seekEspScrimClock)
+        val skEspGrid = v.findViewById<android.widget.SeekBar>(R.id.seekEspGrid)
+        cbEspScrimOn.isChecked = appPrefs.espScrimOn
+        skEspScrimCompass.progress = appPrefs.espScrimCompass
+        skEspScrimText.progress = appPrefs.espScrimText
+        skEspScrimRoute.progress = appPrefs.espScrimRoute
+        skEspScrimClock.progress = appPrefs.espScrimClock
+        skEspGrid.progress = appPrefs.espGridBright
+
+        /* 【M2.5】屏幕内容水平翻转（分光镜 HUD，默认开）：改动即下发 SET_CONFIG.screen_flip。
+         * 固件侧默认也是开，所以新装 App 首次连接不改这里也是"镜像已开"的状态。 */
+        val cbScreenFlip = v.findViewById<android.widget.CheckBox>(R.id.setScreenFlip)
+        cbScreenFlip.isChecked = appPrefs.screenFlip
+        cbScreenFlip.setOnCheckedChangeListener { _, c ->
+            appPrefs.screenFlip = c
+            if (client.isConnected) send(OutMsg.setConfig(screenFlip = c))
+            log("ESP 屏幕水平翻转 = $c")
+        }
+
+        /* 【M2.4】ESP 屏颜色：6 个预设色下拉；选择即保存 + 一次性下发全部颜色 */
+        val colorNames = resources.getStringArray(R.array.esp_color_names)
+        val colorVals = com.espnav.app.data.AppPrefs.ESP_COLORS
+        fun pushColors() {
+            if (!client.isConnected) return
+            send(
+                OutMsg.setConfig(
+                    colMain = appPrefs.espColMain,
+                    colTrack = appPrefs.espColTrack,
+                    colGrid = appPrefs.espColGrid,
+                    colRoad = appPrefs.espColRoad,
+                    colCar = appPrefs.espColCar,
+                    colHint = appPrefs.espColHint
+                )
+            )
+        }
+        fun bindColor(spId: Int, cur: Int, tag: String, setter: (Int) -> Unit) {
+            val spn = v.findViewById<android.widget.Spinner>(spId)
+            spn.adapter = android.widget.ArrayAdapter(
+                this, android.R.layout.simple_spinner_item, colorNames
+            ).also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+            val idx0 = colorVals.indexOf(cur)
+            spn.setSelection(if (idx0 >= 0) idx0 else 0, false)
+            spn.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(
+                    parent: android.widget.AdapterView<*>?,
+                    view: android.view.View?,
+                    position: Int,
+                    id: Long
+                ) {
+                    setter(colorVals[position])
+                    pushColors()
+                    log("ESP 颜色·$tag -> ${colorNames[position]}")
+                }
+
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+            }
+        }
+        bindColor(R.id.spEspColMain, appPrefs.espColMain, "主色") { appPrefs.espColMain = it }
+        bindColor(R.id.spEspColTrack, appPrefs.espColTrack, "轨迹") { appPrefs.espColTrack = it }
+        bindColor(R.id.spEspColGrid, appPrefs.espColGrid, "网格") { appPrefs.espColGrid = it }
+        bindColor(R.id.spEspColRoad, appPrefs.espColRoad, "路面") { appPrefs.espColRoad = it }
+        bindColor(R.id.spEspColCar, appPrefs.espColCar, "车头") { appPrefs.espColCar = it }
+        bindColor(R.id.spEspColHint, appPrefs.espColHint, "提示行") { appPrefs.espColHint = it }
+
+        /* 【M2.4】App 行程图卡片开关（与 ESP 端行程图小地图对应，关掉可对比观察） */
+        val cbTripCard = v.findViewById<android.widget.CheckBox>(R.id.setDbgTripCard)
+        cbTripCard.isChecked = appPrefs.dbgTripCard
+        cbTripCard.setOnCheckedChangeListener { _, c ->
+            appPrefs.dbgTripCard = c
+            binding.tripView.visibility = if (c && navActive) View.VISIBLE else View.GONE
+            log("App 行程图卡片 = $c")
+        }
+
+        /* 【M3.2】地图底图：开关 + 刷新间隔（间隔滑杆步长 100ms，对应 0.5–5.0 s） */
+        val cbEspMapShot = v.findViewById<android.widget.CheckBox>(R.id.cbEspMapShot)
+        val skEspMapShotInt = v.findViewById<android.widget.SeekBar>(R.id.seekEspMapShotInt)
+        val tvEspMapShotInt = v.findViewById<android.widget.TextView>(R.id.tvEspMapShotInt)
+        cbEspMapShot.isChecked = appPrefs.espMapShotOn
+        skEspMapShotInt.max =
+            (com.espnav.app.data.AppPrefs.MAP_SHOT_INT_MAX - com.espnav.app.data.AppPrefs.MAP_SHOT_INT_MIN) / 100
+        skEspMapShotInt.progress =
+            (appPrefs.espMapShotIntervalMs - com.espnav.app.data.AppPrefs.MAP_SHOT_INT_MIN) / 100
+        fun refreshMapShotLabel() {
+            tvEspMapShotInt.text = getString(R.string.set_esp_map_shot_int) + "：" +
+                (appPrefs.espMapShotIntervalMs / 1000.0) + " s"
+        }
+        refreshMapShotLabel()
+        cbEspMapShot.setOnCheckedChangeListener { _, c ->
+            appPrefs.espMapShotOn = c
+            log("ESP 地图底图 = $c")
+        }
+        skEspMapShotInt.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                appPrefs.espMapShotIntervalMs =
+                    com.espnav.app.data.AppPrefs.MAP_SHOT_INT_MIN + p * 100
+                refreshMapShotLabel()
+                log("底图刷新间隔 = " + (appPrefs.espMapShotIntervalMs / 1000.0) + " s")
+            }
+
+            override fun onStartTrackingTouch(sb: android.widget.SeekBar?) = Unit
+            override fun onStopTrackingTouch(sb: android.widget.SeekBar?) = Unit
+        })
+
+        /** 把滑杆旁标签写成“名称：65%” */
+        fun espLabel(tvId: Int, nameId: Int, pct: Int) {
+            v.findViewById<android.widget.TextView>(tvId).text = getString(nameId) + "：" + pct + "%"
+        }
+        fun refreshEspLabels() {
+            espLabel(R.id.tvEspScrimCompass, R.string.set_esp_scrim_compass, skEspScrimCompass.progress)
+            espLabel(R.id.tvEspScrimText, R.string.set_esp_scrim_text, skEspScrimText.progress)
+            espLabel(R.id.tvEspScrimRoute, R.string.set_esp_scrim_route, skEspScrimRoute.progress)
+            espLabel(R.id.tvEspScrimClock, R.string.set_esp_scrim_clock, skEspScrimClock.progress)
+            espLabel(R.id.tvEspGrid, R.string.set_esp_grid, skEspGrid.progress)
+        }
+        refreshEspLabels()
+
+        /** 保存这 6 项，并在已连接时立刻下发 */
+        fun pushEspStyle() {
+            appPrefs.espScrimOn = cbEspScrimOn.isChecked
+            appPrefs.espScrimCompass = skEspScrimCompass.progress
+            appPrefs.espScrimText = skEspScrimText.progress
+            appPrefs.espScrimRoute = skEspScrimRoute.progress
+            appPrefs.espScrimClock = skEspScrimClock.progress
+            appPrefs.espGridBright = skEspGrid.progress
+            if (client.isConnected) {
+                send(
+                    OutMsg.setConfig(
+                        scrimOn = appPrefs.espScrimOn,
+                        scrimCompass = appPrefs.espScrimCompass,
+                        scrimText = appPrefs.espScrimText,
+                        scrimRoute = appPrefs.espScrimRoute,
+                        scrimClock = appPrefs.espScrimClock,
+                        gridBright = appPrefs.espGridBright
+                    )
+                )
+            }
+        }
+        fun espSeek(tag: String) = object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
+                refreshEspLabels()
+                if (fromUser) pushEspStyle()
+            }
+
+            override fun onStartTrackingTouch(sb: android.widget.SeekBar?) = Unit
+
+            override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {
+                log("$tag = ${sb?.progress ?: 0}%")
+            }
+        }
+        skEspScrimCompass.setOnSeekBarChangeListener(espSeek("罗盘底衬透明度"))
+        skEspScrimText.setOnSeekBarChangeListener(espSeek("文字底衬透明度"))
+        skEspScrimRoute.setOnSeekBarChangeListener(espSeek("行程图底衬透明度"))
+        skEspScrimClock.setOnSeekBarChangeListener(espSeek("时间底衬透明度"))
+        skEspGrid.setOnSeekBarChangeListener(espSeek("行程图网格亮度"))
+        cbEspScrimOn.setOnCheckedChangeListener { _, checked ->
+            pushEspStyle()
+            log("ESP 半透明底衬 = $checked")
+        }
+
         ed(R.id.setHost).setText(appPrefs.host)
         ed(R.id.setPort).setText(appPrefs.port.toString())
         cbAutoConn.isChecked = appPrefs.autoConnectOnStart
@@ -829,6 +1136,13 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 appPrefs.dbgShowCenterLn = cbDbgCln.isChecked
                 appPrefs.dbgShowOverview = cbDbgOv.isChecked
                 appPrefs.dbgShowCar = cbDbgCar.isChecked
+                /* 【M1】ESP 屏叠加层 6 项（拖动时已实时写入，这里再确认一次，覆盖未触发监听的边界） */
+                appPrefs.espScrimOn = cbEspScrimOn.isChecked
+                appPrefs.espScrimCompass = skEspScrimCompass.progress
+                appPrefs.espScrimText = skEspScrimText.progress
+                appPrefs.espScrimRoute = skEspScrimRoute.progress
+                appPrefs.espScrimClock = skEspScrimClock.progress
+                appPrefs.espGridBright = skEspGrid.progress
                 applyPrefsToUi()
                 log(getString(R.string.set_saved))
             }
@@ -1101,6 +1415,21 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 binding.mapView.requestLayout()
                 binding.mapView.postInvalidate()
             }
+            /* 【M3.3】地图"空白"修复：GL 上下文在切走/熄屏后可能失效，
+             * 只 requestLayout + postInvalidate 不够 —— 再把**当前相机参数原样设回去**，
+             * 强制高德重绘一帧（参数不变，所以不会改变用户视角）。 */
+            binding.mapView.postDelayed({
+                runCatching {
+                    binding.mapView.requestLayout()
+                    binding.mapView.postInvalidate()
+                    val am = aMap
+                    if (am != null) {
+                        val cp = am.cameraPosition
+                        am.moveCamera(com.amap.api.maps.CameraUpdateFactory.newCameraPosition(cp))
+                    }
+                    log("导航页地图已强制重绘（防空白）")
+                }
+            }, 120)
             return
         }
         try {
@@ -1435,6 +1764,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             }
         }
         if (all.isNotEmpty()) binding.tripView.setData(all, i0)
+        /* 【M2.4】行程图卡片显隐受设置开关控制（每帧设置一次，开销可忽略） */
+        binding.tripView.visibility = if (appPrefs.dbgTripCard && navActive) View.VISIBLE else View.GONE
 
         if (o == null) return
         val cur = com.amap.api.maps.model.LatLng(o.lat, o.lon)
@@ -1479,6 +1810,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     /** 结束导航：停推流、清导航图形、恢复预览态与正北视角 */
     private fun endNav() {
+        mapShotTick = 0                      /* 【M3.2】结束导航：停止底图推送节奏 */
         mockJob?.cancel()
         mockJob = null
         runCatching { navSource.stop() }
@@ -1641,7 +1973,9 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     companion object {
-        private const val DEFAULT_HOST = "192.168.4.1"
+        private const val DEFAULT_HOST = "192.168.43.117"
+        /** 【M3.3】启动权限引导专用请求码（与 REQ_LOCATION 分开：后者会触发 startAmapNav） */
+        private const val REQ_PERM_GUIDE = 2048
         private const val REQ_LOCATION = 1001          /* 连接页：高德骑行导航 */
         private const val REQ_LOCATION_PREVIEW = 1003  /* 导航页：预览路线（必须与上面区分，否则授权后会误启导航） */
         private const val REQ_NOTIFY = 1002

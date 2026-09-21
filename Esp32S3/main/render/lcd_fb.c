@@ -53,6 +53,51 @@ void fb_fill_rect(int x0, int y0, int x1, int y1, uint16_t color)
     }
 }
 
+/* ---- 【M1.0 静态图导航】区域压暗（半透明暗底衬）----
+ * RGB565 三分量各自按 keep = (100 - trans)% 缩放，用 32/64/32 项查找表避免逐像素乘除
+ * （全屏 320×240 = 76800 像素，每帧多次调用，查表版约 1–2ms）。
+ * 表按 trans 惰性重建：trans 通常只在 App 下发 SET_CONFIG 时变化。 */
+static uint16_t s_dim_r[32];
+static uint16_t s_dim_g[64];
+static uint16_t s_dim_b[32];
+static int      s_dim_trans = -1;      /* 当前表对应的 trans；-1 = 尚未建表 */
+
+static void dim_build_tables(int trans)
+{
+    if (trans < 0)   trans = 0;
+    if (trans > 100) trans = 100;
+    if (trans == s_dim_trans) return;              /* 同一 trans 不重复建表 */
+    int k = (100 - trans) * 256 / 100;             /* 保留比例（256 = 完全不衰减） */
+    if (k > 256) k = 256;
+    for (int i = 0; i < 32; i++) s_dim_r[i] = (uint16_t)(((unsigned)i * (unsigned)k) >> 8);
+    for (int i = 0; i < 64; i++) s_dim_g[i] = (uint16_t)(((unsigned)i * (unsigned)k) >> 8);
+    for (int i = 0; i < 32; i++) s_dim_b[i] = (uint16_t)(((unsigned)i * (unsigned)k) >> 8);
+    s_dim_trans = trans;
+}
+
+void fb_dim_rect(int x0, int y0, int x1, int y1, int trans)
+{
+    if (!s_fb) return;
+    if (trans <= 0) { fb_fill_rect(x0, y0, x1, y1, RGB565_BLACK); return; }  /* 全黑底衬 */
+    if (trans >= 100) return;                                                /* 无底衬 */
+    dim_build_tables(trans);
+    if (x0 > x1) { int t = x0; x0 = x1; x1 = t; }
+    if (y0 > y1) { int t = y0; y0 = y1; y1 = t; }
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 >= FB_W) x1 = FB_W - 1;
+    if (y1 >= FB_H) y1 = FB_H - 1;
+    for (int y = y0; y <= y1; y++) {
+        uint16_t *row = &s_fb[y * FB_W];
+        for (int x = x0; x <= x1; x++) {
+            uint16_t p = row[x];
+            row[x] = (uint16_t)((s_dim_r[(p >> 11) & 0x1F] << 11) |
+                                (s_dim_g[(p >> 5)  & 0x3F] << 5)  |
+                                 s_dim_b[ p        & 0x1F]);
+        }
+    }
+}
+
 void fb_line(int x0, int y0, int x1, int y1, uint16_t color)
 {
     int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;

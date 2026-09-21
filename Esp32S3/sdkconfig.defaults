@@ -7,9 +7,12 @@ CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
-# PSRAM：暂时禁用（排除启动异常；帧缓冲 150KB 内部 SRAM 足够，lcd_fb 自动回退）
-# 后续稳定后再启用：CONFIG_SPIRAM=y / CONFIG_SPIRAM_MODE_OCT=y
-CONFIG_SPIRAM=n
+# PSRAM：启用（实机实测正常：octal_psram Found 8MB PSRAM device）
+# 为什么启用：帧缓冲 150KB 放 PSRAM，给内部 SRAM 留余量（地图底图 / JPEG 解码都要用）；
+# lcd_fb 的分配策略是"优先 PSRAM、回退内部 SRAM"，所以两侧都能跑。
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_40M=y
 
 # 控制台走内置 USB-Serial/JTAG（板上仅此一个 USB 口；默认 UART0 未引出）
 CONFIG_ESP_CONSOLE_UART_DEFAULT=n

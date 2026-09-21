@@ -19,8 +19,8 @@ android {
         applicationId "com.espnav.app"
         minSdk 24
         targetSdk 33
-        versionCode 2
-        versionName "1.1.0"
+        versionCode 3
+        versionName "1.2.0"
 
         // 注入 AndroidManifest 里的 com.amap.api.v2.apikey
         manifestPlaceholders = [AMAP_KEY: amapKey]
