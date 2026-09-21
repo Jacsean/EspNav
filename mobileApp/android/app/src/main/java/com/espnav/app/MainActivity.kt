@@ -501,6 +501,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
      * 整条链路的稳定性；确认稳定后再决定要不要加周期性刷新。
      * 注意：本版**完全不碰地图相机**（不 moveCamera / 不改 tilt），避免 M1 的相机耦合问题。 */
     private val mapShotSeq = java.util.concurrent.atomic.AtomicInteger(0)
+    private var mapShotTick = 0          /* 【M3.2】主循环计数：每 N 帧推一张底图 */
 
     private fun captureAndSendMapShot() {
         val am = aMap ?: run { log("底图截图跳过：地图未就绪"); return }
@@ -559,6 +560,13 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 /* 导航画面：与发帧同频刷新（失败不影响推流） */
                 (navSource as? AmapNavSource)?.let { s ->
                     if (navActive) runCatching { updateNavUi(s) }
+                }
+                /* 【M3.2】地图底图：按设置间隔推一张（默认 3s；开关关掉就完全不发） */
+                mapShotTick++
+                val shotEvery = (appPrefs.espMapShotIntervalMs / FRAME_INTERVAL_MS).coerceAtLeast(1)
+                if (appPrefs.espMapShotOn && mapShotTick >= shotEvery) {
+                    mapShotTick = 0
+                    runCatching { captureAndSendMapShot() }
                 }
                 delay(FRAME_INTERVAL_MS)
             }
@@ -889,6 +897,37 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             binding.tripView.visibility = if (c && navActive) View.VISIBLE else View.GONE
             log("App 行程图卡片 = $c")
         }
+
+        /* 【M3.2】地图底图：开关 + 刷新间隔（间隔滑杆步长 100ms，对应 0.5–5.0 s） */
+        val cbEspMapShot = v.findViewById<android.widget.CheckBox>(R.id.cbEspMapShot)
+        val skEspMapShotInt = v.findViewById<android.widget.SeekBar>(R.id.seekEspMapShotInt)
+        val tvEspMapShotInt = v.findViewById<android.widget.TextView>(R.id.tvEspMapShotInt)
+        cbEspMapShot.isChecked = appPrefs.espMapShotOn
+        skEspMapShotInt.max =
+            (com.espnav.app.data.AppPrefs.MAP_SHOT_INT_MAX - com.espnav.app.data.AppPrefs.MAP_SHOT_INT_MIN) / 100
+        skEspMapShotInt.progress =
+            (appPrefs.espMapShotIntervalMs - com.espnav.app.data.AppPrefs.MAP_SHOT_INT_MIN) / 100
+        fun refreshMapShotLabel() {
+            tvEspMapShotInt.text = getString(R.string.set_esp_map_shot_int) + "：" +
+                (appPrefs.espMapShotIntervalMs / 1000.0) + " s"
+        }
+        refreshMapShotLabel()
+        cbEspMapShot.setOnCheckedChangeListener { _, c ->
+            appPrefs.espMapShotOn = c
+            log("ESP 地图底图 = $c")
+        }
+        skEspMapShotInt.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                appPrefs.espMapShotIntervalMs =
+                    com.espnav.app.data.AppPrefs.MAP_SHOT_INT_MIN + p * 100
+                refreshMapShotLabel()
+                log("底图刷新间隔 = " + (appPrefs.espMapShotIntervalMs / 1000.0) + " s")
+            }
+
+            override fun onStartTrackingTouch(sb: android.widget.SeekBar?) = Unit
+            override fun onStopTrackingTouch(sb: android.widget.SeekBar?) = Unit
+        })
 
         /** 把滑杆旁标签写成“名称：65%” */
         fun espLabel(tvId: Int, nameId: Int, pct: Int) {
@@ -1715,6 +1754,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     /** 结束导航：停推流、清导航图形、恢复预览态与正北视角 */
     private fun endNav() {
+        mapShotTick = 0                      /* 【M3.2】结束导航：停止底图推送节奏 */
         mockJob?.cancel()
         mockJob = null
         runCatching { navSource.stop() }

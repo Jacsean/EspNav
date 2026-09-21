@@ -134,6 +134,20 @@ class AppPrefs(ctx: Context) {
         get() = sp.getInt(K_ESCRIM_CLOCK, 65)
         set(v) = sp.edit().putInt(K_ESCRIM_CLOCK, v.coerceIn(0, 100)).apply()
 
+    /* ---- 【M3.2】地图底图：导航中按间隔推送截图（App 侧定时） ---- */
+
+    /** 是否推送地图底图（关掉后不再发 IMG_*，ESP 保持当前画面） */
+    var espMapShotOn: Boolean
+        get() = sp.getBoolean(K_EMAPSHOT, true)
+        set(v) = sp.edit().putBoolean(K_EMAPSHOT, v).apply()
+
+    /** 底图刷新间隔（毫秒），限定 500–5000。
+     *  下限 500ms：ESP 解码一张 320×240 JPEG 约 100–200ms，再密会在设备侧堆积；
+     *  上限 5000ms：省流量/省电。默认 3000ms（比 M1 的 1s 更保守，先验证稳定性）。 */
+    var espMapShotIntervalMs: Int
+        get() = sp.getInt(K_EMAPSHOT_INT, 3000)
+        set(v) = sp.edit().putInt(K_EMAPSHOT_INT, v.coerceIn(MAP_SHOT_INT_MIN, MAP_SHOT_INT_MAX)).apply()
+
     /** 【M2.5】屏幕内容水平翻转（分光镜 HUD）：默认开。
      *  分光镜（半透半反镜）让人眼看到的是左右镜像画面，所以 ESP 端送屏前要预先水平镜像。
      *  用字面 key（暂不进配置文件导出项），后续若要纳入配置再补常量与导出。 */
@@ -281,6 +295,9 @@ class AppPrefs(ctx: Context) {
         private const val K_ESCRIM_ROUTE = "esp_scrim_route"
         private const val K_ESCRIM_CLOCK = "esp_scrim_clock"
         private const val K_EGRID = "esp_grid_bright"
+        /* M3.2：地图底图 */
+        private const val K_EMAPSHOT = "esp_map_shot_on"
+        private const val K_EMAPSHOT_INT = "esp_map_shot_interval_ms"
         private const val K_DBG_TRIP = "dbg_trip_card"
         /* M2.4：ESP 屏颜色（RGB565 十进制） */
         private const val K_ECOL_MAIN = "esp_col_main"
@@ -308,6 +325,10 @@ class AppPrefs(ctx: Context) {
          *  旧默认 `192.168.4.1` 是 softAP 配网网关，只在"刚进过配网页"时才对；
          *  日常使用时 ESP 连手机热点拿到 192.168.43.117 —— 默认值不一致时，每次重装
          *  都得先用配置文件覆盖才能连上。192.168.4.1 仍保留在「一键连接」候选里作兜底。 */
+        /** 【M3.2】底图刷新间隔范围（ms）：与设置页滑杆一致 */
+        const val MAP_SHOT_INT_MIN = 500
+        const val MAP_SHOT_INT_MAX = 5000
+
         const val DEF_HOST = "192.168.43.117"
         const val DEF_PORT = 8899
         const val DEF_FROM = "北京亦庄泰河三街1号"

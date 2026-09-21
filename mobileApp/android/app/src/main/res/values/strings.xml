@@ -114,6 +114,9 @@
     <string name="set_open_app_settings">前往系统设置授权（定位）</string>
     <string name="set_saved">设置已保存</string>
     <string name="set_screen_flip">屏幕内容水平翻转（分光镜 HUD 用，默认开）</string>
+    <string name="set_group_esp_map">ESP 屏地图底图（App 截图推送）</string>
+    <string name="set_esp_map_shot">推送地图底图（关掉则 ESP 保持当前画面）</string>
+    <string name="set_esp_map_shot_int">底图刷新间隔</string>
     <string name="set_group_esp_color">ESP 屏颜色（APK 里改，立即生效）</string>
     <string name="set_esp_col_hint_text">从预设色板里选；选择即保存并一次性下发全部颜色。</string>
     <string name="set_esp_col_main">主色（文字 / 罗盘 / 路名 / 统计 / 时间）</string>

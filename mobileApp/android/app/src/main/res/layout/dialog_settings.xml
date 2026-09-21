@@ -389,6 +389,32 @@
             android:layout_marginTop="6dp"
             android:text="@string/set_dbg_trip_card" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="10dp"
+            android:text="@string/set_group_esp_map"
+            android:textStyle="bold" />
+
+        <CheckBox
+            android:id="@+id/cbEspMapShot"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/set_esp_map_shot" />
+
+        <TextView
+            android:id="@+id/tvEspMapShotInt"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textSize="12sp"
+            android:text="@string/set_esp_map_shot_int" />
+
+        <SeekBar
+            android:id="@+id/seekEspMapShotInt"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
         <CheckBox
             android:id="@+id/setScreenFlip"
             android:layout_width="match_parent"
