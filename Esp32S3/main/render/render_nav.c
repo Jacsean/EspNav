@@ -31,8 +31,25 @@ static char        s_clock[NAV_CLOCK_MAX + 1];   /* 【M2.6】CLOCK 报文缓存
 #define NAV_FAR_Y     28
 #define NAV_NEAR_HALF 75      /* 近宽 150 */
 #define NAV_FAR_HALF  18      /* 远宽 36  */
-#define ROAD_GRAY     0x73AE  /* #777777 -> RGB565 */
-#define PATH_GREEN    0x07E0
+/** 【M2.4】颜色改为"可配置"：draw_frame 每帧从 config 同步到下面这几个文件级变量，
+ *  于是全文所有 PATH_GREEN / ROAD_GRAY 用法自动跟随 App 设置（0 = 用默认色兜底）。
+ *  对应 App 设置项：主色 / 轨迹色 / 网格色 / 路面色 / 车头色 / 提示色。 */
+#define DEF_COL_MAIN   0x07E0   /* 绿：文字/罗盘/路名/统计/时间/fallback 中心线 */
+#define DEF_COL_ROAD   0x73AE   /* 灰：路面 */
+#define DEF_COL_TRACK  0x5D9F   /* 亮蓝：行程图轨迹（用户要求蓝色系） */
+#define DEF_COL_GRID   0x8450   /* 灰绿：行程图网格基准色（再乘 grid_bright） */
+#define DEF_COL_CAR    0xFFE0   /* 黄：车头三角 */
+#define DEF_COL_HINT   0xFFE0   /* 黄：提示/警示行 */
+
+static uint16_t s_col_main  = DEF_COL_MAIN;
+static uint16_t s_col_road  = DEF_COL_ROAD;
+static uint16_t s_col_track = DEF_COL_TRACK;
+static uint16_t s_col_grid0 = DEF_COL_GRID;   /* 网格基准色（亮度再乘 grid_bright） */
+static uint16_t s_col_car   = DEF_COL_CAR;
+static uint16_t s_col_hint  = DEF_COL_HINT;
+
+#define ROAD_GRAY     s_col_road  /* 路面灰（配置） */
+#define PATH_GREEN    s_col_main  /* 主文字/罗盘/中心线颜色（配置） */
 
 /* ---- 绘制来源颜色分离（用户建议：每个元素用不同颜色，折线漂移时一眼看出是谁画的）----
  * 排查完成后可以把它们改回绿色，但保留分离对后续定位更有利。 */
@@ -334,9 +351,11 @@ static uint16_t grid_color(int bright, int boost)
     int v = bright + boost;
     if (v < 0) v = 0;
     if (v > 100) v = 100;
-    int r = 4 + (26 - 4) * v / 100;     /* 5bit：4 -> 26 */
-    int g = 8 + (54 - 8) * v / 100;     /* 6bit：8 -> 54 */
-    int b = 4 + (26 - 4) * v / 100;     /* 5bit：4 -> 26 */
+    /* 【M2.4】以配置的"网格色"（s_col_grid0）为基准按亮度比例缩放 ——
+     * App 里改网格色直接生效，"网格亮度"仍可微调对比。 */
+    int r = ((s_col_grid0 >> 11) & 0x1F) * v / 100;
+    int g = ((s_col_grid0 >> 5)  & 0x3F) * v / 100;
+    int b = ( s_col_grid0        & 0x1F) * v / 100;
     return (uint16_t)((r << 11) | (g << 5) | b);
 }
 
@@ -361,9 +380,11 @@ static void draw_overview(const nav_frame_t *f)
         ov_to_px(&f->overview[i], &x0, &y0);
         ov_to_px(&f->overview[i + 1], &x1, &y1);
         /* 3 倍粗（用户要求）：偏移画 3 条 */
-        fb_line(x0, y0, x1, y1, DBG_OVERVIEW);
-        fb_line(x0, y0 - 1, x1, y1 - 1, DBG_OVERVIEW);
-        fb_line(x0 + 1, y0, x1 + 1, y1, DBG_OVERVIEW);
+        /* 【M2.4】行程图轨迹线颜色来自 App 配置（默认亮蓝 #5CB0FF = 0x5D9F）。
+         * 用户 2026-09-19 反馈"原紫色对比度不好，改用蓝色系"。 */
+        fb_line(x0, y0, x1, y1, s_col_track);
+        fb_line(x0, y0 - 1, x1, y1 - 1, s_col_track);
+        fb_line(x0 + 1, y0, x1 + 1, y1, s_col_track);
     }
     /* 起终点标记：轨迹首点=起点(绿)、末点=终点(红)；当前位置仍为黄点（App 实时更新） */
     if (f->overview_n >= 2) {
@@ -698,6 +719,15 @@ static void draw_frame(const nav_frame_t *f, float anim)
 {
     const espnav_config_t *cfg = config_get();       /* 【M1.2/M1.3】叠加层可读性参数（App 下发） */
     if (!f || !f->valid) return;
+
+    /* 【M2.4】从配置同步颜色（0 = 用默认兜底）——
+     * 下面所有 PATH_GREEN / ROAD_GRAY 用法因此自动跟随 App 里的颜色设置。 */
+    s_col_main  = cfg->col_main  ? cfg->col_main  : DEF_COL_MAIN;
+    s_col_road  = cfg->col_road  ? cfg->col_road  : DEF_COL_ROAD;
+    s_col_track = cfg->col_track ? cfg->col_track : DEF_COL_TRACK;
+    s_col_grid0 = cfg->col_grid  ? cfg->col_grid  : DEF_COL_GRID;
+    s_col_car   = cfg->col_car   ? cfg->col_car   : DEF_COL_CAR;
+    s_col_hint  = cfg->col_hint  ? cfg->col_hint  : DEF_COL_HINT;
     fb_clear(RGB565_BLACK);
     fb_line(0, 160, FB_W - 1, 160, RGB565_DGRAY);
     fb_line(OV_AX, 160, OV_AX, FB_H - 1, RGB565_DGRAY);
@@ -742,7 +772,8 @@ static void draw_frame(const nav_frame_t *f, float anim)
     /* 【用户要求·临时暂停】车头恒定竖线不绘制，便于排查"车头附近折线漂移"到底是谁画的。
      * 恢复：把下面这行注释打开即可（原先为贯通 NAV_FAR_Y -> NAV_NEAR_Y 的绿色中轴线）。 */
     /* fb_line(NAV_CX, NAV_FAR_Y, NAV_CX, NAV_NEAR_Y, RGB565_GREEN); */
-    if (f->pos_valid) fb_triangle(f->pos.x, f->pos.y, 14, RGB565_YELLOW);
+    /* 【M2.4】车头三角颜色来自 App 配置（s_col_car） */
+    if (f->pos_valid) fb_triangle(f->pos.x, f->pos.y, 14, s_col_car);
 
 #if RENDER_TEXT
     /* 【M1.2/M1.3】叠加层可读性：先铺四类半透明暗底衬（在内容之上、文字之下），
@@ -777,7 +808,8 @@ static void draw_frame(const nav_frame_t *f, float anim)
         if (f->notice[0]) {                                     /* 路况/设施提示（红绿灯倒计时若将来可得也放这里） */
             static char nb[40];
             font_clip_utf8(f->notice, 20 * 16, nb, sizeof(nb));
-            draw_line_scroll(2, 4, 84, nb, RGB565_YELLOW, 316);
+            /* 【M2.4】提示/警示行颜色来自 App 配置（s_col_hint） */
+            draw_line_scroll(2, 4, 84, nb, s_col_hint, 316);
         }
 
         int km = (int)(f->total_dist / 1000);

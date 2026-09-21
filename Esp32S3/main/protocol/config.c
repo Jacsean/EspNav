@@ -19,6 +19,13 @@ void config_init(void)
     s_cfg.scrim_clock    = 65;
     s_cfg.grid_bright    = 55;
     s_cfg.map_area       = 0;    /* 默认全屏投放 */
+    /* M2.4 颜色：0 = 用渲染端默认色（App 未设置时不影响既有观感） */
+    s_cfg.col_main       = 0;
+    s_cfg.col_track      = 0;
+    s_cfg.col_grid       = 0;
+    s_cfg.col_road       = 0;
+    s_cfg.col_car        = 0;
+    s_cfg.col_hint       = 0;
     s_cfg.screen_flip    = true; /* 【M2.5】默认水平镜像（分光镜 HUD 场景）*/
     strncpy(s_cfg.firmware_ver, "V1.1.0", sizeof(s_cfg.firmware_ver) - 1);
     ESP_LOGI(TAG, "config default ready");
@@ -37,5 +44,12 @@ void config_set_scrim_route(uint8_t v)   { if (v <= 100) s_cfg.scrim_route = v; 
 void config_set_scrim_clock(uint8_t v)   { if (v <= 100) s_cfg.scrim_clock = v; }
 void config_set_grid_bright(uint8_t v)   { if (v <= 100) s_cfg.grid_bright = v; }
 void config_set_map_area(uint8_t v)      { s_cfg.map_area = (v == 0) ? 0 : 1; }
+/* ---- M2.4：ESP 屏颜色（0 = 用固件默认色）---- */
+void config_set_col_main(uint16_t v)     { s_cfg.col_main = v; }
+void config_set_col_track(uint16_t v)    { s_cfg.col_track = v; }
+void config_set_col_grid(uint16_t v)     { s_cfg.col_grid = v; }
+void config_set_col_road(uint16_t v)     { s_cfg.col_road = v; }
+void config_set_col_car(uint16_t v)      { s_cfg.col_car = v; }
+void config_set_col_hint(uint16_t v)     { s_cfg.col_hint = v; }
 /* ---- M2.5：分光镜 HUD 整屏水平镜像 ---- */
 void config_set_screen_flip(bool v)      { s_cfg.screen_flip = v; }

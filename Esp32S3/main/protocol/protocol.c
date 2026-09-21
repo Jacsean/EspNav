@@ -118,6 +118,31 @@ static void apply_set_config(const char *line)
         config_set_map_area((uint8_t)v);
         ESP_LOGI(TAG, "apply map_area=%d", v);
     }
+    /* ---- 【M2.4】ESP 屏颜色（0 = 用固件默认色；渲染端每帧读 config）---- */
+    if (jl_get_int(line, "col_main", -1, &v) && v >= 0) {
+        config_set_col_main((uint16_t)v);
+        ESP_LOGI(TAG, "apply col_main=%d", v);
+    }
+    if (jl_get_int(line, "col_track", -1, &v) && v >= 0) {
+        config_set_col_track((uint16_t)v);
+        ESP_LOGI(TAG, "apply col_track=%d", v);
+    }
+    if (jl_get_int(line, "col_grid", -1, &v) && v >= 0) {
+        config_set_col_grid((uint16_t)v);
+        ESP_LOGI(TAG, "apply col_grid=%d", v);
+    }
+    if (jl_get_int(line, "col_road", -1, &v) && v >= 0) {
+        config_set_col_road((uint16_t)v);
+        ESP_LOGI(TAG, "apply col_road=%d", v);
+    }
+    if (jl_get_int(line, "col_car", -1, &v) && v >= 0) {
+        config_set_col_car((uint16_t)v);
+        ESP_LOGI(TAG, "apply col_car=%d", v);
+    }
+    if (jl_get_int(line, "col_hint", -1, &v) && v >= 0) {
+        config_set_col_hint((uint16_t)v);
+        ESP_LOGI(TAG, "apply col_hint=%d", v);
+    }
     /* ---- 【M2.5】分光镜 HUD：整屏水平镜像（App 设置项，默认开）---- */
     if (jl_get_bool(line, "screen_flip", &on)) {
         config_set_screen_flip(on);
