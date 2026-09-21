@@ -261,7 +261,17 @@ object NavStateMapper {
             road = roadOf(s),
             speedKmh = s.speedKmh,
             roadName = safe(s.currentRoad),        /* 过滤字库外汉字（待扩字库后可完整显示） */
-            notice = ""                            /* 路况/测速提示：下一轮接入 */
+            notice = "",                           /* 路况/测速提示：下一轮接入 */
+            clock = nowClock()                     /* 【M1.2】时:分:秒（ESP 无 RTC，由 App 下发） */
         )
+    }
+
+    /** 【M1.2】当前时间 "HH:MM:SS"：ESP 没有 RTC，只能由 App 每帧下发。 */
+    private fun nowClock(): String {
+        val c = java.util.Calendar.getInstance()
+        fun p2(n: Int) = if (n < 10) "0$n" else "$n"
+        return p2(c.get(java.util.Calendar.HOUR_OF_DAY)) + ":" +
+            p2(c.get(java.util.Calendar.MINUTE)) + ":" +
+            p2(c.get(java.util.Calendar.SECOND))
     }
 }

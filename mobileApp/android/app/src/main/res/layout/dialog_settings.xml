@@ -126,6 +126,95 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingTop="10dp"
+            android:text="@string/set_group_esp_style"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:text="@string/set_esp_hint" />
+
+        <CheckBox
+            android:id="@+id/setEspScrimOn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/set_esp_scrim" />
+
+        <TextView
+            android:id="@+id/tvEspScrimCompass"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textSize="12sp"
+            android:text="@string/set_esp_scrim_compass" />
+
+        <SeekBar
+            android:id="@+id/seekEspScrimCompass"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100" />
+
+        <TextView
+            android:id="@+id/tvEspScrimText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textSize="12sp"
+            android:text="@string/set_esp_scrim_text" />
+
+        <SeekBar
+            android:id="@+id/seekEspScrimText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100" />
+
+        <TextView
+            android:id="@+id/tvEspScrimRoute"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textSize="12sp"
+            android:text="@string/set_esp_scrim_route" />
+
+        <SeekBar
+            android:id="@+id/seekEspScrimRoute"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100" />
+
+        <TextView
+            android:id="@+id/tvEspScrimClock"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textSize="12sp"
+            android:text="@string/set_esp_scrim_clock" />
+
+        <SeekBar
+            android:id="@+id/seekEspScrimClock"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100" />
+
+        <TextView
+            android:id="@+id/tvEspGrid"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textSize="12sp"
+            android:text="@string/set_esp_grid" />
+
+        <SeekBar
+            android:id="@+id/seekEspGrid"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="10dp"
             android:text="@string/set_group_debug"
             android:textStyle="bold" />
 

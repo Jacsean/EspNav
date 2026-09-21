@@ -96,6 +96,43 @@ class AppPrefs(ctx: Context) {
         get() = sp.getString(K_SAMPLER, PolylineSampler.MODE_VW) ?: PolylineSampler.MODE_VW
         set(v) = sp.edit().putString(K_SAMPLER, v).apply()
 
+    /* ================= 【M1 静态图导航】ESP 屏叠加层可读性 =================
+     * 这些参数作用在“地图底图之上”的罗盘 / 文字 / 行程图 / 时间四类半透明暗底衬，
+     * 以及行程图网格亮度。**语义**：透明度 0 = 全黑底衬，100 = 不铺底衬
+     * （值越大越透、背景越明显）。
+     * 下发时机：① 连接成功后自动下发一次 ② 在设置里拖动时实时下发（立即生效）。
+     * 固件侧不落 NVS，持久化就在这里（并可随配置文件导出/导入）。 */
+
+    /** 半透明暗底衬总开关 */
+    var espScrimOn: Boolean
+        get() = sp.getBoolean(K_ESCRIM_ON, true)
+        set(v) = sp.edit().putBoolean(K_ESCRIM_ON, v).apply()
+
+    /** 罗盘底衬透明度 0-100 */
+    var espScrimCompass: Int
+        get() = sp.getInt(K_ESCRIM_COMPASS, 65)
+        set(v) = sp.edit().putInt(K_ESCRIM_COMPASS, v.coerceIn(0, 100)).apply()
+
+    /** 文字底衬透明度（路名 / 导航提示 / 距离 / 左下统计） */
+    var espScrimText: Int
+        get() = sp.getInt(K_ESCRIM_TEXT, 65)
+        set(v) = sp.edit().putInt(K_ESCRIM_TEXT, v.coerceIn(0, 100)).apply()
+
+    /** 行程图底衬透明度（比其它更实一点：网格线本身偏暗） */
+    var espScrimRoute: Int
+        get() = sp.getInt(K_ESCRIM_ROUTE, 40)
+        set(v) = sp.edit().putInt(K_ESCRIM_ROUTE, v.coerceIn(0, 100)).apply()
+
+    /** 时间底衬透明度 */
+    var espScrimClock: Int
+        get() = sp.getInt(K_ESCRIM_CLOCK, 65)
+        set(v) = sp.edit().putInt(K_ESCRIM_CLOCK, v.coerceIn(0, 100)).apply()
+
+    /** 行程图网格亮度 0-100（主格线每 50px 再亮一档） */
+    var espGridBright: Int
+        get() = sp.getInt(K_EGRID, 55)
+        set(v) = sp.edit().putInt(K_EGRID, v.coerceIn(0, 100)).apply()
+
     // ---------------- 独立配置文件（导出/导入） ----------------
 
     /** 把当前全部配置导出成 JSON（供写入外部配置文件） */
@@ -116,6 +153,12 @@ class AppPrefs(ctx: Context) {
         put("dbgShowCenterLn", dbgShowCenterLn)
         put("dbgShowOverview", dbgShowOverview)
         put("dbgShowCar", dbgShowCar)
+        put("espScrimOn", espScrimOn)
+        put("espScrimCompass", espScrimCompass)
+        put("espScrimText", espScrimText)
+        put("espScrimRoute", espScrimRoute)
+        put("espScrimClock", espScrimClock)
+        put("espGridBright", espGridBright)
         put(
             "savedAt",
             java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
@@ -143,6 +186,12 @@ class AppPrefs(ctx: Context) {
         if (o.has("dbgShowCenterLn")) { dbgShowCenterLn = o.optBoolean("dbgShowCenterLn", dbgShowCenterLn); n++ }
         if (o.has("dbgShowOverview")) { dbgShowOverview = o.optBoolean("dbgShowOverview", dbgShowOverview); n++ }
         if (o.has("dbgShowCar")) { dbgShowCar = o.optBoolean("dbgShowCar", dbgShowCar); n++ }
+        if (o.has("espScrimOn")) { espScrimOn = o.optBoolean("espScrimOn", espScrimOn); n++ }
+        if (o.has("espScrimCompass")) { espScrimCompass = o.optInt("espScrimCompass", espScrimCompass); n++ }
+        if (o.has("espScrimText")) { espScrimText = o.optInt("espScrimText", espScrimText); n++ }
+        if (o.has("espScrimRoute")) { espScrimRoute = o.optInt("espScrimRoute", espScrimRoute); n++ }
+        if (o.has("espScrimClock")) { espScrimClock = o.optInt("espScrimClock", espScrimClock); n++ }
+        if (o.has("espGridBright")) { espGridBright = o.optInt("espGridBright", espGridBright); n++ }
         return n
     }
 
@@ -164,6 +213,13 @@ class AppPrefs(ctx: Context) {
         private const val K_DBG_ALLOFF = "dbg_all_off"
         private const val K_DBG_OV = "dbg_overview"
         private const val K_DBG_CAR = "dbg_car"
+        /* M1：ESP 屏叠加层可读性 */
+        private const val K_ESCRIM_ON = "esp_scrim_on"
+        private const val K_ESCRIM_COMPASS = "esp_scrim_compass"
+        private const val K_ESCRIM_TEXT = "esp_scrim_text"
+        private const val K_ESCRIM_ROUTE = "esp_scrim_route"
+        private const val K_ESCRIM_CLOCK = "esp_scrim_clock"
+        private const val K_EGRID = "esp_grid_bright"
 
         const val DEF_HOST = "192.168.4.1"
         const val DEF_PORT = 8899

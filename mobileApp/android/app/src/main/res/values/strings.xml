@@ -80,6 +80,15 @@
     <string name="set_dbg_centerln">绘制车道中线+真实路形路面（青）</string>
     <string name="set_dbg_overview">绘制行程图</string>
     <string name="set_dbg_car">绘制车头三角</string>
+
+    <string name="set_group_esp_style">ESP 屏叠加层（地图底图之上的可读性）</string>
+    <string name="set_esp_hint">透明度越大 = 底衬越透（背景越明显）；0 = 全黑底衬。改完立即下发生效，连接成功后也会自动下发一次。</string>
+    <string name="set_esp_scrim">半透明暗底衬总开关</string>
+    <string name="set_esp_scrim_compass">罗盘底衬透明度</string>
+    <string name="set_esp_scrim_text">文字底衬透明度（路名/提示/距离/统计）</string>
+    <string name="set_esp_scrim_route">行程图底衬透明度</string>
+    <string name="set_esp_scrim_clock">时间底衬透明度</string>
+    <string name="set_esp_grid">行程图网格亮度</string>
     <string name="set_group_cfg">配置文件（独立保存，卸载重装后仍在）</string>
     <string name="cfg_exists">配置文件：已存在</string>
     <string name="cfg_absent">配置文件：不存在</string>

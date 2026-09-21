@@ -223,6 +223,24 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         refreshActionStates()          /* 连接成功：相关操作解灰（用户要求：启动成功后刷新一次） */
         log("已连接 $addr")
         send(OutMsg.hello())                 /* 握手：告知 ESP32 “App 已上线” */
+        /* 【M1】连上就下发一次 ESP 屏叠加层参数（底衬 4 类 + 网格亮度）——
+         * 这样装好 App 直接连上就能看到效果，不必先进设置页逐个调。 */
+        send(
+            OutMsg.setConfig(
+                scrimOn = appPrefs.espScrimOn,
+                scrimCompass = appPrefs.espScrimCompass,
+                scrimText = appPrefs.espScrimText,
+                scrimRoute = appPrefs.espScrimRoute,
+                scrimClock = appPrefs.espScrimClock,
+                gridBright = appPrefs.espGridBright
+            )
+        )
+        log(
+            "已下发 ESP 叠加层：底衬=${appPrefs.espScrimOn} " +
+                "罗盘/文字/行程图/时间=${appPrefs.espScrimCompass}/" +
+                "${appPrefs.espScrimText}/${appPrefs.espScrimRoute}/${appPrefs.espScrimClock} " +
+                "网格亮度=${appPrefs.espGridBright}"
+        )
     }
 
     override fun onDisconnected(reason: String) {
@@ -719,6 +737,78 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         cbDbgOv.isChecked = appPrefs.dbgShowOverview
         cbDbgCar.isChecked = appPrefs.dbgShowCar
 
+        /* ---- 【M1】ESP 屏叠加层可读性（罗盘/文字/行程图/时间底衬 + 网格亮度）----
+         * 拖动滑杆：立即写 AppPrefs + 若已连接则立刻下发 SET_CONFIG（屏幕上马上能看到变化）。
+         * 未连接时只保存，连接成功后由 onConnected() 自动补发一次。 */
+        val cbEspScrimOn = v.findViewById<android.widget.CheckBox>(R.id.setEspScrimOn)
+        val skEspScrimCompass = v.findViewById<android.widget.SeekBar>(R.id.seekEspScrimCompass)
+        val skEspScrimText = v.findViewById<android.widget.SeekBar>(R.id.seekEspScrimText)
+        val skEspScrimRoute = v.findViewById<android.widget.SeekBar>(R.id.seekEspScrimRoute)
+        val skEspScrimClock = v.findViewById<android.widget.SeekBar>(R.id.seekEspScrimClock)
+        val skEspGrid = v.findViewById<android.widget.SeekBar>(R.id.seekEspGrid)
+        cbEspScrimOn.isChecked = appPrefs.espScrimOn
+        skEspScrimCompass.progress = appPrefs.espScrimCompass
+        skEspScrimText.progress = appPrefs.espScrimText
+        skEspScrimRoute.progress = appPrefs.espScrimRoute
+        skEspScrimClock.progress = appPrefs.espScrimClock
+        skEspGrid.progress = appPrefs.espGridBright
+
+        /** 把滑杆旁标签写成“名称：65%” */
+        fun espLabel(tvId: Int, nameId: Int, pct: Int) {
+            v.findViewById<android.widget.TextView>(tvId).text = getString(nameId) + "：" + pct + "%"
+        }
+        fun refreshEspLabels() {
+            espLabel(R.id.tvEspScrimCompass, R.string.set_esp_scrim_compass, skEspScrimCompass.progress)
+            espLabel(R.id.tvEspScrimText, R.string.set_esp_scrim_text, skEspScrimText.progress)
+            espLabel(R.id.tvEspScrimRoute, R.string.set_esp_scrim_route, skEspScrimRoute.progress)
+            espLabel(R.id.tvEspScrimClock, R.string.set_esp_scrim_clock, skEspScrimClock.progress)
+            espLabel(R.id.tvEspGrid, R.string.set_esp_grid, skEspGrid.progress)
+        }
+        refreshEspLabels()
+
+        /** 保存这 6 项，并在已连接时立刻下发 */
+        fun pushEspStyle() {
+            appPrefs.espScrimOn = cbEspScrimOn.isChecked
+            appPrefs.espScrimCompass = skEspScrimCompass.progress
+            appPrefs.espScrimText = skEspScrimText.progress
+            appPrefs.espScrimRoute = skEspScrimRoute.progress
+            appPrefs.espScrimClock = skEspScrimClock.progress
+            appPrefs.espGridBright = skEspGrid.progress
+            if (client.isConnected) {
+                send(
+                    OutMsg.setConfig(
+                        scrimOn = appPrefs.espScrimOn,
+                        scrimCompass = appPrefs.espScrimCompass,
+                        scrimText = appPrefs.espScrimText,
+                        scrimRoute = appPrefs.espScrimRoute,
+                        scrimClock = appPrefs.espScrimClock,
+                        gridBright = appPrefs.espGridBright
+                    )
+                )
+            }
+        }
+        fun espSeek(tag: String) = object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
+                refreshEspLabels()
+                if (fromUser) pushEspStyle()
+            }
+
+            override fun onStartTrackingTouch(sb: android.widget.SeekBar?) = Unit
+
+            override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {
+                log("$tag = ${sb?.progress ?: 0}%")
+            }
+        }
+        skEspScrimCompass.setOnSeekBarChangeListener(espSeek("罗盘底衬透明度"))
+        skEspScrimText.setOnSeekBarChangeListener(espSeek("文字底衬透明度"))
+        skEspScrimRoute.setOnSeekBarChangeListener(espSeek("行程图底衬透明度"))
+        skEspScrimClock.setOnSeekBarChangeListener(espSeek("时间底衬透明度"))
+        skEspGrid.setOnSeekBarChangeListener(espSeek("行程图网格亮度"))
+        cbEspScrimOn.setOnCheckedChangeListener { _, checked ->
+            pushEspStyle()
+            log("ESP 半透明底衬 = $checked")
+        }
+
         ed(R.id.setHost).setText(appPrefs.host)
         ed(R.id.setPort).setText(appPrefs.port.toString())
         cbAutoConn.isChecked = appPrefs.autoConnectOnStart
@@ -829,6 +919,13 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 appPrefs.dbgShowCenterLn = cbDbgCln.isChecked
                 appPrefs.dbgShowOverview = cbDbgOv.isChecked
                 appPrefs.dbgShowCar = cbDbgCar.isChecked
+                /* 【M1】ESP 屏叠加层 6 项（拖动时已实时写入，这里再确认一次，覆盖未触发监听的边界） */
+                appPrefs.espScrimOn = cbEspScrimOn.isChecked
+                appPrefs.espScrimCompass = skEspScrimCompass.progress
+                appPrefs.espScrimText = skEspScrimText.progress
+                appPrefs.espScrimRoute = skEspScrimRoute.progress
+                appPrefs.espScrimClock = skEspScrimClock.progress
+                appPrefs.espGridBright = skEspGrid.progress
                 applyPrefsToUi()
                 log(getString(R.string.set_saved))
             }
@@ -1439,18 +1536,20 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         if (o == null) return
         val cur = com.amap.api.maps.model.LatLng(o.lat, o.lon)
 
-        /* 相机跟随：位置移动 > 5m 或朝向变化 > 8° 才动（避免抖动 + 省电） */
+        /* 相机跟随：位置移动 > 2m 或朝向变化 > 3° 就更新。
+         * 用 moveCamera（立即生效）而不是 animateCamera —— 后者的 280ms 动画会被本方法
+         * 每 200ms 的下一次调用打断，表现为"地图方向不跟随行进方向"（用户实测）。 */
         val moved = navLastLat.isNaN() ||
             com.amap.api.maps.AMapUtils.calculateLineDistance(
                 com.amap.api.maps.model.LatLng(navLastLat, navLastLon), cur
-            ) > 5f
-        val turned = kotlin.math.abs(((head - navLastHeading + 540) % 360) - 180) > 8
+            ) > 2f
+        val turned = kotlin.math.abs(((head - navLastHeading + 540) % 360) - 180) > 3
         if (moved || turned) {
             runCatching {
-                am.animateCamera(
+                am.moveCamera(
                     com.amap.api.maps.CameraUpdateFactory.newCameraPosition(
                         com.amap.api.maps.model.CameraPosition(cur, 17f, head.toFloat(), 45f)
-                    ), 280, null
+                    )
                 )
             }
             navLastLat = o.lat
