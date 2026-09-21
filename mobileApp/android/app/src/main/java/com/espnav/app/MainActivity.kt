@@ -45,6 +45,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private lateinit var client: EspNavClient
     private var navSource: NavSource = MockNavSource()
     private var mockJob: Job? = null
+    private var clockJob: Job? = null      /* 【M2.6】连接后每秒下发 CLOCK（ESP 无 RTC） */
     private val prefs by lazy { getSharedPreferences("espnav", MODE_PRIVATE) }
     private val pendingCandidates = ArrayDeque<String>()
     /** 连接尝试互斥：避免“候选链/自动重连/扫描”三者并发建连（多连接会互相踢，屏幕反复切画面） */
@@ -223,6 +224,14 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         refreshActionStates()          /* 连接成功：相关操作解灰（用户要求：启动成功后刷新一次） */
         log("已连接 $addr")
         send(OutMsg.hello())                 /* 握手：告知 ESP32 “App 已上线” */
+        /* 【M2.6】连接后每秒下发 CLOCK：ESP 无 RTC；待机画面（已连接未导航）也据此显示时间 */
+        clockJob?.cancel()
+        clockJob = lifecycleScope.launch {
+            while (isActive) {
+                send(OutMsg.clock(timeFmt.format(java.util.Date())))
+                delay(1000)
+            }
+        }
         /* 【M1】连上就下发一次 ESP 屏叠加层参数（底衬 4 类 + 网格亮度）——
          * 这样装好 App 直接连上就能看到效果，不必先进设置页逐个调。 */
         send(
@@ -245,6 +254,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     override fun onDisconnected(reason: String) {
+        clockJob?.cancel()
+        clockJob = null
         stopMock()
         if (intentionalDisconnect) {                     /* 主动断开：不再自动重连 */
             intentionalDisconnect = false

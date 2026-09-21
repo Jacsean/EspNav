@@ -10,6 +10,9 @@ void render_nav_set_frame(const nav_frame_t *f);
 /* 已收到的帧计数（显示任务据此判断“数据是否真的在流动”，避免仅凭 TCP 连接切换画面） */
 uint32_t render_nav_frame_count(void);
 void render_nav_tick(float dt);
+/* 【M2.6】时间（时:分:秒）由 App 的 CLOCK 报文下发（ESP 无 RTC）。
+ * 待机画面（已连接、未导航）也显示时间 —— 因为 NAV_FRAME.clock 只在导航时才有。 */
+void render_nav_set_clock(const char *hhmmss);
 /* 立即用当前缓存帧渲染一次（收帧时调用，保证帧必上屏） */
 void render_nav_draw_now(void);
 void render_nav_frame(const nav_frame_t *f);   /* 立即渲染一帧（调试用；会触碰 SPI，仅允许显示任务调用） */

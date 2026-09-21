@@ -19,6 +19,7 @@ static bool        s_blank_req = false;
 static bool  s_hold_blank = false;   /* CLEAR_SCREEN 后保持黑屏，直到收到新导航帧（否则会被占位版式立刻覆盖） */  /* CLEAR_SCREEN 清屏请求（显示任务消费） */
 static bool        s_link_lost = false;  /* 链路断开：保留画面 + 中部“信号中断”提示 */
 static float       s_anim = 0.0f;    /* 虚线相位 */
+static char        s_clock[NAV_CLOCK_MAX + 1];   /* 【M2.6】CLOCK 报文缓存：待机画面也显示时间 */
 
 
 /* 临时二分开关：1=渲染文字层；0=跳过文字（用于定位黑屏/崩溃是否由文字渲染引起） */
@@ -40,6 +41,14 @@ static float       s_anim = 0.0f;    /* 虚线相位 */
 #define DBG_ROADPATH  0xF81F   /* 道路模板中心绿线：品红 */
 #define DBG_CENTERLN  0x07FF   /* fallback 车道中线 ：青 */
 #define DBG_OVERVIEW  0x780F   /* 行程图轨迹        ：紫 */
+
+/* 【M2.6】记录 App 下发的当前时间（CLOCK 报文）；待机画面据此显示 */
+void render_nav_set_clock(const char *hhmmss)
+{
+    if (!hhmmss) return;
+    strncpy(s_clock, hhmmss, NAV_CLOCK_MAX);
+    s_clock[NAV_CLOCK_MAX] = 0;
+}
 
 void render_nav_clear(void)
 {
@@ -827,6 +836,8 @@ void render_nav_tick(float dt)
         memset(&empty, 0, sizeof(empty));
         empty.valid = true;                  /* 用空帧驱动版式（路面/罗盘/行程图都在） */
         empty.heading = 0;
+        /* 【M2.6】待机画面也显示时间：用最近一次 CLOCK 报文的值（App 连接后每秒下发） */
+        memcpy(empty.clock, s_clock, sizeof(empty.clock));
         empty.pos.x = NAV_CX; empty.pos.y = 110; empty.pos_valid = true;
         s_anim += dt * 40.0f;                /* 虚线仍流动 */
         draw_frame(&empty, s_anim);

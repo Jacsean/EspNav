@@ -160,6 +160,14 @@ void protocol_handle(const char *line, int len, proto_send_fn send, void *ctx)
         nav_frame_on_json_line(line, len);
         return;
     }
+    if (!strcmp(mt, "CLOCK")) {                      /* 【M2.6】时间下发（ESP 无 RTC）：待机/导航画面都显示 */
+        char cb[NAV_CLOCK_MAX + 1];
+        if (jl_get_str(line, "clock", cb, sizeof(cb))) {
+            render_nav_set_clock(cb);
+            ESP_LOGI(TAG, "RX CLOCK %s", cb);
+        }
+        return;
+    }
     if (!strcmp(mt, "PING")) {
         int ts = 0, v = 0;
         jl_get_int(line, "ts", 0, &v);

@@ -108,6 +108,10 @@ object OutMsg {
     fun ping(ts: Long): String =
         Json.obj("msg_type" to "PING", "payload" to Json.obj("ts" to ts)).toString()
 
+    /** 【M2.6】时间下发：ESP 无 RTC，App 连接后每秒发一次；待机画面也据此显示时间 */
+    fun clock(hhmmss: String): String =
+        Json.obj("msg_type" to "CLOCK", "payload" to Json.obj("clock" to hhmmss)).toString()
+
     fun getConfig(): String =
         Json.obj("msg_type" to "GET_CONFIG", "payload" to JSONObject()).toString()
 
