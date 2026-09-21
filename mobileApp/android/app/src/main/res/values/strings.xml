@@ -114,4 +114,25 @@
     <string name="set_open_app_settings">前往系统设置授权（定位）</string>
     <string name="set_saved">设置已保存</string>
     <string name="set_screen_flip">屏幕内容水平翻转（分光镜 HUD 用，默认开）</string>
+    <string name="set_group_esp_color">ESP 屏颜色（APK 里改，立即生效）</string>
+    <string name="set_esp_col_hint_text">从预设色板里选；选择即保存并一次性下发全部颜色。</string>
+    <string name="set_esp_col_main">主色（文字 / 罗盘 / 路名 / 统计 / 时间）</string>
+    <string name="set_esp_col_track">行程图轨迹线</string>
+    <string name="set_esp_col_grid">行程图网格基准色</string>
+    <string name="set_esp_col_road">路面灰</string>
+    <string name="set_esp_col_car">车头三角</string>
+    <string name="set_esp_col_hint">提示 / 警示行文字</string>
+    <string name="set_dbg_trip_card">显示 App 导航页右下角「行程图卡片」</string>
+    <string-array name="esp_color_names">
+        <item>绿 #00E676</item>
+        <item>蓝 #5CB0FF</item>
+        <item>青 #00E5FF</item>
+        <item>黄 #FFE000</item>
+        <item>橙 #FF9800</item>
+        <item>红 #FF5252</item>
+        <item>品红 #FF4FD8</item>
+        <item>白 #FFFFFF</item>
+        <item>浅灰 #BDBDBD</item>
+        <item>深灰 #616161</item>
+    </string-array>
 </resources>

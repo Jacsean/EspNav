@@ -245,7 +245,14 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 scrimRoute = appPrefs.espScrimRoute,
                 scrimClock = appPrefs.espScrimClock,
                 gridBright = appPrefs.espGridBright,
-                screenFlip = appPrefs.screenFlip
+                screenFlip = appPrefs.screenFlip,
+                /* 【M2.4】颜色 6 项 */
+                colMain = appPrefs.espColMain,
+                colTrack = appPrefs.espColTrack,
+                colGrid = appPrefs.espColGrid,
+                colRoad = appPrefs.espColRoad,
+                colCar = appPrefs.espColCar,
+                colHint = appPrefs.espColHint
             )
         )
         log(
@@ -776,6 +783,60 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             appPrefs.screenFlip = c
             if (client.isConnected) send(OutMsg.setConfig(screenFlip = c))
             log("ESP 屏幕水平翻转 = $c")
+        }
+
+        /* 【M2.4】ESP 屏颜色：6 个预设色下拉；选择即保存 + 一次性下发全部颜色 */
+        val colorNames = resources.getStringArray(R.array.esp_color_names)
+        val colorVals = com.espnav.app.data.AppPrefs.ESP_COLORS
+        fun pushColors() {
+            if (!client.isConnected) return
+            send(
+                OutMsg.setConfig(
+                    colMain = appPrefs.espColMain,
+                    colTrack = appPrefs.espColTrack,
+                    colGrid = appPrefs.espColGrid,
+                    colRoad = appPrefs.espColRoad,
+                    colCar = appPrefs.espColCar,
+                    colHint = appPrefs.espColHint
+                )
+            )
+        }
+        fun bindColor(spId: Int, cur: Int, tag: String, setter: (Int) -> Unit) {
+            val spn = v.findViewById<android.widget.Spinner>(spId)
+            spn.adapter = android.widget.ArrayAdapter(
+                this, android.R.layout.simple_spinner_item, colorNames
+            ).also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+            val idx0 = colorVals.indexOf(cur)
+            spn.setSelection(if (idx0 >= 0) idx0 else 0, false)
+            spn.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(
+                    parent: android.widget.AdapterView<*>?,
+                    view: android.view.View?,
+                    position: Int,
+                    id: Long
+                ) {
+                    setter(colorVals[position])
+                    pushColors()
+                    log("ESP 颜色·$tag -> ${colorNames[position]}")
+                }
+
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+            }
+        }
+        bindColor(R.id.spEspColMain, appPrefs.espColMain, "主色") { appPrefs.espColMain = it }
+        bindColor(R.id.spEspColTrack, appPrefs.espColTrack, "轨迹") { appPrefs.espColTrack = it }
+        bindColor(R.id.spEspColGrid, appPrefs.espColGrid, "网格") { appPrefs.espColGrid = it }
+        bindColor(R.id.spEspColRoad, appPrefs.espColRoad, "路面") { appPrefs.espColRoad = it }
+        bindColor(R.id.spEspColCar, appPrefs.espColCar, "车头") { appPrefs.espColCar = it }
+        bindColor(R.id.spEspColHint, appPrefs.espColHint, "提示行") { appPrefs.espColHint = it }
+
+        /* 【M2.4】App 行程图卡片开关（与 ESP 端行程图小地图对应，关掉可对比观察） */
+        val cbTripCard = v.findViewById<android.widget.CheckBox>(R.id.setDbgTripCard)
+        cbTripCard.isChecked = appPrefs.dbgTripCard
+        cbTripCard.setOnCheckedChangeListener { _, c ->
+            appPrefs.dbgTripCard = c
+            binding.tripView.visibility = if (c && navActive) View.VISIBLE else View.GONE
+            log("App 行程图卡片 = $c")
         }
 
         /** 把滑杆旁标签写成“名称：65%” */
@@ -1557,6 +1618,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             }
         }
         if (all.isNotEmpty()) binding.tripView.setData(all, i0)
+        /* 【M2.4】行程图卡片显隐受设置开关控制（每帧设置一次，开销可忽略） */
+        binding.tripView.visibility = if (appPrefs.dbgTripCard && navActive) View.VISIBLE else View.GONE
 
         if (o == null) return
         val cur = com.amap.api.maps.model.LatLng(o.lat, o.lon)

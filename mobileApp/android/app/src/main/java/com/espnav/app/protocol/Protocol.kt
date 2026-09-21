@@ -132,7 +132,14 @@ object OutMsg {
         scrimRoute: Int? = null,
         scrimClock: Int? = null,
         gridBright: Int? = null,
-        screenFlip: Boolean? = null
+        screenFlip: Boolean? = null,
+        /* 【M2.4】ESP 屏颜色（RGB565 十进制；0 = 用固件默认色） */
+        colMain: Int? = null,
+        colTrack: Int? = null,
+        colGrid: Int? = null,
+        colRoad: Int? = null,
+        colCar: Int? = null,
+        colHint: Int? = null
     ): String {
         val p = JSONObject()
         brightness?.let { p.put("lcd_brightness", it) }
@@ -147,6 +154,12 @@ object OutMsg {
         gridBright?.let { p.put("grid_bright", it) }
         /* 【M2.5】分光镜 HUD：整屏水平镜像 */
         screenFlip?.let { p.put("screen_flip", it) }
+        colMain?.let { p.put("col_main", it) }
+        colTrack?.let { p.put("col_track", it) }
+        colGrid?.let { p.put("col_grid", it) }
+        colRoad?.let { p.put("col_road", it) }
+        colCar?.let { p.put("col_car", it) }
+        colHint?.let { p.put("col_hint", it) }
         return Json.obj("msg_type" to "SET_CONFIG", "payload" to p).toString()
     }
 }

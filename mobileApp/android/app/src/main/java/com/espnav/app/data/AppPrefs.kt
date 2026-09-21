@@ -87,6 +87,12 @@ class AppPrefs(ctx: Context) {
 
     /** 导航仿真（模拟行进）：开启时由高德 SDK 按路线模拟推进 —— 室内/没上车也能看效果；
      *  道路实测必须【关闭】，否则导航不跟你的真实位置（用户要求做成可切换）。 */
+    /** 【M2.4】是否显示 App 导航页右下角的「行程图卡片」（App 侧）。
+     *  与 ESP 端行程图小地图对应；关掉可对比观察。 */
+    var dbgTripCard: Boolean
+        get() = sp.getBoolean(K_DBG_TRIP, true)
+        set(v) = sp.edit().putBoolean(K_DBG_TRIP, v).apply()
+
     var emulate: Boolean
         get() = sp.getBoolean(K_EMULATE, true)
         set(v) = sp.edit().putBoolean(K_EMULATE, v).apply()
@@ -136,6 +142,40 @@ class AppPrefs(ctx: Context) {
         set(v) = sp.edit().putBoolean("screen_flip", v).apply()
 
     /** 行程图网格亮度 0-100（主格线每 50px 再亮一档） */
+    /* ================= 【M2.4】ESP 屏颜色（全部可在设置里改）=================
+     * 值 = RGB565（十进制）；0 表示"用固件默认色"。
+     * 设置界面用预设色下拉选择（色板表在 AppPrefs.ESP_COLORS）。 */
+
+    /** 主色：文字 / 罗盘 / 路名 / 统计 / 时间 / fallback 中心线（默认绿 0x07E0 = 2016） */
+    var espColMain: Int
+        get() = sp.getInt(K_ECOL_MAIN, 2016)
+        set(v) = sp.edit().putInt(K_ECOL_MAIN, v).apply()
+
+    /** 行程图轨迹线（默认亮蓝 0x5D9F = 23967） */
+    var espColTrack: Int
+        get() = sp.getInt(K_ECOL_TRACK, 23967)
+        set(v) = sp.edit().putInt(K_ECOL_TRACK, v).apply()
+
+    /** 行程图网格基准色（默认灰绿 0x8450 = 33872） */
+    var espColGrid: Int
+        get() = sp.getInt(K_ECOL_GRID, 33872)
+        set(v) = sp.edit().putInt(K_ECOL_GRID, v).apply()
+
+    /** 路面灰（默认 0x73AE = 29614） */
+    var espColRoad: Int
+        get() = sp.getInt(K_ECOL_ROAD, 29614)
+        set(v) = sp.edit().putInt(K_ECOL_ROAD, v).apply()
+
+    /** 车头三角（默认黄 0xFFE0 = 65504） */
+    var espColCar: Int
+        get() = sp.getInt(K_ECOL_CAR, 65504)
+        set(v) = sp.edit().putInt(K_ECOL_CAR, v).apply()
+
+    /** 提示 / 警示行文字（默认黄 0xFFE0 = 65504） */
+    var espColHint: Int
+        get() = sp.getInt(K_ECOL_HINT, 65504)
+        set(v) = sp.edit().putInt(K_ECOL_HINT, v).apply()
+
     var espGridBright: Int
         get() = sp.getInt(K_EGRID, 55)
         set(v) = sp.edit().putInt(K_EGRID, v.coerceIn(0, 100)).apply()
@@ -166,6 +206,13 @@ class AppPrefs(ctx: Context) {
         put("espScrimRoute", espScrimRoute)
         put("espScrimClock", espScrimClock)
         put("espGridBright", espGridBright)
+        put("dbgTripCard", dbgTripCard)
+        put("espColMain", espColMain)
+        put("espColTrack", espColTrack)
+        put("espColGrid", espColGrid)
+        put("espColRoad", espColRoad)
+        put("espColCar", espColCar)
+        put("espColHint", espColHint)
         put(
             "savedAt",
             java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
@@ -199,6 +246,13 @@ class AppPrefs(ctx: Context) {
         if (o.has("espScrimRoute")) { espScrimRoute = o.optInt("espScrimRoute", espScrimRoute); n++ }
         if (o.has("espScrimClock")) { espScrimClock = o.optInt("espScrimClock", espScrimClock); n++ }
         if (o.has("espGridBright")) { espGridBright = o.optInt("espGridBright", espGridBright); n++ }
+        if (o.has("dbgTripCard")) { dbgTripCard = o.optBoolean("dbgTripCard", dbgTripCard); n++ }
+        if (o.has("espColMain")) { espColMain = o.optInt("espColMain", espColMain); n++ }
+        if (o.has("espColTrack")) { espColTrack = o.optInt("espColTrack", espColTrack); n++ }
+        if (o.has("espColGrid")) { espColGrid = o.optInt("espColGrid", espColGrid); n++ }
+        if (o.has("espColRoad")) { espColRoad = o.optInt("espColRoad", espColRoad); n++ }
+        if (o.has("espColCar")) { espColCar = o.optInt("espColCar", espColCar); n++ }
+        if (o.has("espColHint")) { espColHint = o.optInt("espColHint", espColHint); n++ }
         return n
     }
 
@@ -227,6 +281,28 @@ class AppPrefs(ctx: Context) {
         private const val K_ESCRIM_ROUTE = "esp_scrim_route"
         private const val K_ESCRIM_CLOCK = "esp_scrim_clock"
         private const val K_EGRID = "esp_grid_bright"
+        private const val K_DBG_TRIP = "dbg_trip_card"
+        /* M2.4：ESP 屏颜色（RGB565 十进制） */
+        private const val K_ECOL_MAIN = "esp_col_main"
+        private const val K_ECOL_TRACK = "esp_col_track"
+        private const val K_ECOL_GRID = "esp_col_grid"
+        private const val K_ECOL_ROAD = "esp_col_road"
+        private const val K_ECOL_CAR = "esp_col_car"
+        private const val K_ECOL_HINT = "esp_col_hint"
+
+        /** 【M2.4】预设色板（RGB565 十进制）—— 与 strings.xml 的 esp_color_names 一一对应 */
+        val ESP_COLORS = intArrayOf(
+            2016,    // 0 绿   #00E676
+            23967,   // 1 蓝   #5CB0FF
+            1855,    // 2 青   #00E5FF
+            65280,   // 3 黄   #FFE000
+            64704,   // 4 橙   #FF9800
+            64138,   // 5 红   #FF5252
+            64123,   // 6 品红 #FF4FD8
+            65535,   // 7 白   #FFFFFF
+            48631,   // 8 浅灰 #BDBDBD
+            25356    // 9 深灰 #616161
+        )
 
         const val DEF_HOST = "192.168.4.1"
         const val DEF_PORT = 8899
