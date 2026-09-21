@@ -297,6 +297,12 @@
             android:textSize="12sp"
             android:text="@string/cfg_absent" />
 
+        <CheckBox
+            android:id="@+id/setScreenFlip"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/set_screen_flip" />
+
         <Button
             android:id="@+id/btnCfgPerm"
             android:layout_width="match_parent"

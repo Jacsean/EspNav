@@ -118,6 +118,12 @@ static void apply_set_config(const char *line)
         config_set_map_area((uint8_t)v);
         ESP_LOGI(TAG, "apply map_area=%d", v);
     }
+    /* ---- 【M2.5】分光镜 HUD：整屏水平镜像（App 设置项，默认开）---- */
+    if (jl_get_bool(line, "screen_flip", &on)) {
+        config_set_screen_flip(on);
+        lcd_ili9341_set_flip_x(on);              /* 直接作用于驱动，下次刷屏即生效 */
+        ESP_LOGI(TAG, "apply screen_flip=%d", (int)on);
+    }
 }
 
 void protocol_handle(const char *line, int len, proto_send_fn send, void *ctx)

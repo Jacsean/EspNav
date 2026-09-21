@@ -127,7 +127,8 @@ object OutMsg {
         scrimText: Int? = null,
         scrimRoute: Int? = null,
         scrimClock: Int? = null,
-        gridBright: Int? = null
+        gridBright: Int? = null,
+        screenFlip: Boolean? = null
     ): String {
         val p = JSONObject()
         brightness?.let { p.put("lcd_brightness", it) }
@@ -140,6 +141,8 @@ object OutMsg {
         scrimRoute?.let { p.put("scrim_route", it) }
         scrimClock?.let { p.put("scrim_clock", it) }
         gridBright?.let { p.put("grid_bright", it) }
+        /* 【M2.5】分光镜 HUD：整屏水平镜像 */
+        screenFlip?.let { p.put("screen_flip", it) }
         return Json.obj("msg_type" to "SET_CONFIG", "payload" to p).toString()
     }
 }

@@ -113,4 +113,5 @@
     <string name="set_perm_denied">权限状态：未授予（蓝点/自动定位不可用）</string>
     <string name="set_open_app_settings">前往系统设置授权（定位）</string>
     <string name="set_saved">设置已保存</string>
+    <string name="set_screen_flip">屏幕内容水平翻转（分光镜 HUD 用，默认开）</string>
 </resources>

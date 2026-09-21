@@ -18,6 +18,8 @@ typedef struct {
     uint8_t  scrim_clock;     /* 时间底衬透明度 */
     uint8_t  grid_bright;     /* 行程图网格亮度 0-100（主格线每 50px 再亮一档） */
     uint8_t  map_area;        /* 地图投放区域：0=全屏(320×240) / 1=上半(320×160) */
+    /* ---- M2.5：分光镜 HUD ---- */
+    bool     screen_flip;     /* true → 整屏水平镜像：分光镜观察时画面左右翻转，需预先镜像 */
     char     firmware_ver[16];
 } espnav_config_t;
 
@@ -35,3 +37,5 @@ void         config_set_scrim_route(uint8_t v);
 void         config_set_scrim_clock(uint8_t v);
 void         config_set_grid_bright(uint8_t v);
 void         config_set_map_area(uint8_t v);
+/* M2.5：分光镜 HUD 整屏水平镜像（App 设置项，默认开） */
+void         config_set_screen_flip(bool v);

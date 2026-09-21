@@ -232,7 +232,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 scrimText = appPrefs.espScrimText,
                 scrimRoute = appPrefs.espScrimRoute,
                 scrimClock = appPrefs.espScrimClock,
-                gridBright = appPrefs.espGridBright
+                gridBright = appPrefs.espGridBright,
+                screenFlip = appPrefs.screenFlip
             )
         )
         log(
@@ -752,6 +753,16 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         skEspScrimRoute.progress = appPrefs.espScrimRoute
         skEspScrimClock.progress = appPrefs.espScrimClock
         skEspGrid.progress = appPrefs.espGridBright
+
+        /* 【M2.5】屏幕内容水平翻转（分光镜 HUD，默认开）：改动即下发 SET_CONFIG.screen_flip。
+         * 固件侧默认也是开，所以新装 App 首次连接不改这里也是"镜像已开"的状态。 */
+        val cbScreenFlip = v.findViewById<android.widget.CheckBox>(R.id.setScreenFlip)
+        cbScreenFlip.isChecked = appPrefs.screenFlip
+        cbScreenFlip.setOnCheckedChangeListener { _, c ->
+            appPrefs.screenFlip = c
+            if (client.isConnected) send(OutMsg.setConfig(screenFlip = c))
+            log("ESP 屏幕水平翻转 = $c")
+        }
 
         /** 把滑杆旁标签写成“名称：65%” */
         fun espLabel(tvId: Int, nameId: Int, pct: Int) {

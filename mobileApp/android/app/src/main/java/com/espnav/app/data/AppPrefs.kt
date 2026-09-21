@@ -128,6 +128,13 @@ class AppPrefs(ctx: Context) {
         get() = sp.getInt(K_ESCRIM_CLOCK, 65)
         set(v) = sp.edit().putInt(K_ESCRIM_CLOCK, v.coerceIn(0, 100)).apply()
 
+    /** 【M2.5】屏幕内容水平翻转（分光镜 HUD）：默认开。
+     *  分光镜（半透半反镜）让人眼看到的是左右镜像画面，所以 ESP 端送屏前要预先水平镜像。
+     *  用字面 key（暂不进配置文件导出项），后续若要纳入配置再补常量与导出。 */
+    var screenFlip: Boolean
+        get() = sp.getBoolean("screen_flip", true)
+        set(v) = sp.edit().putBoolean("screen_flip", v).apply()
+
     /** 行程图网格亮度 0-100（主格线每 50px 再亮一档） */
     var espGridBright: Int
         get() = sp.getInt(K_EGRID, 55)

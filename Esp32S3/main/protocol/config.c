@@ -19,6 +19,7 @@ void config_init(void)
     s_cfg.scrim_clock    = 65;
     s_cfg.grid_bright    = 55;
     s_cfg.map_area       = 0;    /* 默认全屏投放 */
+    s_cfg.screen_flip    = true; /* 【M2.5】默认水平镜像（分光镜 HUD 场景）*/
     strncpy(s_cfg.firmware_ver, "V1.1.0", sizeof(s_cfg.firmware_ver) - 1);
     ESP_LOGI(TAG, "config default ready");
 }
@@ -36,3 +37,5 @@ void config_set_scrim_route(uint8_t v)   { if (v <= 100) s_cfg.scrim_route = v; 
 void config_set_scrim_clock(uint8_t v)   { if (v <= 100) s_cfg.scrim_clock = v; }
 void config_set_grid_bright(uint8_t v)   { if (v <= 100) s_cfg.grid_bright = v; }
 void config_set_map_area(uint8_t v)      { s_cfg.map_area = (v == 0) ? 0 : 1; }
+/* ---- M2.5：分光镜 HUD 整屏水平镜像 ---- */
+void config_set_screen_flip(bool v)      { s_cfg.screen_flip = v; }
