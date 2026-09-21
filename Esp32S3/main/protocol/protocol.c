@@ -8,6 +8,7 @@
 #include "config.h"
 #include "lcd_driver.h"
 #include "render_nav.h"
+#include "map_image.h"     /* 【M3.1】IMG_BEGIN/CHUNK/END 的接收接口 */
 
 static const char *TAG = "proto";
 static uint32_t s_err = 0;
@@ -220,6 +221,33 @@ void protocol_handle(const char *line, int len, proto_send_fn send, void *ctx)
     }
     if (!strcmp(mt, "POPUP_MSG") || !strcmp(mt, "POPUP_CLOSE")) {
         ESP_LOGW(TAG, "%s 尚未实现（M7 弹窗层），已忽略", mt);
+        return;
+    }
+    /* ---- 【M3.1】地图截图通道：接收侧只累积 base64 字节 + 置标志，
+     * 不碰 framebuffer（解码/贴图由显示任务在 draw_frame 里做，见 fault_log F5 线程约定）---- */
+    if (!strcmp(mt, "IMG_BEGIN")) {
+        int seq = 0, w = 0, h = 0, x = 0, y = 0, bytes = 0;
+        jl_get_int(line, "seq", 0, &seq);
+        jl_get_int(line, "w", 320, &w);
+        jl_get_int(line, "h", 240, &h);
+        jl_get_int(line, "x", 0, &x);
+        jl_get_int(line, "y", 0, &y);
+        jl_get_int(line, "bytes", 0, &bytes);
+        map_image_begin(seq, w, h, x, y, bytes);
+        return;
+    }
+    if (!strcmp(mt, "IMG_CHUNK")) {
+        static char b64[MAP_IMG_B64_MAX];               /* static：不占 TCP 任务栈 */
+        int seq = 0;
+        jl_get_int(line, "seq", 0, &seq);
+        if (jl_get_str(line, "d", b64, sizeof(b64))) map_image_chunk(seq, b64);
+        else ESP_LOGW(TAG, "IMG_CHUNK 缺 d 字段");
+        return;
+    }
+    if (!strcmp(mt, "IMG_END")) {
+        int seq = 0;
+        jl_get_int(line, "seq", 0, &seq);
+        map_image_end(seq);
         return;
     }
     ESP_LOGD(TAG, "ignore unknown msg_type=%s（协议 §6.2）", mt);

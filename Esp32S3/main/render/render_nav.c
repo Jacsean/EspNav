@@ -4,6 +4,7 @@
 #include <math.h>
 #include "esp_log.h"
 #include "config.h"
+#include "map_image.h"    /* 【M3.1】地图底图（App 截图通道） */
 #include "wifi_sta.h"      /* 屏幕显示网络状态（AP / STA 已连接） */
 #include "font.h"
 #include <stdio.h>
@@ -728,11 +729,20 @@ static void draw_frame(const nav_frame_t *f, float anim)
     s_col_grid0 = cfg->col_grid  ? cfg->col_grid  : DEF_COL_GRID;
     s_col_car   = cfg->col_car   ? cfg->col_car   : DEF_COL_CAR;
     s_col_hint  = cfg->col_hint  ? cfg->col_hint  : DEF_COL_HINT;
-    fb_clear(RGB565_BLACK);
+
+    /* 【M3.1】地图底图（App 截图通道）：① 有新图先解码（只在这里做 —— 符合"仅显示任务
+     * 碰帧缓冲"的约定）② 从底图副本整屏恢复；③ 有底图时不再画模板/兜底路面，
+     * 于是画面 = 地图截图 + 半透明底衬 + 罗盘/文字/行程图/时间。 */
+    map_image_apply();
+    const bool has_img = map_image_has();
+    if (has_img) map_image_restore();
+    else         fb_clear(RGB565_BLACK);
     fb_line(0, 160, FB_W - 1, 160, RGB565_DGRAY);
     fb_line(OV_AX, 160, OV_AX, FB_H - 1, RGB565_DGRAY);
 
-    if (f->road.present) {
+    if (has_img) {
+        /* 底图已铺好：跳过全部路面绘制 */
+    } else if (f->road.present) {
         draw_road(f, anim);                        /* M4：路况模板（road 字段驱动） */
     } else if (f->center_n < 2) {
         /* 兜底：无路况模板、且中心线不足 2 点（例如刚到达终点/App 只发了终点帧）→

@@ -10,6 +10,7 @@ idf_component_register(
     "render/geo.c"
     "render/lcd_fb.c"
     "render/render_nav.c"
+    "render/map_image.c"
     "comm/comm_if.c"
     "comm/wifi_ap.c"
     "comm/tcp_server.c"
