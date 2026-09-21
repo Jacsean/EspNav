@@ -1148,7 +1148,6 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 appPrefs.espGridBright = skEspGrid.progress
                 applyPrefsToUi()
                 log(getString(R.string.set_saved))
-            }
         }
         v.findViewById<android.widget.Button>(R.id.btnSettingsSave)
             .setOnClickListener { runCatching { saveAll() } }
