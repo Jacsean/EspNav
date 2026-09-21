@@ -112,6 +112,24 @@ object OutMsg {
     fun clock(hhmmss: String): String =
         Json.obj("msg_type" to "CLOCK", "payload" to Json.obj("clock" to hhmmss)).toString()
 
+    /* ---- 【M3.1】地图底图分块传输（协议 V1.14）----
+     * IMG_BEGIN(seq,w,h,x,y,bytes) → N×IMG_CHUNK(seq, d=base64) → IMG_END(seq)。
+     * 固件按 seq 丢旧保新；单帧 ≤2048B（每块原始 ≤1200 → base64 ≤1600 字符）。 */
+    fun imgBegin(seq: Int, w: Int, h: Int, x: Int, y: Int, bytes: Int): String =
+        Json.obj(
+            "msg_type" to "IMG_BEGIN",
+            "payload" to Json.obj(
+                "seq" to seq, "w" to w, "h" to h, "x" to x, "y" to y,
+                "fmt" to "jpg", "bytes" to bytes
+            )
+        ).toString()
+
+    fun imgChunk(seq: Int, b64: String): String =
+        Json.obj("msg_type" to "IMG_CHUNK", "payload" to Json.obj("seq" to seq, "d" to b64)).toString()
+
+    fun imgEnd(seq: Int): String =
+        Json.obj("msg_type" to "IMG_END", "payload" to Json.obj("seq" to seq)).toString()
+
     fun getConfig(): String =
         Json.obj("msg_type" to "GET_CONFIG", "payload" to JSONObject()).toString()
 

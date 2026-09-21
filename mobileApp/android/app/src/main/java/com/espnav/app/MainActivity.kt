@@ -494,6 +494,54 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     /** 统一启动：切换数据源并按 5Hz 向屏幕发帧 */
+    /* ================= 【M3.1 最小可用版】地图底图：开始导航时截 1 张 =================
+     * 为什么是"单次"：M1 那条路是"每秒 1 张"的周期链路，出现过无法定位的闪退；
+     * 本版先只发 1 张（整条路线概览），用于验证
+     *   「SDK 截图 → 压暗/缩放 → JPEG → base64 分块 → TCP → ESP 解码贴图」
+     * 整条链路的稳定性；确认稳定后再决定要不要加周期性刷新。
+     * 注意：本版**完全不碰地图相机**（不 moveCamera / 不改 tilt），避免 M1 的相机耦合问题。 */
+    private val mapShotSeq = java.util.concurrent.atomic.AtomicInteger(0)
+
+    private fun captureAndSendMapShot() {
+        val am = aMap ?: run { log("底图截图跳过：地图未就绪"); return }
+        if (!client.isConnected) { log("底图截图跳过：未连接"); return }
+        log("底图截图：调用 getMapScreenShot …")
+        binding.root.postDelayed({
+            runCatching {
+                am.getMapScreenShot(object : com.amap.api.maps.AMap.OnMapScreenShotListener {
+                    override fun onMapScreenShot(bitmap: android.graphics.Bitmap?) {
+                        handleMapShot(bitmap)
+                    }
+
+                    override fun onMapScreenShot(bitmap: android.graphics.Bitmap?, status: Int) {
+                        if (bitmap == null) log("底图截图返回空（status=$status）")
+                    }
+                })
+            }.onFailure { log("底图截图调用失败：${it.message}") }
+        }, 150L)
+    }
+
+    /** 截图回调（主线程）→ 图像处理与发送挪到后台线程 */
+    private fun handleMapShot(bitmap: android.graphics.Bitmap?) {
+        if (bitmap == null) {
+            log("底图截图失败：bitmap=null")
+            return
+        }
+        log("底图截图成功 ${bitmap.width}x${bitmap.height}，后台处理中…")
+        lifecycleScope.launch(Dispatchers.Default) {
+            val jpg = com.espnav.app.data.MapShotCapture.process(bitmap)
+            runCatching { bitmap.recycle() }
+            if (jpg == null || jpg.isEmpty()) {
+                runOnUiThread { log("底图处理失败（编码为空）") }
+                return@launch
+            }
+            val seq = mapShotSeq.incrementAndGet()
+            /* EspNavClient.queue() 内部是 Channel → 线程安全，可直接在后台线程调用 */
+            val chunks = com.espnav.app.data.MapShotCapture.send(jpg, seq) { client.queue(it) }
+            runOnUiThread { log("已推送地图底图：${jpg.size} B / $chunks 块 / seq=$seq") }
+        }
+    }
+
     private fun launchNav(source: NavSource, label: String) {
         if (mockJob?.isActive == true) return
         if (!client.isConnected) {
@@ -516,6 +564,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             }
         }
         log("开始 $label（每 ${FRAME_INTERVAL_MS}ms 一帧）")
+        /* 【M3.1 最小可用版】开始导航后延迟 1.2s 截 1 张地图底图推给 ESP（单次，不做周期刷新） */
+        binding.root.postDelayed({ runCatching { captureAndSendMapShot() } }, 1200)
     }
 
     /** 按「设置 → ESP 显示元素」开关过滤发往 ESP 的帧：逐个关掉即可定位是哪一类图元在出问题 */
