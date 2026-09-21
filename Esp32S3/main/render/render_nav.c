@@ -791,14 +791,19 @@ static void draw_frame(const nav_frame_t *f, float anim)
         snprintf(buf, sizeof(buf), "预计到达 %s", f->eta_time);
         font_draw_text(6, 200, buf, PATH_GREEN);
 
-        /* 【M1.2】时间（时:分:秒）：主视图右下角，右对齐 x=316、y=138。
-         * ESP 无 RTC —— 字符串由 App 每秒下发（NAV_FRAME.clock）；空串则不显示。 */
-        if (f->clock[0]) {
-            int cw = font_text_width(f->clock);
+        /* 【M1.2/M2.6】时间（时:分:秒）：主视图右下角，右对齐 x=316、y=138。
+         * ESP 无 RTC —— 字符串由 App 每秒下发。来源优先级：
+         *   ① 本帧 NAV_FRAME.clock（导航中）
+         *   ② 最近一次 CLOCK 报文的缓存 s_clock ← M2.6 补
+         * ② 必须有：固件启动时 app_main 会设置 demo 帧（s_have=1），因此"已连接但未导航"
+         * 时渲染的是 draw_frame(&s_cur)，render_nav_tick 的待机分支根本不会执行。 */
+        const char *clock_txt = f->clock[0] ? f->clock : s_clock;
+        if (clock_txt[0]) {
+            int cw = font_text_width(clock_txt);
             int tx = 316 - cw;
             if (tx < 0) tx = 0;
             if (cfg->scrim_on) fb_dim_rect(tx - 4, 135, 316, 157, cfg->scrim_clock);
-            font_draw_text(tx, 138, f->clock, PATH_GREEN);
+            font_draw_text(tx, 138, clock_txt, PATH_GREEN);
         }
 
         /* 北向标记统一由 draw_overview() 绘制（固定表示行程图方向），此处不再重复 */
