@@ -297,7 +297,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     // ---------------- 操作 ----------------
 
-    /** 一键连接：依次尝试“上次成功的地址”和 192.168.4.1；4.5 秒未连上就换下一个 */
+    /** 一键连接：依次尝试“上次成功的地址”→ 192.168.43.117（手机热点）→ 192.168.4.1（softAP）；
+     *  4.5 秒未连上就换下一个 */
     private fun quickConnect() {
         if (client.isConnected) { log("已连接，无需重连"); return }
         if (connecting) { log("连接进行中，忽略重复请求"); return }
@@ -349,7 +350,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     private fun doConnect() {
-        val host = binding.etHost.text.toString().trim().ifBlank { "192.168.4.1" }
+        val host = binding.etHost.text.toString().trim().ifBlank { "192.168.43.117" }
         val port = binding.etPort.text.toString().trim().toIntOrNull() ?: 8899
         log("连接 $host:$port ...")
         client.connect(host, port)
@@ -1826,7 +1827,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     companion object {
-        private const val DEFAULT_HOST = "192.168.4.1"
+        private const val DEFAULT_HOST = "192.168.43.117"
         private const val REQ_LOCATION = 1001          /* 连接页：高德骑行导航 */
         private const val REQ_LOCATION_PREVIEW = 1003  /* 导航页：预览路线（必须与上面区分，否则授权后会误启导航） */
         private const val REQ_NOTIFY = 1002

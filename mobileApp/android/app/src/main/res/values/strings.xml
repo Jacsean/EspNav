@@ -5,7 +5,7 @@
     <string name="label_from">起点</string>
     <string name="label_to">终点</string>
     <string name="label_port">端口</string>
-    <string name="hint_host">192.168.4.1</string>
+    <string name="hint_host">192.168.43.117</string>
 
     <string name="btn_connect">连接</string>
     <string name="btn_quick_connect">一键连接</string>
