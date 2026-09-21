@@ -14,3 +14,7 @@ release/
 _wt_*/
 
 out/
+
+# static-map demo asset (user-provided, not for VCS)
+docs/nav_*.jpg
+release*/

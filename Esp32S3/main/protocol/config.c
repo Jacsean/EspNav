@@ -27,7 +27,7 @@ void config_init(void)
     s_cfg.col_car        = 0;
     s_cfg.col_hint       = 0;
     s_cfg.screen_flip    = true; /* 【M2.5】默认水平镜像（分光镜 HUD 场景）*/
-    strncpy(s_cfg.firmware_ver, "V1.1.0", sizeof(s_cfg.firmware_ver) - 1);
+    strncpy(s_cfg.firmware_ver, "V1.2.0", sizeof(s_cfg.firmware_ver) - 1);
     ESP_LOGI(TAG, "config default ready");
 }
 
