@@ -34,22 +34,35 @@ void protocol_link_reset(void)
 uint32_t protocol_err_count(void) { return s_err; }
 void     protocol_err_reset(void) { s_err = 0; }
 
-/* 回 DEV_STATUS（协议 §4.1）：配置 + 版本 + 错误计数 */
+/* 回 DEV_STATUS（协议 §4.1）：配置 + 版本 + 错误计数
+ * 【M1】追加 7 项叠加层可读性参数，App 保存后用 GET_CONFIG 回读校验一致性。
+ * buf 由 240 提到 384：新增字段约 110 字符，避免 snprintf 截断（-Werror=format-truncation）。 */
 static void send_dev_status(proto_send_fn send, void *ctx)
 {
     const espnav_config_t *c = config_get();
-    char buf[240];
+    char buf[384];
     snprintf(buf, sizeof(buf),
              "{\"msg_type\":\"DEV_STATUS\",\"payload\":{"
              "\"lcd_brightness\":%u,\"dash_speed\":%u,\"anim_enable\":%s,"
-             "\"popup_timeout\":%u,\"firmware_ver\":\"%s\",\"err\":%lu}}\n",
+             "\"popup_timeout\":%u,"
+             "\"scrim_on\":%s,\"scrim_compass\":%u,\"scrim_text\":%u,"
+             "\"scrim_route\":%u,\"scrim_clock\":%u,\"grid_bright\":%u,\"map_area\":%u,"
+             "\"firmware_ver\":\"%s\",\"err\":%lu}}\n",
              (unsigned)c->lcd_brightness, (unsigned)c->dash_speed,
              c->anim_enable ? "true" : "false", (unsigned)c->popup_timeout,
+             c->scrim_on ? "true" : "false",
+             (unsigned)c->scrim_compass, (unsigned)c->scrim_text,
+             (unsigned)c->scrim_route, (unsigned)c->scrim_clock,
+             (unsigned)c->grid_bright, (unsigned)c->map_area,
              c->firmware_ver, (unsigned long)s_err);
     if (send) send(buf, ctx);
-    ESP_LOGI(TAG, "TX DEV_STATUS bright=%u dash=%u anim=%d popup=%u ver=%s err=%lu",
+    ESP_LOGI(TAG, "TX DEV_STATUS bright=%u dash=%u anim=%d popup=%u scrim=%d/%u,%u,%u,%u grid=%u area=%u ver=%s err=%lu",
              (unsigned)c->lcd_brightness, (unsigned)c->dash_speed, (int)c->anim_enable,
-             (unsigned)c->popup_timeout, c->firmware_ver, (unsigned long)s_err);
+             (unsigned)c->popup_timeout, (int)c->scrim_on,
+             (unsigned)c->scrim_compass, (unsigned)c->scrim_text,
+             (unsigned)c->scrim_route, (unsigned)c->scrim_clock,
+             (unsigned)c->grid_bright, (unsigned)c->map_area,
+             c->firmware_ver, (unsigned long)s_err);
 }
 
 /* SET_CONFIG（协议 §3.2）：逐项应用，立即生效 */
@@ -75,6 +88,35 @@ static void apply_set_config(const char *line)
     if (jl_get_int(line, "popup_timeout", -1, &v) && v >= 0) {
         config_set_popup_timeout((uint8_t)v);       /* 弹窗层 M7 使用 */
         ESP_LOGI(TAG, "apply popup_timeout=%d", v);
+    }
+    /* ---- M1：叠加层可读性（App 设置项下发；渲染每帧读 config，下一帧即生效）---- */
+    if (jl_get_bool(line, "scrim_on", &on)) {
+        config_set_scrim_on(on);
+        ESP_LOGI(TAG, "apply scrim_on=%d", (int)on);
+    }
+    if (jl_get_int(line, "scrim_compass", -1, &v) && v >= 0) {
+        config_set_scrim_compass((uint8_t)v);
+        ESP_LOGI(TAG, "apply scrim_compass=%d", v);
+    }
+    if (jl_get_int(line, "scrim_text", -1, &v) && v >= 0) {
+        config_set_scrim_text((uint8_t)v);
+        ESP_LOGI(TAG, "apply scrim_text=%d", v);
+    }
+    if (jl_get_int(line, "scrim_route", -1, &v) && v >= 0) {
+        config_set_scrim_route((uint8_t)v);
+        ESP_LOGI(TAG, "apply scrim_route=%d", v);
+    }
+    if (jl_get_int(line, "scrim_clock", -1, &v) && v >= 0) {
+        config_set_scrim_clock((uint8_t)v);
+        ESP_LOGI(TAG, "apply scrim_clock=%d", v);
+    }
+    if (jl_get_int(line, "grid_bright", -1, &v) && v >= 0) {
+        config_set_grid_bright((uint8_t)v);
+        ESP_LOGI(TAG, "apply grid_bright=%d", v);
+    }
+    if (jl_get_int(line, "map_area", -1, &v) && v >= 0) {
+        config_set_map_area((uint8_t)v);
+        ESP_LOGI(TAG, "apply map_area=%d", v);
     }
 }
 
