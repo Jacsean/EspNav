@@ -316,12 +316,37 @@ static void ov_to_px(const npt_t *p, int *px, int *py)
     *py = ay + OV_OY + (OV_SPAN - (int)p->y) * OV_BOX / OV_SPAN;
 }
 
+/* 【M1.3】行程图网格色：按 grid_bright(0-100) 从暗绿灰插值到亮绿灰（RGB565）
+ *   原固定 0x2104 ≈ #202020 在暗底衬上几乎看不见（用户要求"网格更醒目"）。
+ *   0% -> 0x2104(≈#202020)、100% -> 0xD6DA(≈#D4DAD4)；默认 55% ≈ #808680。
+ *   boost：主格线（每 50px）再亮一档（+25），形成结构感。 */
+static uint16_t grid_color(int bright, int boost)
+{
+    int v = bright + boost;
+    if (v < 0) v = 0;
+    if (v > 100) v = 100;
+    int r = 4 + (26 - 4) * v / 100;     /* 5bit：4 -> 26 */
+    int g = 8 + (54 - 8) * v / 100;     /* 6bit：8 -> 54 */
+    int b = 4 + (26 - 4) * v / 100;     /* 5bit：4 -> 26 */
+    return (uint16_t)((r << 11) | (g << 5) | b);
+}
+
 static void draw_overview(const nav_frame_t *f)
 {
+    const espnav_config_t *cfg = config_get();
     const int ax = OV_AX, ay = 160, aw = OV_AW, ah = 80;
-    const uint16_t grid = 0x2104;
-    for (int x = ax; x < ax + aw; x += 10) fb_line(x, ay, x, ay + ah - 1, grid);
-    for (int y = ay; y < ay + ah; y += 10) fb_line(ax, y, ax + aw - 1, y, grid);
+    const uint16_t gc_minor = grid_color(cfg->grid_bright, 0);
+    const uint16_t gc_major = grid_color(cfg->grid_bright, 25);
+
+    /* 【M1.3】行程图区半透明暗底衬：先压暗再画网格，网格线才有对比可看
+     *   （此前这里没有任何背景，靠整屏清屏黑；接入地图底图后必须自己铺一层） */
+    if (cfg->scrim_on) fb_dim_rect(ax, ay, ax + aw - 1, ay + ah - 1, cfg->scrim_route);
+
+    /* 网格：次格线每 10px / 主格线每 50px；线宽固定 1px = ESP 屏 1 物理像素 */
+    for (int x = ax; x < ax + aw; x += 10)
+        fb_line(x, ay, x, ay + ah - 1, ((x - ax) % 50 == 0) ? gc_major : gc_minor);
+    for (int y = ay; y < ay + ah; y += 10)
+        fb_line(ax, y, ax + aw - 1, y, ((y - ay) % 50 == 0) ? gc_major : gc_minor);
     for (int i = 0; i + 1 < f->overview_n; i++) {
         int x0, y0, x1, y1;
         ov_to_px(&f->overview[i], &x0, &y0);
@@ -662,6 +687,7 @@ static void draw_road(const nav_frame_t *f, float anim)
 
 static void draw_frame(const nav_frame_t *f, float anim)
 {
+    const espnav_config_t *cfg = config_get();       /* 【M1.2/M1.3】叠加层可读性参数（App 下发） */
     if (!f || !f->valid) return;
     fb_clear(RGB565_BLACK);
     fb_line(0, 160, FB_W - 1, 160, RGB565_DGRAY);
@@ -710,6 +736,16 @@ static void draw_frame(const nav_frame_t *f, float anim)
     if (f->pos_valid) fb_triangle(f->pos.x, f->pos.y, 14, RGB565_YELLOW);
 
 #if RENDER_TEXT
+    /* 【M1.2/M1.3】叠加层可读性：先铺四类半透明暗底衬（在内容之上、文字之下），
+     * 文字再靠 1px 黑描边保住对比度。参数全部来自 App 的 SET_CONFIG：
+     *   scrim_compass / scrim_text / scrim_route（draw_overview 内部自己铺）/ scrim_clock */
+    if (cfg->scrim_on) {
+        fb_dim_rect(0, 0, FB_W - 1, 21, cfg->scrim_compass);          /* 罗盘条：整行覆盖 */
+        fb_dim_rect(0, 21, 209, 78, cfg->scrim_text);                 /* 路名/hint/距离 三行 */
+        fb_dim_rect(0, 160, OV_AX - 1, FB_H - 1, cfg->scrim_text);    /* 左下统计 4 行 */
+    }
+    font_set_outline(true, RGB565_BLACK);                             /* 文字/罗盘统一带黑描边 */
+
     /* 罗盘 + 行程图 + 底部网络状态（不依赖 RENDER_TEXT 开关） */
     draw_compass(f);
     draw_net_status();
@@ -746,8 +782,19 @@ static void draw_frame(const nav_frame_t *f, float anim)
         snprintf(buf, sizeof(buf), "预计到达 %s", f->eta_time);
         font_draw_text(6, 200, buf, PATH_GREEN);
 
+        /* 【M1.2】时间（时:分:秒）：主视图右下角，右对齐 x=316、y=138。
+         * ESP 无 RTC —— 字符串由 App 每秒下发（NAV_FRAME.clock）；空串则不显示。 */
+        if (f->clock[0]) {
+            int cw = font_text_width(f->clock);
+            int tx = 316 - cw;
+            if (tx < 0) tx = 0;
+            if (cfg->scrim_on) fb_dim_rect(tx - 4, 135, 316, 157, cfg->scrim_clock);
+            font_draw_text(tx, 138, f->clock, PATH_GREEN);
+        }
+
         /* 北向标记统一由 draw_overview() 绘制（固定表示行程图方向），此处不再重复 */
     }
+    font_set_outline(false, 0);              /* 描边仅作用于导航画面的文字层 */
 
 #endif
     fb_flush();

@@ -6,6 +6,7 @@
 #define NAV_MAX_PTS 16
 #define NAV_HINT_MAX 48
 #define NAV_ETA_MAX 8
+#define NAV_CLOCK_MAX 8     /* 【M1.2】"HH:MM:SS"；ESP 无 RTC，时间由 App 每秒下发 */
 
 typedef struct { int16_t x, y; } npt_t;
 
@@ -30,6 +31,7 @@ typedef struct {
     uint8_t  progress_pct;
     uint16_t elapsed_min;
     char     eta_time[NAV_ETA_MAX + 1];
+    char     clock[NAV_CLOCK_MAX + 1];   /* 【M1.2】时:分:秒，主视图右下角；缺省（空串）则不显示 */
 
     npt_t    center_line[NAV_MAX_PTS];  int center_n;
     npt_t    past_center[NAV_MAX_PTS];  int past_n;

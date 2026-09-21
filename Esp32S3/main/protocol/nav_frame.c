@@ -39,6 +39,7 @@ bool nav_frame_on_json_line(const char *line, int len)
     s_nav.elapsed_min  = (uint16_t)get_i(line, "elapsed_min", 0);
     jl_get_str(line, "hint", s_nav.hint, sizeof(s_nav.hint));
     jl_get_str(line, "eta_time", s_nav.eta_time, sizeof(s_nav.eta_time));
+    jl_get_str(line, "clock", s_nav.clock, sizeof(s_nav.clock));   /* 【M1.2】时:分:秒（App 每秒下发） */
 
     s_nav.center_n = jl_get_pts16(line, "centerLine", (int16_t *)s_nav.center_line, NAV_MAX_PTS);
     s_nav.past_n   = jl_get_pts16(line, "pastCenter", (int16_t *)s_nav.past_center, NAV_MAX_PTS);

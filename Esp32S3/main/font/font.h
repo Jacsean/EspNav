@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <stdbool.h>
 
 /* 点阵字库（Unicode 子集索引，二分查找）：ASCII 8x16 + 汉字/符号 16x16
  * 数据由 tools/gen_font.py 生成（font_data.c）。缺字显示空心方块占位。 */
@@ -14,6 +15,10 @@ extern const int font_glyph_count;
 extern const uint8_t font_bits[];
 
 void font_init(void);
+/* 【M1.2 静态图导航】1px 描边开关：打开后 font_draw_text / font_draw_text_clip
+ * 自动先画 8 邻域的描边色再画本色 —— 地图底图上的文字靠它保住对比度。
+ * 黑底上描边不可见，故 draw_frame 里可无条件启用（开机画面不受影响：默认关闭）。 */
+void font_set_outline(bool on, uint16_t color);
 /* 绘制 UTF-8 文本，返回结束 x */
 int  font_draw_text(int x, int y, const char *utf8, uint16_t color);
 /* 带水平裁剪的绘制（用于滚动文本，避免侵入相邻区域） */

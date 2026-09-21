@@ -42,6 +42,51 @@ static const font_glyph_t *find_glyph(uint32_t cp)
     return NULL;
 }
 
+/* ---- 【M1.2】1px 描边开关 ----
+ * 打开后所有文字先画 8 邻域描边色、再画本色（两遍扫描同一字模）：
+ * 地图底图（照片/截图）上的文字靠它保住对比度；黑底上描边不可见，所以可无条件开。
+ * 默认关闭 —— 开机画面（render_nav_boot）不受影响。 */
+static bool     s_outline_on = false;
+static uint16_t s_outline_color = 0;
+
+void font_set_outline(bool on, uint16_t color)
+{
+    s_outline_on = on;
+    s_outline_color = color;
+}
+
+/* 画一个字形（含缺字占位方块）；clip_on=1 时只画 [cx0, cx1] 内的像素 */
+static void glyph_pixels(const font_glyph_t *g, int cx, int y, uint16_t color,
+                         int clip_on, int cx0, int cx1)
+{
+    int w = g ? (int)g->w : 16;
+    int nb = g ? (g->w + 7) / 8 : 0;
+    int passes = s_outline_on ? 2 : 1;
+    for (int pass = 0; pass < passes; pass++) {
+        bool outline_pass = s_outline_on && (pass == 0);
+        uint16_t c = outline_pass ? s_outline_color : color;
+        int lo = outline_pass ? -1 : 0;
+        int hi = outline_pass ?  1 : 0;
+        for (int yy = 0; yy < FONT_H; yy++) {
+            for (int xx = 0; xx < w; xx++) {
+                if (g) {
+                    uint8_t byte = font_bits[g->off + (uint32_t)yy * nb + (uint32_t)(xx / 8)];
+                    if (!(byte & (0x80 >> (xx % 8)))) continue;
+                } else if (!(yy == 0 || yy == FONT_H - 1 || xx == 0 || xx == w - 1)) {
+                    continue;                       /* 缺字占位：只画空心框 */
+                }
+                for (int oy = lo; oy <= hi; oy++) {
+                    for (int ox = lo; ox <= hi; ox++) {
+                        int px = cx + xx + ox, py = y + yy + oy;
+                        if (clip_on && (px < cx0 || px > cx1)) continue;
+                        fb_pixel(px, py, c);
+                    }
+                }
+            }
+        }
+    }
+}
+
 int font_draw_text(int x, int y, const char *utf8, uint16_t color)
 {
     const char *p = utf8;
@@ -50,25 +95,8 @@ int font_draw_text(int x, int y, const char *utf8, uint16_t color)
         uint32_t cp = utf8_next(&p);
         if (cp == 0) break;
         const font_glyph_t *g = find_glyph(cp);
-        if (g) {
-            int nb = (g->w + 7) / 8;
-            for (int yy = 0; yy < FONT_H; yy++) {
-                for (int xx = 0; xx < g->w; xx++) {
-                    uint8_t byte = font_bits[g->off + (uint32_t)yy * nb + (uint32_t)(xx / 8)];
-                    if (byte & (0x80 >> (xx % 8))) fb_pixel(cx + xx, y + yy, color);
-                }
-            }
-            cx += g->w;
-        } else {
-            /* 缺字占位：空心方块 */
-            for (int i = 0; i < 16; i++) {
-                fb_pixel(cx + i, y, color);
-                fb_pixel(cx + i, y + 15, color);
-                fb_pixel(cx, y + i, color);
-                fb_pixel(cx + 15, y + i, color);
-            }
-            cx += 16;
-        }
+        glyph_pixels(g, cx, y, color, 0, 0, 0);
+        cx += g ? (int)g->w : 16;
     }
     return cx;
 }
@@ -119,29 +147,8 @@ int font_draw_text_clip(int x, int y, const char *utf8, uint16_t color, int clip
         if (cp == 0) break;
         const font_glyph_t *g = find_glyph(cp);
         int w = g ? (int)g->w : 16;
-        if (cx + w >= clip_x0 && cx <= clip_x1) {          /* 只处理与裁剪区相交的字 */
-            if (g) {
-                int nb = (g->w + 7) / 8;
-                for (int yy = 0; yy < FONT_H; yy++) {
-                    for (int xx = 0; xx < g->w; xx++) {
-                        int px = cx + xx;
-                        if (px < clip_x0 || px > clip_x1) continue;
-                        uint8_t byte = font_bits[g->off + (uint32_t)yy * nb + (uint32_t)(xx / 8)];
-                        if (byte & (0x80 >> (xx % 8))) fb_pixel(px, y + yy, color);
-                    }
-                }
-            } else {
-                for (int i = 0; i < 16; i++) {
-                    int px = cx + i;
-                    if (px >= clip_x0 && px <= clip_x1) {
-                        fb_pixel(px, y, color);
-                        fb_pixel(px, y + 15, color);
-                    }
-                }
-                if (cx >= clip_x0 && cx <= clip_x1)
-                    for (int i = 0; i < 16; i++) fb_pixel(cx, y + i, color);
-            }
-        }
+        if (cx + w + 1 >= clip_x0 && cx - 1 <= clip_x1)   /* 只处理与裁剪区相交的字（+1 留给描边） */
+            glyph_pixels(g, cx, y, color, 1, clip_x0, clip_x1);
         cx += w;
     }
     return cx;
