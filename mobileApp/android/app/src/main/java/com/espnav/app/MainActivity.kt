@@ -227,8 +227,11 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         /* 【M2.6】连接后每秒下发 CLOCK：ESP 无 RTC；待机画面（已连接未导航）也据此显示时间 */
         clockJob?.cancel()
         clockJob = lifecycleScope.launch {
+            var clockLogged = false              /* 只记一条，避免日志区被每秒刷屏 */
             while (isActive) {
-                send(OutMsg.clock(timeFmt.format(java.util.Date())))
+                val t = timeFmt.format(java.util.Date())
+                send(OutMsg.clock(t))
+                if (!clockLogged) { log("已开始下发时间（CLOCK）：$t"); clockLogged = true }
                 delay(1000)
             }
         }
