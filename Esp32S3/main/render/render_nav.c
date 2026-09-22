@@ -737,7 +737,7 @@ static void draw_battery(void)
     if (iw > 0) fb_fill_rect(bx + 2, by + 2, bx + 2 + iw - 1, by + bh - 3, col);
     fb_fill_rect(bx + bw + 1, by + 3, bx + bw + 2, by + bh - 4, RGB565_WHITE); /* 正极凸头 */
 
-    char buf[8];
+    char buf[16];   /* 够放 "100%" + NUL（buf[8] 会被 -Werror=format-truncation 拒绝）*/
     snprintf(buf, sizeof(buf), "%d%%", pct);
     font_draw_text(bx + bw + 6, by, buf, s_col_main);
 }
