@@ -165,23 +165,25 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     override fun onResume() {
         super.onResume()
-        /* 只有导航页可见时才驱动 MapView 生命周期（官方要求 onCreate/onResume/onPause/onDestroy 成对） */
-        if (binding.pageNav.visibility == View.VISIBLE) ensureMap()
+        /* 【M8】导航页现在常驻 VISIBLE，改用 curTab 判断
+         *（官方要求 onCreate/onResume/onPause/onDestroy 成对调用） */
+        if (curTab == 1) ensureMap()
     }
 
     /** 导航页是全屏的：返回键先切回连接页，再按才退出 */
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (binding.pageNav.visibility == View.VISIBLE) { showTab(false); return }
+        /* 【M8】必须用 curTab：导航页已常驻 VISIBLE，用 visibility 判断会导致返回键永远失效 */
+        if (curTab == 1) { showTab(false); return }
         if (binding.pageCompare.visibility == View.VISIBLE) { showTab(false); return }
         @Suppress("DEPRECATION")
         super.onBackPressed()
     }
 
     override fun onPause() {
-        if (binding.pageNav.visibility == View.VISIBLE) {
-            runCatching { binding.mapView.onPause() }
-        }
+        /* 【M8】App 退到后台时暂停地图（省电，合理）。
+         * 前台时**不再**因为切 Tab 而暂停，否则 ESP 会收不到底图。 */
+        runCatching { binding.mapView.onPause() }
         super.onPause()
     }
 
@@ -721,18 +723,35 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private fun applyTabUi(nav: Boolean) = applyPage(if (nav) 1 else 0)
 
     /** 按 Tab 序号切页：0 = 连接，1 = 导航（全屏），2 = 行程预览 */
+    /** 【M8】当前 Tab（0 连接 / 1 导航 / 2 行程 / 3 测试 / 4 设置）。
+     *  为什么需要：导航页改成"常驻 VISIBLE、非导航 Tab 时移出可视区"之后，
+     *  不能再靠 pageNav.visibility 判断"是不是在导航页"。 */
+    private var curTab = 0
+
     private fun applyPage(index: Int) {
         val nav = index == 1
         val cmp = index == 2
+        curTab = index
         /* 【M5】Tab 栏**不再隐藏** —— 导航页也留在 Tab 内（原先是全屏 + 「返回连接」按钮）。
          * 页面顺序：0 连接 / 1 导航 / 2 行程预览 / 3 测试 / 4 设置 */
         binding.tabMain.visibility = View.VISIBLE
         binding.pageConnect.visibility = if (index == 0) View.VISIBLE else View.GONE
-        binding.pageNav.visibility = if (nav) View.VISIBLE else View.GONE
+        /* 【M8】导航页**不再用 GONE**，改为"常驻 VISIBLE + 非导航 Tab 时移出可视区"。
+         * 原因（用户反馈"切到其他 tab 时 ESP 端地图停止更新"）：
+         *   TextureMapView 一旦 visibility=GONE 就停止渲染 → getMapScreenShot() 拿不到内容。
+         *   移出可视区后 View 仍在 View 层级中、仍持有 Surface、地图继续渲染，
+         *   于是切到任何 Tab 都能持续给 ESP 出图。
+         * 不会遮挡其它页面：pageCompare / pageTest / pageSettings 在 FrameLayout 中位于
+         *   pageNav **之后**（后添加者在上层）会盖住它；pageConnect 虽在它下层，但 pageNav
+         *   已移出屏幕外，且 FrameLayout 默认 clipChildren=true —— 移出的部分根本不会被画出。 */
+        binding.pageNav.visibility = View.VISIBLE
+        binding.pageNav.translationY = if (nav) 0f else -4000f
         binding.pageCompare.visibility = if (cmp) View.VISIBLE else View.GONE
         binding.pageTest.root.visibility = if (index == 3) View.VISIBLE else View.GONE
         binding.pageSettings.root.visibility = if (index == 4) View.VISIBLE else View.GONE
-        if (nav) ensureMap() else runCatching { binding.mapView.onPause() }
+        /* 【M8】不再在这里对 mapView 调 onPause()：停渲染就没有底图。
+         * 真正需要暂停的是 App 退到后台（Activity 级 onPause），保留在那里。 */
+        if (nav) ensureMap()
         if (cmp) ensureCompare() else releaseCompare()   /* 懒加载 + 切走释放，避免 WebView 常驻内存 */
         refreshActionStates()
     }
