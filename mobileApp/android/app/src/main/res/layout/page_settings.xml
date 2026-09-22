@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 【M5】设置页：原「⚙ 设置」对话框的内容整体搬到这里（不再用对话框） -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/pageSettings"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 

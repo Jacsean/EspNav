@@ -1,24 +1,28 @@
 @echo off
 rem =====================================================================
-rem  ONE-STOP BUILD: firmware + APK, outputs collected into .\out\
-rem  Double-click this file (it lives in the repo root on purpose, so you
-rem  never have to switch folders).
+rem  ONE-STOP BUILD: firmware + APK -> .\out\
+rem  Double-click this file (it lives in the repo root on purpose).
+rem  NOTE: this file is intentionally pure ASCII (cmd.exe code page safe).
 rem
-rem  Outputs:
-rem    out\espnav.bin          firmware image (flash offset 0x10000)
-rem    out\espnav-debug.apk    debug APK (copy to phone and install)
-rem
-rem  Next steps (also printed at the end):
-rem    - flash firmware : double-click flash.cmd   (default COM3)
-rem    - install APK    : copy out\espnav-debug.apk to the phone
-rem
-rem  NOTE: pure ASCII on purpose (cmd.exe code page safe)
+rem  Key behavior (2026-09-22, fixes the "installed a stale APK" problem):
+rem   1) deletes old artifacts in out\ BEFORE building -> if the build fails,
+rem      out\ contains NOTHING, so a stale APK can never be installed again;
+rem   2) build logs go to build_fw.log / build_apk.log (full log, always);
+rem   3) on failure only KEY error lines are printed (e: / error / FAILED);
+rem   4) on success the artifact TIMESTAMPS are printed for verification.
 rem =====================================================================
 chcp 65001 >nul
 setlocal
 set "ROOT=%~dp0"
 set "OUT=%ROOT%out"
 if not exist "%OUT%" mkdir "%OUT%"
+
+echo.
+echo === [0/2] clear old artifacts in out\ ===
+del /q "%OUT%\espnav.bin" 2>nul
+del /q "%OUT%\bootloader.bin" 2>nul
+del /q "%OUT%\partition-table.bin" 2>nul
+del /q "%OUT%\espnav-debug.apk" 2>nul
 
 rem ---------- ESP-IDF environment ----------
 set "MSYSTEM="
@@ -35,9 +39,9 @@ set "PATH=%IDF_TOOLS_PATH%\tools\ninja\1.12.1;%IDF_TOOLS_PATH%\tools\cmake\4.0.3
 
 rem ---------- 1/2 firmware ----------
 echo.
-echo === [1/2] building FIRMWARE ===
+echo === [1/2] building FIRMWARE  (log: build_fw.log) ===
 pushd "%ROOT%Esp32S3"
-"%IDF_PYTHON_ENV_PATH%\Scripts\python.exe" "%IDF_PATH%\tools\idf.py" build
+"%IDF_PYTHON_ENV_PATH%\Scripts\python.exe" "%IDF_PATH%\tools\idf.py" build > "%ROOT%build_fw.log" 2>&1
 if errorlevel 1 goto fail_fw
 copy /y "build\espnav.bin" "%OUT%\espnav.bin" >nul
 copy /y "build\bootloader\bootloader.bin" "%OUT%\bootloader.bin" >nul
@@ -46,38 +50,51 @@ popd
 
 rem ---------- 2/2 APK ----------
 echo.
-echo === [2/2] building APK ===
+echo === [2/2] building APK       (log: build_apk.log) ===
 set "JAVA_HOME=C:\Users\jwgbo\.jdks\jbr-17.0.14"
 set "ANDROID_HOME=C:\Users\jwgbo\AppData\Local\Android\Sdk"
 pushd "%ROOT%mobileApp\android"
-call gradlew.bat assembleDebug --console=plain
+call gradlew.bat assembleDebug --console=plain > "%ROOT%build_apk.log" 2>&1
 if errorlevel 1 goto fail_apk
 copy /y "app\build\outputs\apk\debug\app-debug.apk" "%OUT%\espnav-debug.apk" >nul
 popd
 
 echo.
 echo ============================================================
-echo  DONE - both artifacts are in the SAME folder:
-echo    %OUT%\espnav.bin          (firmware, offset 0x10000)
-echo    %OUT%\espnav-debug.apk    (install on phone)
+echo  DONE - artifacts in out\ (timestamps below must be NOW):
+echo ============================================================
+dir "%OUT%\espnav.bin" "%OUT%\espnav-debug.apk"
 echo.
 echo  NEXT:
-echo    1) flash firmware : double-click flash.cmd   (default COM3)
-echo    2) install APK    : copy out\espnav-debug.apk to the phone
-echo       (or double-click install_apk.cmd if the phone is on USB)
-echo ============================================================
+echo    1) flash firmware : double-click flash.cmd        (default COM3)
+echo    2) install APK    : double-click install_apk.cmd (or copy out\espnav-debug.apk)
 goto end
 
 :fail_fw
 popd
 echo.
-echo === FIRMWARE BUILD FAILED - copy the error text above and send it to the agent ===
+echo ############################################################
+echo  ##  FIRMWARE BUILD FAILED - out\ has NO firmware (stale deleted)
+echo  ##  full log : %ROOT%build_fw.log
+echo  ##  key error lines:
+echo ############################################################
+findstr /C:"error:" /C:"FAILED" /C:"Error" "%ROOT%build_fw.log"
+echo ############################################################
 goto end
 
 :fail_apk
 popd
 echo.
-echo === APK BUILD FAILED - copy the error text above and send it to the agent ===
+echo ############################################################
+echo  ##  APK BUILD FAILED - out\ has NO apk (stale one deleted),
+echo  ##  so a stale build can never be installed again.
+echo  ##  full log : %ROOT%build_apk.log
+echo  ##  key error lines (Kotlin errors start with "e: "):
+echo ############################################################
+findstr /C:"e: " /C:"error: " /C:"FAILURE:" /C:"Execution failed" "%ROOT%build_apk.log"
+echo ############################################################
+echo   paste those lines to the agent.
+goto end
 
 :end
 pause

@@ -2,6 +2,7 @@
 <!-- 【M5】测试页：把所有「调试/测试」类操作集中到这里（原先混在「连接」页上）。
      内容 = 连接页搬来的调试按钮 + tvStage + 日志区（日志区原先在所有页共享，现集中到本页）。 -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/pageTest"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 

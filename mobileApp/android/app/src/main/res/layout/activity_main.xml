@@ -358,12 +358,10 @@
             android:visibility="gone" />
 
         <include
-            android:id="@+id/pageTest"
             layout="@layout/page_test"
             android:visibility="gone" />
 
         <include
-            android:id="@+id/pageSettings"
             layout="@layout/page_settings"
             android:visibility="gone" />
 
