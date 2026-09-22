@@ -115,7 +115,6 @@
     <string name="set_saved">设置已保存</string>
     <string name="set_screen_flip">屏幕内容水平翻转（分光镜 HUD 用，默认开）</string>
     <string name="tab_test">测试</string>
-    <string name="set_group_map">地图样式（影响 ESP 底图观感）</string>
     <string name="set_map_style">地图样式（改动立即生效，可直接看 ESP 底图对比）</string>
     <string-array name="map_style_names">
         <item>普通（黄白全彩）</item>

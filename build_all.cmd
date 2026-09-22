@@ -1,15 +1,15 @@
 @echo off
 rem =====================================================================
 rem  ONE-STOP BUILD: firmware + APK -> .\out\
-rem  Double-click this file (it lives in the repo root on purpose).
-rem  NOTE: this file is intentionally pure ASCII (cmd.exe code page safe).
+rem  Double-click this file (repo root). Pure ASCII on purpose.
 rem
-rem  Key behavior (2026-09-22, fixes the "installed a stale APK" problem):
-rem   1) deletes old artifacts in out\ BEFORE building -> if the build fails,
-rem      out\ contains NOTHING, so a stale APK can never be installed again;
-rem   2) build logs go to build_fw.log / build_apk.log (full log, always);
-rem   3) on failure only KEY error lines are printed (e: / error / FAILED);
-rem   4) on success the artifact TIMESTAMPS are printed for verification.
+rem  Behavior:
+rem   1) clears old artifacts in out\ BEFORE building -> a failed build
+rem      leaves NOTHING in out\, so a stale APK can never be installed;
+rem   2) build output is shown LIVE on screen (no redirect), so you can see
+rem      progress instead of thinking it hung;
+rem   3) on failure you get a short banner telling you what to copy back;
+rem   4) on success the artifact timestamps are printed.
 rem =====================================================================
 chcp 65001 >nul
 setlocal
@@ -39,9 +39,9 @@ set "PATH=%IDF_TOOLS_PATH%\tools\ninja\1.12.1;%IDF_TOOLS_PATH%\tools\cmake\4.0.3
 
 rem ---------- 1/2 firmware ----------
 echo.
-echo === [1/2] building FIRMWARE  (log: build_fw.log) ===
+echo === [1/2] building FIRMWARE   (about 1-3 min, output below) ===
 pushd "%ROOT%Esp32S3"
-"%IDF_PYTHON_ENV_PATH%\Scripts\python.exe" "%IDF_PATH%\tools\idf.py" build > "%ROOT%build_fw.log" 2>&1
+"%IDF_PYTHON_ENV_PATH%\Scripts\python.exe" "%IDF_PATH%\tools\idf.py" build
 if errorlevel 1 goto fail_fw
 copy /y "build\espnav.bin" "%OUT%\espnav.bin" >nul
 copy /y "build\bootloader\bootloader.bin" "%OUT%\bootloader.bin" >nul
@@ -50,11 +50,11 @@ popd
 
 rem ---------- 2/2 APK ----------
 echo.
-echo === [2/2] building APK       (log: build_apk.log) ===
+echo === [2/2] building APK        (about 1-2 min, output below) ===
 set "JAVA_HOME=C:\Users\jwgbo\.jdks\jbr-17.0.14"
 set "ANDROID_HOME=C:\Users\jwgbo\AppData\Local\Android\Sdk"
 pushd "%ROOT%mobileApp\android"
-call gradlew.bat assembleDebug --console=plain > "%ROOT%build_apk.log" 2>&1
+call gradlew.bat assembleDebug --console=plain
 if errorlevel 1 goto fail_apk
 copy /y "app\build\outputs\apk\debug\app-debug.apk" "%OUT%\espnav-debug.apk" >nul
 popd
@@ -66,7 +66,7 @@ echo ============================================================
 dir "%OUT%\espnav.bin" "%OUT%\espnav-debug.apk"
 echo.
 echo  NEXT (your side):
-echo    1) flash firmware : run inside Esp32S3\ : idf.py -p COM3 flash monitor
+echo    1) flash firmware : in Esp32S3\  run:  idf.py -p COM3 flash monitor
 echo    2) install APK    : copy out\espnav-debug.apk to the phone and tap it
 goto end
 
@@ -74,11 +74,9 @@ goto end
 popd
 echo.
 echo ############################################################
-echo  ##  FIRMWARE BUILD FAILED - out\ has NO firmware (stale deleted)
-echo  ##  full log : %ROOT%build_fw.log
-echo  ##  key error lines:
-echo ############################################################
-findstr /C:"error:" /C:"FAILED" /C:"Error" "%ROOT%build_fw.log"
+echo  ##  FIRMWARE BUILD FAILED
+echo  ##  out\ has NO firmware (old ones were deleted on purpose).
+echo  ##  Scroll UP, copy the "error:" lines and send them to the agent.
 echo ############################################################
 goto end
 
@@ -86,14 +84,11 @@ goto end
 popd
 echo.
 echo ############################################################
-echo  ##  APK BUILD FAILED - out\ has NO apk (stale one deleted),
+echo  ##  APK BUILD FAILED
+echo  ##  out\ has NO apk (the old one was deleted on purpose),
 echo  ##  so a stale build can never be installed again.
-echo  ##  full log : %ROOT%build_apk.log
-echo  ##  key error lines (Kotlin errors start with "e: "):
+echo  ##  Scroll UP, copy the "e: " / "ERROR:" lines to the agent.
 echo ############################################################
-findstr /C:"e: " /C:"error: " /C:"FAILURE:" /C:"Execution failed" "%ROOT%build_apk.log"
-echo ############################################################
-echo   paste those lines to the agent.
 goto end
 
 :end
