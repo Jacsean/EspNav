@@ -134,6 +134,13 @@ class AppPrefs(ctx: Context) {
         get() = sp.getInt(K_ESCRIM_CLOCK, 65)
         set(v) = sp.edit().putInt(K_ESCRIM_CLOCK, v.coerceIn(0, 100)).apply()
 
+    /* ---- 【M6】底图地图样式（截图观感的真正决定项）----
+     * 0 = 普通地图（黄白全彩，默认）；1 = 导航地图（“全蓝”，突出路网/弱化无关信息）；
+     * 2 = 夜景（暗色）。高德地图 SDK 的 setMapType，不额外计费。 */
+    var mapStyle: Int
+        get() = sp.getInt(K_MAPSTYLE, 0)
+        set(v) = sp.edit().putInt(K_MAPSTYLE, v.coerceIn(0, 3)).apply()
+
     /* ---- 【M3.2】地图底图：导航中按间隔推送截图（App 侧定时） ---- */
 
     /** 是否推送地图底图（关掉后不再发 IMG_*，ESP 保持当前画面） */
@@ -297,6 +304,8 @@ class AppPrefs(ctx: Context) {
         private const val K_EGRID = "esp_grid_bright"
         /* M3.2：地图底图 */
         private const val K_EMAPSHOT = "esp_map_shot_on"
+        /* M6：底图地图样式（0 普通 / 1 导航全蓝 / 2 夜景） */
+        private const val K_MAPSTYLE = "map_style"
         private const val K_EMAPSHOT_INT = "esp_map_shot_interval_ms"
         private const val K_DBG_TRIP = "dbg_trip_card"
         /* M2.4：ESP 屏颜色（RGB565 十进制） */

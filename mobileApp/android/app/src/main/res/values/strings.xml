@@ -114,6 +114,18 @@
     <string name="set_open_app_settings">前往系统设置授权（定位）</string>
     <string name="set_saved">设置已保存</string>
     <string name="set_screen_flip">屏幕内容水平翻转（分光镜 HUD 用，默认开）</string>
+    <string name="tab_test">测试</string>
+    <string name="set_map_style">地图样式（改动立即生效，可直接看 ESP 底图对比）</string>
+    <string-array name="map_style_names">
+        <item>普通（黄白全彩）</item>
+        <item>导航地图（全蓝）</item>
+        <item>夜景（暗色）</item>
+        <item>导航夜景（深蓝暗色）</item>
+    </string-array>
+    <string name="tab_settings">设置</string>
+    <string name="set_group_test">调试 / 测试（原「连接」页上的按钮集中到这里）</string>
+    <string name="set_group_display">设备显示（ESP 屏亮度 / 虚线速度 / 动画）</string>
+    <string name="btn_settings_save">保存设置</string>
     <string name="perm_guide_files_title">允许「媒体和文件」访问</string>
     <string name="perm_guide_files_msg">用于读写配置文件 /sdcard/Download/EspNav/espnav_config.json（卸载重装不丢设置）。\n\n点「去开启」后，在系统页面里打开「允许管理所有文件」。</string>
     <string name="perm_guide_go">去开启</string>

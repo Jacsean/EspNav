@@ -76,6 +76,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         savedBundle = savedInstanceState
         installCrashHandler()
         setupTabs()
+        setupSettingsTab()          /* 【M5】设置页（Tab 4）一次性绑定，替代原「⚙ 设置」对话框 */
 
         client = EspNavClient(lifecycleScope)
         client.listener = this
@@ -101,14 +102,12 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         binding.btnConnect.setOnClickListener { doConnect() }
         binding.btnQuickConnect.setOnClickListener { quickConnect() }
         binding.btnOpenProv.setOnClickListener { openProvPage() }
-        binding.btnSettings.setOnClickListener { openSettings() }
         /* 摘要行「编辑」：展开/收起起终点输入框（默认收起，把屏幕让给地图） */
         binding.tvEditToggle.setOnClickListener {
             val show = binding.routeEditPanel.visibility != View.VISIBLE
             binding.routeEditPanel.visibility = if (show) View.VISIBLE else View.GONE
             binding.tvEditToggle.text = getString(if (show) R.string.btn_edit_collapse else R.string.btn_edit_points)
         }
-        binding.btnBackToConnect.setOnClickListener { showTab(false) }
         binding.btnAddVia.setOnClickListener { addVia() }
         /* 高德官方对 calculateRideRoute(NaviPoi, List<NaviPoi>, NaviPoi, TravelStrategy) 的原文：
          * "当前接口为收费接口" —— 未开通时调用不返回，表现为"预览算路超时"。
@@ -116,10 +115,10 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         binding.btnAddVia.isEnabled = false
         binding.btnAddVia.text = getString(R.string.btn_add_via_paid)
         /* 日志区是公共组件（两个 Tab 都可见），点标题可折叠/展开 */
-        binding.logHeader.setOnClickListener {
-            val show = binding.svLog.visibility != View.VISIBLE
-            binding.svLog.visibility = if (show) View.VISIBLE else View.GONE
-            binding.tvLogTitle.text = getString(R.string.label_log) + (if (show) "  ▾" else "  ▸")
+        binding.pageTest.logHeader.setOnClickListener {
+            val show = binding.pageTest.svLog.visibility != View.VISIBLE
+            binding.pageTest.svLog.visibility = if (show) View.VISIBLE else View.GONE
+            binding.pageTest.tvLogTitle.text = getString(R.string.label_log) + (if (show) "  ▾" else "  ▸")
         }
         binding.btnDisconnect.setOnClickListener {
             intentionalDisconnect = true                  /* 手动断开：不自动重连 */
@@ -127,30 +126,30 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             send(OutMsg.bye())
             client.disconnect("手动断开")
         }
-        binding.btnPing.setOnClickListener { send(OutMsg.ping(System.currentTimeMillis() / 1000)) }
-        binding.btnGetConfig.setOnClickListener { send(OutMsg.getConfig()) }
-        binding.btnClear.setOnClickListener { send(OutMsg.clearScreen()) }
-        binding.btnSendOnce.setOnClickListener {
+        binding.pageTest.btnPing.setOnClickListener { send(OutMsg.ping(System.currentTimeMillis() / 1000)) }
+        binding.pageTest.btnGetConfig.setOnClickListener { send(OutMsg.getConfig()) }
+        binding.pageTest.btnClear.setOnClickListener { send(OutMsg.clearScreen()) }
+        binding.pageTest.btnSendOnce.setOnClickListener {
             val f = NavStateMapper.toFrame(navSource.latest())
             send(OutMsg.navFrame(f))
-            binding.tvStage.text = "单帧：${navSource.displayName} 剩余 ${f.turnDist} m"
+            binding.pageTest.tvStage.text = "单帧：${navSource.displayName} 剩余 ${f.turnDist} m"
         }
-        binding.btnMockStart.setOnClickListener { startMock() }
-        binding.btnMockStop.setOnClickListener { stopMock() }
-        binding.btnAmapNav.setOnClickListener { startAmapNav() }
-        binding.btnCopyLog.setOnClickListener { copyLog() }
+        binding.pageTest.btnMockStart.setOnClickListener { startMock() }
+        binding.pageTest.btnMockStop.setOnClickListener { stopMock() }
+        binding.pageTest.btnAmapNav.setOnClickListener { startAmapNav() }
+        binding.pageTest.btnCopyLog.setOnClickListener { copyLog() }
 
-        binding.seekBrightness.progress = 80
-        binding.seekDashSpeed.progress = 40
-        binding.switchAnim.isChecked = true
+        binding.pageSettings.seekBrightness.progress = 80
+        binding.pageSettings.seekDashSpeed.progress = 40
+        binding.pageSettings.switchAnim.isChecked = true
 
-        binding.seekBrightness.setOnSeekBarChangeListener(
+        binding.pageSettings.seekBrightness.setOnSeekBarChangeListener(
             onSeek("亮度") { v -> send(OutMsg.setConfig(brightness = v)) }
         )
-        binding.seekDashSpeed.setOnSeekBarChangeListener(
+        binding.pageSettings.seekDashSpeed.setOnSeekBarChangeListener(
             onSeek("速度") { v -> send(OutMsg.setConfig(dashSpeed = v)) }
         )
-        binding.switchAnim.setOnCheckedChangeListener { _, checked ->
+        binding.pageSettings.switchAnim.setOnCheckedChangeListener { _, checked ->
             send(OutMsg.setConfig(animEnable = checked))
             log("设置 流动动画 = $checked")
         }
@@ -596,7 +595,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             while (isActive) {
                 val f = NavStateMapper.toFrame(navSource.latest())
                 client.queue(OutMsg.navFrame(applyDbgMask(f)))
-                binding.tvStage.text =
+                binding.pageTest.tvStage.text =
                     "${label}：剩余 ${f.turnDist} m  进度 ${f.progressPct}%  ${f.hint}"
                 /* 导航画面：与发帧同频刷新（失败不影响推流） */
                 (navSource as? AmapNavSource)?.let { s ->
@@ -654,7 +653,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     private fun onSeek(tag: String, action: (Int) -> Unit) = object : SeekBar.OnSeekBarChangeListener {
         override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-            if (fromUser) binding.tvStage.text = "调整 $tag：$progress"
+            if (fromUser) binding.pageTest.tvStage.text = "调整 $tag：$progress"
         }
         override fun onStartTrackingTouch(sb: SeekBar?) = Unit
         override fun onStopTrackingTouch(sb: SeekBar?) {
@@ -718,10 +717,14 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private fun applyPage(index: Int) {
         val nav = index == 1
         val cmp = index == 2
-        binding.tabMain.visibility = if (nav) View.GONE else View.VISIBLE
+        /* 【M5】Tab 栏**不再隐藏** —— 导航页也留在 Tab 内（原先是全屏 + 「返回连接」按钮）。
+         * 页面顺序：0 连接 / 1 导航 / 2 行程预览 / 3 测试 / 4 设置 */
+        binding.tabMain.visibility = View.VISIBLE
         binding.pageConnect.visibility = if (index == 0) View.VISIBLE else View.GONE
         binding.pageNav.visibility = if (nav) View.VISIBLE else View.GONE
         binding.pageCompare.visibility = if (cmp) View.VISIBLE else View.GONE
+        binding.pageTest.root.visibility = if (index == 3) View.VISIBLE else View.GONE
+        binding.pageSettings.root.visibility = if (index == 4) View.VISIBLE else View.GONE
         if (nav) ensureMap() else runCatching { binding.mapView.onPause() }
         if (cmp) ensureCompare() else releaseCompare()   /* 懒加载 + 切走释放，避免 WebView 常驻内存 */
         refreshActionStates()
@@ -841,8 +844,10 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     /** 「⚙ 设置」：修改习惯性配置（持久化）；权限只能显示状态并跳系统设置（Android 不允许 App 自改） */
-    private fun openSettings() {
-        val v = layoutInflater.inflate(R.layout.dialog_settings, null)
+    /** 【M5】设置页（Tab 4）：原「⚙ 设置」对话框的内容搬到这里，
+     *  改由页面底部的「保存设置」按钮触发写入（逻辑与原来的 setPositiveButton 一致）。 */
+    private fun setupSettingsTab() {
+        val v: android.view.View = binding.pageSettings.root
         fun ed(id: Int) = v.findViewById<android.widget.EditText>(id)
         val cbAutoConn = v.findViewById<android.widget.CheckBox>(R.id.setAutoConnect)
         val cbAutoCity = v.findViewById<android.widget.CheckBox>(R.id.setAutoCity)
@@ -1113,10 +1118,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 .show()
         }
 
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle(R.string.btn_settings)
-            .setView(v)
-            .setPositiveButton("保存") { _, _ ->
+        /* 【M5】原对话框「保存」的写入逻辑原样保留，改由设置页底部按钮触发 */
+        fun saveAll() {
                 appPrefs.host = ed(R.id.setHost).text.toString().trim().ifBlank { com.espnav.app.data.AppPrefs.DEF_HOST }
                 appPrefs.port = ed(R.id.setPort).text.toString().trim().toIntOrNull() ?: com.espnav.app.data.AppPrefs.DEF_PORT
                 appPrefs.autoConnectOnStart = cbAutoConn.isChecked
@@ -1145,9 +1148,44 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 appPrefs.espGridBright = skEspGrid.progress
                 applyPrefsToUi()
                 log(getString(R.string.set_saved))
+        }
+        /* 【M6】底图地图样式：改动立即生效（地图已创建时直接切） */
+        val spMapStyle = v.findViewById<android.widget.Spinner>(R.id.spMapStyle)
+        val mapStyleNames = resources.getStringArray(R.array.map_style_names)
+        spMapStyle.adapter = android.widget.ArrayAdapter(
+            this, android.R.layout.simple_spinner_item, mapStyleNames
+        ).also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+        spMapStyle.setSelection(appPrefs.mapStyle.coerceIn(0, 3), false)
+        spMapStyle.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long
+            ) {
+                appPrefs.mapStyle = position
+                runCatching { aMap?.mapType = mapTypeOf(position) }   /* 立即生效 */
+                log("地图样式 = " + mapStyleNames[position] + "（已应用）")
             }
-            .setNegativeButton("取消", null)
-            .show()
+
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+        }
+
+        v.findViewById<android.widget.Button>(R.id.btnSettingsSave)
+            .setOnClickListener { runCatching { saveAll() } }
+    }
+
+    /** 【M6】地图样式序号 -> AMap 常量 */
+    private fun mapTypeOf(style: Int): Int = when (style) {
+        1 -> com.amap.api.maps.AMap.MAP_TYPE_NAVI
+        2 -> com.amap.api.maps.AMap.MAP_TYPE_NIGHT
+        3 -> com.amap.api.maps.AMap.MAP_TYPE_NAVI_NIGHT
+        else -> com.amap.api.maps.AMap.MAP_TYPE_NORMAL
+    }
+
+    /** 【M6】地图样式序号 -> 可读名（日志用） */
+    private fun mapStyleName(style: Int): String = when (style) {
+        1 -> "导航地图（全蓝）"
+        2 -> "夜景"
+        3 -> "导航夜景"
+        else -> "普通"
     }
 
     /** 把配置回填到界面控件 */
@@ -1164,6 +1202,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         tab.addTab(tab.newTab().setText(R.string.tab_connect))
         tab.addTab(tab.newTab().setText(R.string.tab_nav))
         tab.addTab(tab.newTab().setText(R.string.tab_compare))
+        tab.addTab(tab.newTab().setText(R.string.tab_test))       /* 【M5】测试 */
+        tab.addTab(tab.newTab().setText(R.string.tab_settings))   /* 【M5】设置 */
         tab.addOnTabSelectedListener(object :
             com.google.android.material.tabs.TabLayout.OnTabSelectedListener {
             override fun onTabSelected(t: com.google.android.material.tabs.TabLayout.Tab) {
@@ -1241,9 +1281,9 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         binding.btnQuickConnect.isEnabled = !on
         binding.btnDisconnect.isEnabled = on
         for (v in listOf<android.view.View>(
-                binding.btnSendOnce, binding.btnClear, binding.btnMockStart, binding.btnMockStop,
-                binding.btnAmapNav, binding.btnPing, binding.btnGetConfig,
-                binding.seekBrightness, binding.seekDashSpeed, binding.switchAnim)) {
+                binding.pageTest.btnSendOnce, binding.pageTest.btnClear, binding.pageTest.btnMockStart, binding.pageTest.btnMockStop,
+                binding.pageTest.btnAmapNav, binding.pageTest.btnPing, binding.pageTest.btnGetConfig,
+                binding.pageSettings.seekBrightness, binding.pageSettings.seekDashSpeed, binding.pageSettings.switchAnim)) {
             v.isEnabled = on
         }
         updatePickState()                     /* 导航页的操作也随连接状态刷新 */
@@ -1453,6 +1493,14 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                     am.isTrafficEnabled = false      /* 不要路况色带（骑行无关） */
                     am.showBuildings(false)          /* 不要建筑物色块 */
                     am.showIndoorMap(false)          /* 不要室内图 */
+                    /* 【M6】地图样式：底图观感的真正决定项（普通 / 导航全蓝 / 夜景） */
+                    am.mapType = when (appPrefs.mapStyle) {
+                        1 -> com.amap.api.maps.AMap.MAP_TYPE_NAVI
+                        2 -> com.amap.api.maps.AMap.MAP_TYPE_NIGHT
+                        3 -> com.amap.api.maps.AMap.MAP_TYPE_NAVI_NIGHT
+                        else -> com.amap.api.maps.AMap.MAP_TYPE_NORMAL
+                    }
+                    log("地图样式 = " + mapStyleName(appPrefs.mapStyle))
                     log("地图样式已应用：关路况/关建筑/关室内图（加载完成后）")
                 }
             }
@@ -1953,7 +2001,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private fun copyLog() {
         runCatching {
             val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-            cm.setPrimaryClip(ClipData.newPlainText("espnav-log", binding.tvLog.text.toString()))
+            cm.setPrimaryClip(ClipData.newPlainText("espnav-log", binding.pageTest.tvLog.text.toString()))
             Toast.makeText(this, "日志已复制到剪贴板", Toast.LENGTH_SHORT).show()
             log("日志已复制到剪贴板（可直接粘贴反馈）")
         }.onFailure { log("复制日志失败：" + it.message) }
@@ -1964,12 +2012,12 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     private fun log(msg: String) {
-        binding.tvLog.append(timeFmt.format(Date()) + "  " + msg + "\n")
-        if (binding.tvLog.lineCount > appPrefs.maxLogLines) {
-            val all = binding.tvLog.text.toString()
-            binding.tvLog.text = all.substring(all.length / 3)   // 超限时丢弃最早 1/3
+        binding.pageTest.tvLog.append(timeFmt.format(Date()) + "  " + msg + "\n")
+        if (binding.pageTest.tvLog.lineCount > appPrefs.maxLogLines) {
+            val all = binding.pageTest.tvLog.text.toString()
+            binding.pageTest.tvLog.text = all.substring(all.length / 3)   // 超限时丢弃最早 1/3
         }
-        binding.svLog.post { binding.svLog.fullScroll(View.FOCUS_DOWN) }
+        binding.pageTest.svLog.post { binding.pageTest.svLog.fullScroll(View.FOCUS_DOWN) }
     }
 
     companion object {

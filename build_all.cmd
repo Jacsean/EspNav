@@ -1,24 +1,28 @@
 @echo off
 rem =====================================================================
-rem  ONE-STOP BUILD: firmware + APK, outputs collected into .\out\
-rem  Double-click this file (it lives in the repo root on purpose, so you
-rem  never have to switch folders).
+rem  ONE-STOP BUILD: firmware + APK -> .\out\
+rem  Double-click this file (repo root). Pure ASCII on purpose.
 rem
-rem  Outputs:
-rem    out\espnav.bin          firmware image (flash offset 0x10000)
-rem    out\espnav-debug.apk    debug APK (copy to phone and install)
-rem
-rem  Next steps (also printed at the end):
-rem    - flash firmware : double-click flash.cmd   (default COM3)
-rem    - install APK    : copy out\espnav-debug.apk to the phone
-rem
-rem  NOTE: pure ASCII on purpose (cmd.exe code page safe)
+rem  Behavior:
+rem   1) clears old artifacts in out\ BEFORE building -> a failed build
+rem      leaves NOTHING in out\, so a stale APK can never be installed;
+rem   2) build output is shown LIVE on screen (no redirect), so you can see
+rem      progress instead of thinking it hung;
+rem   3) on failure you get a short banner telling you what to copy back;
+rem   4) on success the artifact timestamps are printed.
 rem =====================================================================
 chcp 65001 >nul
 setlocal
 set "ROOT=%~dp0"
 set "OUT=%ROOT%out"
 if not exist "%OUT%" mkdir "%OUT%"
+
+echo.
+echo === [0/2] clear old artifacts in out\ ===
+del /q "%OUT%\espnav.bin" 2>nul
+del /q "%OUT%\bootloader.bin" 2>nul
+del /q "%OUT%\partition-table.bin" 2>nul
+del /q "%OUT%\espnav-debug.apk" 2>nul
 
 rem ---------- ESP-IDF environment ----------
 set "MSYSTEM="
@@ -35,7 +39,7 @@ set "PATH=%IDF_TOOLS_PATH%\tools\ninja\1.12.1;%IDF_TOOLS_PATH%\tools\cmake\4.0.3
 
 rem ---------- 1/2 firmware ----------
 echo.
-echo === [1/2] building FIRMWARE ===
+echo === [1/2] building FIRMWARE   (about 1-3 min, output below) ===
 pushd "%ROOT%Esp32S3"
 "%IDF_PYTHON_ENV_PATH%\Scripts\python.exe" "%IDF_PATH%\tools\idf.py" build
 if errorlevel 1 goto fail_fw
@@ -46,7 +50,7 @@ popd
 
 rem ---------- 2/2 APK ----------
 echo.
-echo === [2/2] building APK ===
+echo === [2/2] building APK        (about 1-2 min, output below) ===
 set "JAVA_HOME=C:\Users\jwgbo\.jdks\jbr-17.0.14"
 set "ANDROID_HOME=C:\Users\jwgbo\AppData\Local\Android\Sdk"
 pushd "%ROOT%mobileApp\android"
@@ -57,27 +61,42 @@ popd
 
 echo.
 echo ============================================================
-echo  DONE - both artifacts are in the SAME folder:
-echo    %OUT%\espnav.bin          (firmware, offset 0x10000)
-echo    %OUT%\espnav-debug.apk    (install on phone)
-echo.
-echo  NEXT:
-echo    1) flash firmware : double-click flash.cmd   (default COM3)
-echo    2) install APK    : copy out\espnav-debug.apk to the phone
-echo       (or double-click install_apk.cmd if the phone is on USB)
+echo ##                                                        ##
+echo ##   BUILD OK  -  FIRMWARE + APK  BOTH BUILT SUCCESSFULLY  ##
+echo ##                                                        ##
 echo ============================================================
+echo  artifacts in out\ (timestamps below must be NOW):
+dir "%OUT%\espnav.bin" "%OUT%\espnav-debug.apk"
+echo.
+echo  NEXT (your side):
+echo    1) flash firmware : in Esp32S3\  run:  idf.py -p COM3 flash monitor
+echo    2) install APK    : copy out\espnav-debug.apk to the phone and tap it
 goto end
 
 :fail_fw
 popd
 echo.
-echo === FIRMWARE BUILD FAILED - copy the error text above and send it to the agent ===
+echo !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+echo !!!  BUILD FAILED : FIRMWARE  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+echo !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+echo  ##  FIRMWARE BUILD FAILED
+echo  ##  out\ has NO firmware (old ones were deleted on purpose).
+echo  ##  Scroll UP, copy the "error:" lines and send them to the agent.
+echo ############################################################
 goto end
 
 :fail_apk
 popd
 echo.
-echo === APK BUILD FAILED - copy the error text above and send it to the agent ===
+echo !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+echo !!!  BUILD FAILED : APK       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+echo !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+echo  ##  APK BUILD FAILED
+echo  ##  out\ has NO apk (the old one was deleted on purpose),
+echo  ##  so a stale build can never be installed again.
+echo  ##  Scroll UP, copy the "e: " / "ERROR:" lines to the agent.
+echo ############################################################
+goto end
 
 :end
 pause
