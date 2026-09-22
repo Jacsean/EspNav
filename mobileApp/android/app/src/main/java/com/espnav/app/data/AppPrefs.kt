@@ -180,6 +180,12 @@ class AppPrefs(ctx: Context) {
         get() = sp.getBoolean("screen_flip", true)
         set(v) = sp.edit().putBoolean("screen_flip", v).apply()
 
+    /** 【M9】屏幕内容垂直翻转（上下镜像）：默认关。
+     *  与水平翻转**相互独立**（固件里各自作用于驱动，两者可同时开启，效果叠加）。 */
+    var screenFlipY: Boolean
+        get() = sp.getBoolean("screen_flip_y", false)
+        set(v) = sp.edit().putBoolean("screen_flip_y", v).apply()
+
     /** 行程图网格亮度 0-100（主格线每 50px 再亮一档） */
     /* ================= 【M2.4】ESP 屏颜色（全部可在设置里改）=================
      * 值 = RGB565（十进制）；0 表示"用固件默认色"。

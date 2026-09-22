@@ -737,6 +737,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private var navCarMarker: com.amap.api.maps.model.Marker? = null
     private var navCarIcon: com.amap.api.maps.model.BitmapDescriptor? = null
     private var navLastSplit = -1
+    private var navLastSplitAt = 0L        /* 【M12】上次重建聚线的时刻（节流用）*/
     private var navLastLat = Double.NaN
     private var navLastLon = Double.NaN
     private var navLastHeading = -999
@@ -908,15 +909,72 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private fun setupSettingsTab() {
         val v: android.view.View = binding.pageSettings.root
         fun ed(id: Int) = v.findViewById<android.widget.EditText>(id)
-        val cbAutoConn = v.findViewById<android.widget.CheckBox>(R.id.setAutoConnect)
-        val cbAutoCity = v.findViewById<android.widget.CheckBox>(R.id.setAutoCity)
-        val cbEmulate = v.findViewById<android.widget.CheckBox>(R.id.setEmulate)
+
+        /* ================= 【M11】设置页结构：分类 Tab + 可收缩小节 =================
+         * 布局已重排为「顶部固定 TabLayout + 3 个独立 ScrollView + 可收缩小节」，
+         * 这里只做两件事：Tab 决定显示哪个 ScrollView；点小节标题切换其内容显隐。
+         * ★ 所有设置项 id 未变，下面原有绑定代码一行都不用改。 */
+        val tabSet = v.findViewById<com.google.android.material.tabs.TabLayout>(R.id.tabSettings)
+        val setPanes = listOf(
+            v.findViewById<android.view.View>(R.id.scrollSetConn),
+            v.findViewById<android.view.View>(R.id.scrollSetApk),
+            v.findViewById<android.view.View>(R.id.scrollSetEsp)
+        )
+        fun showSetPane(i: Int) {
+            setPanes.forEachIndexed { idx, pane ->
+                pane.visibility = if (idx == i) android.view.View.VISIBLE else android.view.View.GONE
+            }
+        }
+        tabSet.removeAllTabs()
+        tabSet.addTab(tabSet.newTab().setText(getString(R.string.tab_set_conn)))
+        tabSet.addTab(tabSet.newTab().setText(getString(R.string.tab_set_apk)))
+        tabSet.addTab(tabSet.newTab().setText(getString(R.string.tab_set_esp)))
+        tabSet.addOnTabSelectedListener(object : com.google.android.material.tabs.TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: com.google.android.material.tabs.TabLayout.Tab) = showSetPane(tab.position)
+
+            override fun onTabUnselected(tab: com.google.android.material.tabs.TabLayout.Tab) = Unit
+
+            override fun onTabReselected(tab: com.google.android.material.tabs.TabLayout.Tab) = Unit
+        })
+        showSetPane(0)
+
+        /* 可收缩小节（共 14 个）：点标题行切换内容显隐，箭头 ▾/▸ 跟着翻。
+         * 默认展开哪些由布局里的 visibility 决定（无需代码设置）。 */
+        val setSections = listOf(
+            Triple(R.id.secHeadAddr, R.id.secBodyAddr, R.id.secArrowAddr),
+            Triple(R.id.secHeadConn, R.id.secBodyConn, R.id.secArrowConn),
+            Triple(R.id.secHeadNav, R.id.secBodyNav, R.id.secArrowNav),
+            Triple(R.id.secHeadOverview, R.id.secBodyOverview, R.id.secArrowOverview),
+            Triple(R.id.secHeadAppMap, R.id.secBodyAppMap, R.id.secArrowAppMap),
+            Triple(R.id.secHeadAppUi, R.id.secBodyAppUi, R.id.secArrowAppUi),
+            Triple(R.id.secHeadPerm, R.id.secBodyPerm, R.id.secArrowPerm),
+            Triple(R.id.secHeadCfg, R.id.secBodyCfg, R.id.secArrowCfg),
+            Triple(R.id.secHeadScreen, R.id.secBodyScreen, R.id.secArrowScreen),
+            Triple(R.id.secHeadScrim, R.id.secBodyScrim, R.id.secArrowScrim),
+            Triple(R.id.secHeadColor, R.id.secBodyColor, R.id.secArrowColor),
+            Triple(R.id.secHeadEspMap, R.id.secBodyEspMap, R.id.secArrowEspMap),
+            Triple(R.id.secHeadFlip, R.id.secBodyFlip, R.id.secArrowFlip),
+            Triple(R.id.secHeadDebug, R.id.secBodyDebug, R.id.secArrowDebug)
+        )
+        setSections.forEach { (headId, bodyId, arrowId) ->
+            val head = v.findViewById<android.view.View>(headId)
+            val body = v.findViewById<android.view.View>(bodyId)
+            val arrow = v.findViewById<android.widget.TextView>(arrowId)
+            head.setOnClickListener {
+                val show = body.visibility != android.view.View.VISIBLE
+                body.visibility = if (show) android.view.View.VISIBLE else android.view.View.GONE
+                arrow.text = getString(if (show) R.string.sec_arrow_open else R.string.sec_arrow_closed)
+            }
+        }
+        val cbAutoConn = v.findViewById<android.widget.CompoundButton>(R.id.setAutoConnect)
+        val cbAutoCity = v.findViewById<android.widget.CompoundButton>(R.id.setAutoCity)
+        val cbEmulate = v.findViewById<android.widget.CompoundButton>(R.id.setEmulate)
         val rgSampler = v.findViewById<android.widget.RadioGroup>(R.id.setSamplerMode)
-        val cbDbgAllOff = v.findViewById<android.widget.CheckBox>(R.id.setDbgAllOff)
-        val cbDbgRoad = v.findViewById<android.widget.CheckBox>(R.id.setDbgRoad)
-        val cbDbgCln = v.findViewById<android.widget.CheckBox>(R.id.setDbgCenterLn)
-        val cbDbgOv = v.findViewById<android.widget.CheckBox>(R.id.setDbgOverview)
-        val cbDbgCar = v.findViewById<android.widget.CheckBox>(R.id.setDbgCar)
+        val cbDbgAllOff = v.findViewById<android.widget.CompoundButton>(R.id.setDbgAllOff)
+        val cbDbgRoad = v.findViewById<android.widget.CompoundButton>(R.id.setDbgRoad)
+        val cbDbgCln = v.findViewById<android.widget.CompoundButton>(R.id.setDbgCenterLn)
+        val cbDbgOv = v.findViewById<android.widget.CompoundButton>(R.id.setDbgOverview)
+        val cbDbgCar = v.findViewById<android.widget.CompoundButton>(R.id.setDbgCar)
         cbDbgAllOff.isChecked = appPrefs.dbgAllOff
         cbDbgRoad.isChecked = appPrefs.dbgShowRoad
         cbDbgCln.isChecked = appPrefs.dbgShowCenterLn
@@ -926,7 +984,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         /* ---- 【M1】ESP 屏叠加层可读性（罗盘/文字/行程图/时间底衬 + 网格亮度）----
          * 拖动滑杆：立即写 AppPrefs + 若已连接则立刻下发 SET_CONFIG（屏幕上马上能看到变化）。
          * 未连接时只保存，连接成功后由 onConnected() 自动补发一次。 */
-        val cbEspScrimOn = v.findViewById<android.widget.CheckBox>(R.id.setEspScrimOn)
+        val cbEspScrimOn = v.findViewById<android.widget.CompoundButton>(R.id.setEspScrimOn)
         val skEspScrimCompass = v.findViewById<android.widget.SeekBar>(R.id.seekEspScrimCompass)
         val skEspScrimText = v.findViewById<android.widget.SeekBar>(R.id.seekEspScrimText)
         val skEspScrimRoute = v.findViewById<android.widget.SeekBar>(R.id.seekEspScrimRoute)
@@ -941,12 +999,21 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
         /* 【M2.5】屏幕内容水平翻转（分光镜 HUD，默认开）：改动即下发 SET_CONFIG.screen_flip。
          * 固件侧默认也是开，所以新装 App 首次连接不改这里也是"镜像已开"的状态。 */
-        val cbScreenFlip = v.findViewById<android.widget.CheckBox>(R.id.setScreenFlip)
+        val cbScreenFlip = v.findViewById<android.widget.CompoundButton>(R.id.setScreenFlip)
         cbScreenFlip.isChecked = appPrefs.screenFlip
         cbScreenFlip.setOnCheckedChangeListener { _, c ->
             appPrefs.screenFlip = c
             if (client.isConnected) send(OutMsg.setConfig(screenFlip = c))
             log("ESP 屏幕水平翻转 = $c")
+        }
+
+        /* 【M9】垂直翻转（上下镜像）：与水平翻转独立，可同时开启 */
+        val cbScreenFlipY = v.findViewById<android.widget.CompoundButton>(R.id.setScreenFlipY)
+        cbScreenFlipY.isChecked = appPrefs.screenFlipY
+        cbScreenFlipY.setOnCheckedChangeListener { _, c ->
+            appPrefs.screenFlipY = c
+            if (client.isConnected) send(OutMsg.setConfig(screenFlipY = c))
+            log("ESP 屏幕垂直翻转 = $c")
         }
 
         /* 【M2.4】ESP 屏颜色：6 个预设色下拉；选择即保存 + 一次性下发全部颜色 */
@@ -995,7 +1062,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         bindColor(R.id.spEspColHint, appPrefs.espColHint, "提示行") { appPrefs.espColHint = it }
 
         /* 【M2.4】App 行程图卡片开关（与 ESP 端行程图小地图对应，关掉可对比观察） */
-        val cbTripCard = v.findViewById<android.widget.CheckBox>(R.id.setDbgTripCard)
+        val cbTripCard = v.findViewById<android.widget.CompoundButton>(R.id.setDbgTripCard)
         cbTripCard.isChecked = appPrefs.dbgTripCard
         cbTripCard.setOnCheckedChangeListener { _, c ->
             appPrefs.dbgTripCard = c
@@ -1004,7 +1071,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         }
 
         /* 【M3.2】地图底图：开关 + 刷新间隔（间隔滑杆步长 100ms，对应 0.5–5.0 s） */
-        val cbEspMapShot = v.findViewById<android.widget.CheckBox>(R.id.cbEspMapShot)
+        val cbEspMapShot = v.findViewById<android.widget.CompoundButton>(R.id.cbEspMapShot)
         val skEspMapShotInt = v.findViewById<android.widget.SeekBar>(R.id.seekEspMapShotInt)
         val tvEspMapShotInt = v.findViewById<android.widget.TextView>(R.id.tvEspMapShotInt)
         cbEspMapShot.isChecked = appPrefs.espMapShotOn
@@ -1013,8 +1080,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         skEspMapShotInt.progress =
             (appPrefs.espMapShotIntervalMs - com.espnav.app.data.AppPrefs.MAP_SHOT_INT_MIN) / 100
         fun refreshMapShotLabel() {
-            tvEspMapShotInt.text = getString(R.string.set_esp_map_shot_int) + "：" +
-                (appPrefs.espMapShotIntervalMs / 1000.0) + " s"
+            /* 【M11】名称已由布局静态显示，这里只写右侧数值 */
+            tvEspMapShotInt.text = (appPrefs.espMapShotIntervalMs / 1000.0).toString() + " s"
         }
         refreshMapShotLabel()
         cbEspMapShot.setOnCheckedChangeListener { _, c ->
@@ -1039,7 +1106,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         /* 【M7】底图亮度 30–150%（默认 70；原来硬编码 45% 偏暗）+ 对比度 50–150%（默认 100）。
          * 滑杆 progress 是偏移量：亮度 = 30 + p（max 120），对比度 = 50 + p（max 100）。 */
         /* 【M8.1】导航期间屏幕常亮（立即生效：正在导航时改动会马上生效） */
-        val cbKeepScreenOn = v.findViewById<android.widget.CheckBox>(R.id.setKeepScreenOn)
+        val cbKeepScreenOn = v.findViewById<android.widget.CompoundButton>(R.id.setKeepScreenOn)
         cbKeepScreenOn.isChecked = appPrefs.keepScreenOn
         cbKeepScreenOn.setOnCheckedChangeListener { _, c ->
             appPrefs.keepScreenOn = c
@@ -1060,8 +1127,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             com.espnav.app.data.MapShotCapture.contrast = appPrefs.espMapContrast / 100f
         }
         fun refreshMapDispLabels() {
-            tvEspMapBright.text = getString(R.string.set_esp_map_bright) + "：" + appPrefs.espMapBright + "%"
-            tvEspMapContrast.text = getString(R.string.set_esp_map_contrast) + "：" + appPrefs.espMapContrast + "%"
+            tvEspMapBright.text = appPrefs.espMapBright.toString() + "%"
+            tvEspMapContrast.text = appPrefs.espMapContrast.toString() + "%"
         }
         skEspMapBright.max = 120
         skEspMapContrast.max = 100
@@ -1093,15 +1160,16 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         })
 
         /** 把滑杆旁标签写成“名称：65%” */
-        fun espLabel(tvId: Int, nameId: Int, pct: Int) {
-            v.findViewById<android.widget.TextView>(tvId).text = getString(nameId) + "：" + pct + "%"
+        /* 【M11】名称已由布局静态显示（标题左），这里只写右侧数值（值右对齐），避免重复 */
+        fun espLabel(tvId: Int, pct: Int) {
+            v.findViewById<android.widget.TextView>(tvId).text = pct.toString() + "%"
         }
         fun refreshEspLabels() {
-            espLabel(R.id.tvEspScrimCompass, R.string.set_esp_scrim_compass, skEspScrimCompass.progress)
-            espLabel(R.id.tvEspScrimText, R.string.set_esp_scrim_text, skEspScrimText.progress)
-            espLabel(R.id.tvEspScrimRoute, R.string.set_esp_scrim_route, skEspScrimRoute.progress)
-            espLabel(R.id.tvEspScrimClock, R.string.set_esp_scrim_clock, skEspScrimClock.progress)
-            espLabel(R.id.tvEspGrid, R.string.set_esp_grid, skEspGrid.progress)
+            espLabel(R.id.tvEspScrimCompass, skEspScrimCompass.progress)
+            espLabel(R.id.tvEspScrimText, skEspScrimText.progress)
+            espLabel(R.id.tvEspScrimRoute, skEspScrimRoute.progress)
+            espLabel(R.id.tvEspScrimClock, skEspScrimClock.progress)
+            espLabel(R.id.tvEspGrid, skEspGrid.progress)
         }
         refreshEspLabels()
 
@@ -1910,8 +1978,15 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         /* 已走(灰)/未走(蓝) 分色 + 行程图卡片：切分点变化 >=3 才重建（每帧重建 polyline 会卡） */
         val all = src.fullPath()
         val i0 = if (o != null) src.currentPathIndex() else 0
-        if (all.size >= 2 && (navLastSplit < 0 || kotlin.math.abs(i0 - navLastSplit) >= 3)) {
+        /* 【M12】节流：原来每移动 3 个路径点就 remove + 重建两条聚线，长路线会重建上千次，
+         * 高德 native 侧反复创建/销毁图形有累积风险。改为 ≥12 点 且 至少间隔 1.5 秒。 */
+        val nowMs = android.os.SystemClock.elapsedRealtime()
+        if (all.size >= 2 &&
+            (navLastSplit < 0 ||
+                (kotlin.math.abs(i0 - navLastSplit) >= 12 && nowMs - navLastSplitAt >= 1500))
+        ) {
             navLastSplit = i0
+            navLastSplitAt = nowMs
             runCatching {
                 navWalkedLine?.remove()
                 navRemainLine?.remove()

@@ -20,3 +20,5 @@ void lcd_probe_color_cycle(void);
 /* 【M1.7】整屏水平镜像（分光镜 HUD 用）：true 时送屏前把每行像素左右倒序。
  * 实现在 ili9341.c；由 SET_CONFIG.screen_flip 设置（App 侧默认开）。 */
 void lcd_ili9341_set_flip_x(bool on);
+/* 【M9】整屏垂直镜像（上下翻转）：true 时按行倒序送屏。由 SET_CONFIG.screen_flip_y 设置。 */
+void lcd_ili9341_set_flip_y(bool on);
