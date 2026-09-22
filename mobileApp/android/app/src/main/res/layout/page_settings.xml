@@ -497,6 +497,12 @@
             android:max="100" />
 
         <CheckBox
+            android:id="@+id/setKeepScreenOn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/set_keep_screen_on" />
+
+        <CheckBox
             android:id="@+id/setScreenFlip"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

@@ -166,6 +166,13 @@ class AppPrefs(ctx: Context) {
         get() = sp.getInt(K_EMAP_CONTRAST, 100).coerceIn(MAP_CONTRAST_MIN, MAP_CONTRAST_MAX)
         set(v) = sp.edit().putInt(K_EMAP_CONTRAST, v.coerceIn(MAP_CONTRAST_MIN, MAP_CONTRAST_MAX)).apply()
 
+    /* ---- 【M8.1】导航期间保持屏幕常亮（默认开）----
+     * 骑行时屏幕自动息屏会同时打断 ESP 底图推送（息屏 → onPause → 地图暂停），
+     * 所以默认开启；想省电可在设置里关掉。 */
+    var keepScreenOn: Boolean
+        get() = sp.getBoolean("keep_screen_on", true)
+        set(v) = sp.edit().putBoolean("keep_screen_on", v).apply()
+
     /** 【M2.5】屏幕内容水平翻转（分光镜 HUD）：默认开。
      *  分光镜（半透半反镜）让人眼看到的是左右镜像画面，所以 ESP 端送屏前要预先水平镜像。
      *  用字面 key（暂不进配置文件导出项），后续若要纳入配置再补常量与导出。 */
