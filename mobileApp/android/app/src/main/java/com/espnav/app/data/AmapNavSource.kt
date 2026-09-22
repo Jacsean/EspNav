@@ -491,6 +491,33 @@ class AmapNavSource(
         }.getOrDefault(state.etaText)
     }
 
+    /* ================= 【M6·探针】路口放大图 =================
+     * 目的：先确认**骑行**模式下这些回调是否触发。
+     * 依据：高德官方 FAQ 称路口放大图"仅对驾车有效"，且需要关闭引擎内建处理
+     *       （AMapNaviView 的 setEyrieCrossDisplay(false)）才会回调外部 ——
+     *       我们用的是纯 AMapNavi + 自绘 UI，是否回调**未知**，必须先实测。
+     * 用法：跑一次骑行导航 → 看 App 日志里有没有 "★ 路口放大图"。
+     *   · 有 → 可做"把路口大图推给 ESP"的完整通道
+     *   · 无 → 该 API 对骑行不可用，改取官方转向图标（NaviInfo）
+     * 注意：这里只打日志、不改任何行为；确认可用后再实现（探针本身可保留）。 */
+    override fun showCross(cross: com.amap.api.navi.model.AMapNaviCross?) {
+        val bmp = runCatching { cross?.bitmap }.getOrNull()
+        log("★ 路口放大图(实景) 回调触发：bitmap=" +
+            (bmp?.let { it.width.toString() + "x" + it.height } ?: "null"))
+    }
+
+    override fun hideCross() {
+        log("★ 路口放大图(实景) 隐藏")
+    }
+
+    override fun showModeCross(modelCross: com.amap.api.navi.model.AMapModelCross?) {
+        log("★ 路口放大图(模型) 回调触发")
+    }
+
+    override fun hideModeCross() {
+        log("★ 路口放大图(模型) 隐藏")
+    }
+
     override fun onArriveDestination() {
         log("到达目的地")
         state = state.copy(turnType = TurnType.ARRIVE, turnDistMeters = 0, remainDistMeters = 0)

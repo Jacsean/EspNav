@@ -1149,8 +1149,41 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 applyPrefsToUi()
                 log(getString(R.string.set_saved))
         }
+        /* 【M6】底图地图样式：改动立即生效（地图已创建时直接切） */
+        val spMapStyle = v.findViewById<android.widget.Spinner>(R.id.spMapStyle)
+        val mapStyleNames = resources.getStringArray(R.array.map_style_names)
+        spMapStyle.adapter = android.widget.ArrayAdapter(
+            this, android.R.layout.simple_spinner_item, mapStyleNames
+        ).also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+        spMapStyle.setSelection(appPrefs.mapStyle.coerceIn(0, 2), false)
+        spMapStyle.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long
+            ) {
+                appPrefs.mapStyle = position
+                runCatching { aMap?.mapType = mapTypeOf(position) }   /* 立即生效 */
+                log("地图样式 = " + mapStyleNames[position] + "（已应用）")
+            }
+
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+        }
+
         v.findViewById<android.widget.Button>(R.id.btnSettingsSave)
             .setOnClickListener { runCatching { saveAll() } }
+    }
+
+    /** 【M6】地图样式序号 -> AMap 常量 */
+    private fun mapTypeOf(style: Int): Int = when (style) {
+        1 -> com.amap.api.maps.AMap.MAP_TYPE_NAVI
+        2 -> com.amap.api.maps.AMap.MAP_TYPE_NIGHT
+        else -> com.amap.api.maps.AMap.MAP_TYPE_NORMAL
+    }
+
+    /** 【M6】地图样式序号 -> 可读名（日志用） */
+    private fun mapStyleName(style: Int): String = when (style) {
+        1 -> "导航地图（全蓝）"
+        2 -> "夜景"
+        else -> "普通"
     }
 
     /** 把配置回填到界面控件 */
@@ -1458,6 +1491,13 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                     am.isTrafficEnabled = false      /* 不要路况色带（骑行无关） */
                     am.showBuildings(false)          /* 不要建筑物色块 */
                     am.showIndoorMap(false)          /* 不要室内图 */
+                    /* 【M6】地图样式：底图观感的真正决定项（普通 / 导航全蓝 / 夜景） */
+                    am.mapType = when (appPrefs.mapStyle) {
+                        1 -> com.amap.api.maps.AMap.MAP_TYPE_NAVI
+                        2 -> com.amap.api.maps.AMap.MAP_TYPE_NIGHT
+                        else -> com.amap.api.maps.AMap.MAP_TYPE_NORMAL
+                    }
+                    log("地图样式 = " + mapStyleName(appPrefs.mapStyle))
                     log("地图样式已应用：关路况/关建筑/关室内图（加载完成后）")
                 }
             }
