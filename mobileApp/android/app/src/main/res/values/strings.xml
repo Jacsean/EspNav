@@ -133,6 +133,9 @@
     <string name="set_group_esp_map">ESP 屏地图底图（App 截图推送）</string>
     <string name="set_esp_map_shot">推送地图底图（关掉则 ESP 保持当前画面）</string>
     <string name="set_esp_map_shot_int">底图刷新间隔</string>
+    <string name="set_esp_map_bright">底图亮度</string>
+    <string name="set_keep_screen_on">导航期间屏幕常亮（防止自动锁屏打断底图推送）</string>
+    <string name="set_esp_map_contrast">底图对比度</string>
     <string name="set_group_esp_color">ESP 屏颜色（APK 里改，立即生效）</string>
     <string name="set_esp_col_hint_text">从预设色板里选；选择即保存并一次性下发全部颜色。</string>
     <string name="set_esp_col_main">主色（文字 / 罗盘 / 路名 / 统计 / 时间）</string>

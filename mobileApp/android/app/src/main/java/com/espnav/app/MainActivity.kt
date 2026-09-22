@@ -163,25 +163,42 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         log("就绪：请先连接热点 ESPNav-AP，再点“连接”")
     }
 
+    /** 【M8.2】结束导航防重入：到达终点回调与按钮可能重复进入 endNav */
+    private var navEnding = false
+
+    /** 【M8.1】地图当前是否"可调用"（Activity 在前台且 mapView 未 onPause）。
+     *  为什么必须有它 —— 后台闪退的根因：
+     *    onPause（锁屏 / 切到别的 App）时已执行 mapView.onPause()，
+     *    但推流与相机跟随循环跑在 lifecycleScope 里（onPause **不会**取消它），
+     *    循环继续对"已暂停的地图实例"调 getMapScreenShot / moveCamera /
+     *    addPolyline / addMarker → 高德 native 层崩溃。
+     *  所以：onPause 必须先把它置 false，循环各处再据此直接跳过地图调用。 */
+    private var mapActive = false
+
     override fun onResume() {
         super.onResume()
-        /* 只有导航页可见时才驱动 MapView 生命周期（官方要求 onCreate/onResume/onPause/onDestroy 成对） */
-        if (binding.pageNav.visibility == View.VISIBLE) ensureMap()
+        mapActive = true
+        /* 【M8】导航页现在常驻 VISIBLE，改用 curTab 判断
+         *（官方要求 onCreate/onResume/onPause/onDestroy 成对调用） */
+        if (curTab == 1) ensureMap()
     }
 
     /** 导航页是全屏的：返回键先切回连接页，再按才退出 */
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (binding.pageNav.visibility == View.VISIBLE) { showTab(false); return }
+        /* 【M8】必须用 curTab：导航页已常驻 VISIBLE，用 visibility 判断会导致返回键永远失效 */
+        if (curTab == 1) { showTab(false); return }
         if (binding.pageCompare.visibility == View.VISIBLE) { showTab(false); return }
         @Suppress("DEPRECATION")
         super.onBackPressed()
     }
 
     override fun onPause() {
-        if (binding.pageNav.visibility == View.VISIBLE) {
-            runCatching { binding.mapView.onPause() }
-        }
+        /* 【M8.1】必须先置 false：此刻起的循环迭代不再碰任何地图 API（防 native 崩溃）。
+         * 【M8】App 退到后台时暂停地图（省电，合理）；
+         * 前台时**不再**因为切 Tab 而暂停，否则 ESP 会收不到底图。 */
+        mapActive = false
+        runCatching { binding.mapView.onPause() }
         super.onPause()
     }
 
@@ -191,6 +208,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     override fun onDestroy() {
+        mapActive = false        /* 【M8.2】先关闸：销毁过程中不让循环再碰地图 API */
         stopMock()
         intentionalDisconnect = true
         send(OutMsg.bye())
@@ -544,6 +562,13 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private var mapShotTick = 0          /* 【M3.2】主循环计数：每 N 帧推一张底图 */
 
     private fun captureAndSendMapShot() {
+        /* 【M8.1】后台不推图：地图已暂停，此刻调 getMapScreenShot() 会崩（静默跳过，不刷日志） */
+        if (!mapActive) return
+        /* 【M7】推图前同步底图显示参数（设置页改完立即生效，无需重启/重连） */
+        com.espnav.app.data.MapShotCapture.brightness =
+            appPrefs.espMapBright / 100f
+        com.espnav.app.data.MapShotCapture.contrast =
+            appPrefs.espMapContrast / 100f
         val am = aMap ?: run { log("底图截图跳过：地图未就绪"); return }
         if (!client.isConnected) { log("底图截图跳过：未连接"); return }
         log("底图截图：调用 getMapScreenShot …")
@@ -551,6 +576,11 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             runCatching {
                 am.getMapScreenShot(object : com.amap.api.maps.AMap.OnMapScreenShotListener {
                     override fun onMapScreenShot(bitmap: android.graphics.Bitmap?) {
+                        /* 【M8.1】回调可能在地图已暂停 / Activity 已销毁后到达 → 丢弃，勿碰地图资源 */
+                        if (!mapActive || isFinishing || isDestroyed) {
+                            runCatching { bitmap?.recycle() }
+                            return
+                        }
                         handleMapShot(bitmap)
                     }
 
@@ -599,12 +629,15 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                     "${label}：剩余 ${f.turnDist} m  进度 ${f.progressPct}%  ${f.hint}"
                 /* 导航画面：与发帧同频刷新（失败不影响推流） */
                 (navSource as? AmapNavSource)?.let { s ->
-                    if (navActive) runCatching { updateNavUi(s) }
+                    /* 【M8.1】后台（mapActive=false）时绝不再调 updateNavUi —— 它内部会 moveCamera/
+                     * addPolyline/addMarker，对已暂停的地图调用会 native 崩溃 */
+                    if (navActive && mapActive) runCatching { updateNavUi(s) }
                 }
-                /* 【M3.2】地图底图：按设置间隔推一张（默认 3s；开关关掉就完全不发） */
+                /* 【M3.2】地图底图：按设置间隔推一张（默认 3s；开关关掉就完全不发）
+                 * 【M8.1】mapActive 为假（App 在后台）时不截图 */
                 mapShotTick++
                 val shotEvery = (appPrefs.espMapShotIntervalMs / FRAME_INTERVAL_MS).coerceAtLeast(1)
-                if (appPrefs.espMapShotOn && mapShotTick >= shotEvery) {
+                if (appPrefs.espMapShotOn && mapActive && mapShotTick >= shotEvery) {
                     mapShotTick = 0
                     runCatching { captureAndSendMapShot() }
                 }
@@ -612,6 +645,15 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             }
         }
         log("开始 $label（每 ${FRAME_INTERVAL_MS}ms 一帧）")
+        /* 【M8.1】导航期间保持屏幕常亮（骑行时不能自动锁屏；也顺带避开了
+         * "锁屏 → onPause → 地图暂停 → 后台循环碰地图" 这条崩溃链） */
+        if (appPrefs.keepScreenOn) {
+            runCatching {
+                window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
+        /* 【M7】把底图开关的真实状态同步给固件（重连/换设备后不会沿用旧值） */
+        if (client.isConnected) send(OutMsg.setConfig(imgOn = appPrefs.espMapShotOn))
         /* 【M3.1 最小可用版】开始导航后延迟 1.2s 截 1 张地图底图推给 ESP（单次，不做周期刷新） */
         binding.root.postDelayed({ runCatching { captureAndSendMapShot() } }, 1200)
     }
@@ -714,18 +756,35 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private fun applyTabUi(nav: Boolean) = applyPage(if (nav) 1 else 0)
 
     /** 按 Tab 序号切页：0 = 连接，1 = 导航（全屏），2 = 行程预览 */
+    /** 【M8】当前 Tab（0 连接 / 1 导航 / 2 行程 / 3 测试 / 4 设置）。
+     *  为什么需要：导航页改成"常驻 VISIBLE、非导航 Tab 时移出可视区"之后，
+     *  不能再靠 pageNav.visibility 判断"是不是在导航页"。 */
+    private var curTab = 0
+
     private fun applyPage(index: Int) {
         val nav = index == 1
         val cmp = index == 2
+        curTab = index
         /* 【M5】Tab 栏**不再隐藏** —— 导航页也留在 Tab 内（原先是全屏 + 「返回连接」按钮）。
          * 页面顺序：0 连接 / 1 导航 / 2 行程预览 / 3 测试 / 4 设置 */
         binding.tabMain.visibility = View.VISIBLE
         binding.pageConnect.visibility = if (index == 0) View.VISIBLE else View.GONE
-        binding.pageNav.visibility = if (nav) View.VISIBLE else View.GONE
+        /* 【M8】导航页**不再用 GONE**，改为"常驻 VISIBLE + 非导航 Tab 时移出可视区"。
+         * 原因（用户反馈"切到其他 tab 时 ESP 端地图停止更新"）：
+         *   TextureMapView 一旦 visibility=GONE 就停止渲染 → getMapScreenShot() 拿不到内容。
+         *   移出可视区后 View 仍在 View 层级中、仍持有 Surface、地图继续渲染，
+         *   于是切到任何 Tab 都能持续给 ESP 出图。
+         * 不会遮挡其它页面：pageCompare / pageTest / pageSettings 在 FrameLayout 中位于
+         *   pageNav **之后**（后添加者在上层）会盖住它；pageConnect 虽在它下层，但 pageNav
+         *   已移出屏幕外，且 FrameLayout 默认 clipChildren=true —— 移出的部分根本不会被画出。 */
+        binding.pageNav.visibility = View.VISIBLE
+        binding.pageNav.translationY = if (nav) 0f else -4000f
         binding.pageCompare.visibility = if (cmp) View.VISIBLE else View.GONE
         binding.pageTest.root.visibility = if (index == 3) View.VISIBLE else View.GONE
         binding.pageSettings.root.visibility = if (index == 4) View.VISIBLE else View.GONE
-        if (nav) ensureMap() else runCatching { binding.mapView.onPause() }
+        /* 【M8】不再在这里对 mapView 调 onPause()：停渲染就没有底图。
+         * 真正需要暂停的是 App 退到后台（Activity 级 onPause），保留在那里。 */
+        if (nav) ensureMap()
         if (cmp) ensureCompare() else releaseCompare()   /* 懒加载 + 切走释放，避免 WebView 常驻内存 */
         refreshActionStates()
     }
@@ -960,7 +1019,9 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         refreshMapShotLabel()
         cbEspMapShot.setOnCheckedChangeListener { _, c ->
             appPrefs.espMapShotOn = c
-            log("ESP 地图底图 = $c")
+            /* 【M7】立刻同步固件：关掉时固件丢弃底图、回到原始导航模式（否则会一直贴最后一张图） */
+            if (client.isConnected) send(OutMsg.setConfig(imgOn = c))
+            log("ESP 地图底图 = $c（已同步固件 img_on）")
         }
         skEspMapShotInt.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
@@ -969,6 +1030,62 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                     com.espnav.app.data.AppPrefs.MAP_SHOT_INT_MIN + p * 100
                 refreshMapShotLabel()
                 log("底图刷新间隔 = " + (appPrefs.espMapShotIntervalMs / 1000.0) + " s")
+            }
+
+            override fun onStartTrackingTouch(sb: android.widget.SeekBar?) = Unit
+            override fun onStopTrackingTouch(sb: android.widget.SeekBar?) = Unit
+        })
+
+        /* 【M7】底图亮度 30–150%（默认 70；原来硬编码 45% 偏暗）+ 对比度 50–150%（默认 100）。
+         * 滑杆 progress 是偏移量：亮度 = 30 + p（max 120），对比度 = 50 + p（max 100）。 */
+        /* 【M8.1】导航期间屏幕常亮（立即生效：正在导航时改动会马上生效） */
+        val cbKeepScreenOn = v.findViewById<android.widget.CheckBox>(R.id.setKeepScreenOn)
+        cbKeepScreenOn.isChecked = appPrefs.keepScreenOn
+        cbKeepScreenOn.setOnCheckedChangeListener { _, c ->
+            appPrefs.keepScreenOn = c
+            if (navActive) {
+                if (c) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+            log("导航期间屏幕常亮 = $c")
+        }
+
+        val skEspMapBright = v.findViewById<android.widget.SeekBar>(R.id.seekEspMapBright)
+        val skEspMapContrast = v.findViewById<android.widget.SeekBar>(R.id.seekEspMapContrast)
+        val tvEspMapBright = v.findViewById<android.widget.TextView>(R.id.tvEspMapBright)
+        val tvEspMapContrast = v.findViewById<android.widget.TextView>(R.id.tvEspMapContrast)
+
+        fun applyMapDisp() {
+            com.espnav.app.data.MapShotCapture.brightness = appPrefs.espMapBright / 100f
+            com.espnav.app.data.MapShotCapture.contrast = appPrefs.espMapContrast / 100f
+        }
+        fun refreshMapDispLabels() {
+            tvEspMapBright.text = getString(R.string.set_esp_map_bright) + "：" + appPrefs.espMapBright + "%"
+            tvEspMapContrast.text = getString(R.string.set_esp_map_contrast) + "：" + appPrefs.espMapContrast + "%"
+        }
+        skEspMapBright.max = 120
+        skEspMapContrast.max = 100
+        skEspMapBright.progress = appPrefs.espMapBright - 30
+        skEspMapContrast.progress = appPrefs.espMapContrast - 50
+        applyMapDisp()
+        refreshMapDispLabels()
+        skEspMapBright.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                appPrefs.espMapBright = 30 + p
+                applyMapDisp()
+                refreshMapDispLabels()
+            }
+
+            override fun onStartTrackingTouch(sb: android.widget.SeekBar?) = Unit
+            override fun onStopTrackingTouch(sb: android.widget.SeekBar?) = Unit
+        })
+        skEspMapContrast.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                appPrefs.espMapContrast = 50 + p
+                applyMapDisp()
+                refreshMapDispLabels()
             }
 
             override fun onStartTrackingTouch(sb: android.widget.SeekBar?) = Unit
@@ -1758,9 +1875,14 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         if (active) {
             binding.routeEditPanel.visibility = View.GONE
         } else {
-            runCatching { navWalkedLine?.remove() }
-            runCatching { navRemainLine?.remove() }
-            runCatching { navCarMarker?.remove() }
+            /* 【M8.2】只有地图处于可用状态才动地图对象：
+             * 地图已 onPause（App 在后台）或已失效时调 remove() 会触发高德 native 崩溃，
+             * 而 runCatching 抓不住 native 崩，所以必须"调用前"就拦住。 */
+            if (mapActive) {
+                runCatching { navWalkedLine?.remove() }
+                runCatching { navRemainLine?.remove() }
+                runCatching { navCarMarker?.remove() }
+            }
             navWalkedLine = null
             navRemainLine = null
             navCarMarker = null
@@ -1774,6 +1896,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     /** 导航画面刷新：与发往 ESP32 的帧同频（200ms） */
     private fun updateNavUi(src: AmapNavSource) {
+        if (!mapActive) return          /* 【M8.1】地图已暂停时不得再碰任何地图 API */
         val am = aMap ?: return
         val head = src.currentHeading()
         val o = src.currentOrigin()
@@ -1858,28 +1981,45 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     /** 结束导航：停推流、清导航图形、恢复预览态与正北视角 */
     private fun endNav() {
-        mapShotTick = 0                      /* 【M3.2】结束导航：停止底图推送节奏 */
-        mockJob?.cancel()
-        mockJob = null
-        runCatching { navSource.stop() }
-        /* 数据源已停止：清掉预览引用并刷新按钮状态，否则「开始导航」看起来可点、点了却失败。
-         * 要再导航时重新点「预览路线」即可（会重建数据源与新折线）。 */
-        previewSource = null
-        binding.tvRouteInfo.text = getString(R.string.tip_route_info)
-        updatePickState()
-        setNavUi(false)
-        val am = aMap
-        if (am != null) {
+        if (navEnding) return                 /* 【M8.2】防重入 */
+        navEnding = true
+        try {
+            mapShotTick = 0                  /* 【M3.2】结束导航：停止底图推送节奏 */
+            /* 【M8.1】结束导航：恢复系统自动息屏 */
             runCatching {
-                val t = am.cameraPosition.target
-                am.animateCamera(
-                    com.amap.api.maps.CameraUpdateFactory.newCameraPosition(
-                        com.amap.api.maps.model.CameraPosition(t, appPrefs.defaultZoom, 0f, 0f)
-                    )
-                )
+                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             }
+            /* 【M8.2】顺序很关键：原顺序是「先 stop 数据源 → 再清地图图形」，
+             * SDK 已停止导航时再动地图对象（remove polyline/marker、animateCamera）容易 native 崩。
+             * 改为：先停推流循环 → 清地图图形 → 再停数据源。 */
+            mockJob?.cancel()
+            mockJob = null
+            setNavUi(false)                  /* 内部按 mapActive 守卫后再 remove 图形 */
+            runCatching { navSource.stop() }
+            /* 数据源已停止：清掉预览引用并刷新按钮状态，否则「开始导航」看起来可点、点了却失败。
+             * 要再导航时重新点「预览路线」即可（会重建数据源与新折线）。 */
+            previewSource = null
+            binding.tvRouteInfo.text = getString(R.string.tip_route_info)
+            updatePickState()
+            /* 恢复正北视角：延迟一拍 + 三重守卫，避免在地图暂停/Activity 销毁后调用 */
+            val am = aMap
+            if (am != null && mapActive && !isFinishing && !isDestroyed) {
+                binding.root.postDelayed({
+                    if (!mapActive || isFinishing || isDestroyed) return@postDelayed
+                    runCatching {
+                        val t = am.cameraPosition?.target ?: return@runCatching
+                        am.animateCamera(
+                            com.amap.api.maps.CameraUpdateFactory.newCameraPosition(
+                                com.amap.api.maps.model.CameraPosition(t, appPrefs.defaultZoom, 0f, 0f)
+                            )
+                        )
+                    }
+                }, 60)
+            }
+            log("已结束导航")
+        } finally {
+            navEnding = false
         }
-        log("已结束导航")
     }
 
     /** 车头箭头图标（黄色三角，朝上）；缓存一次，避免每帧重建 Bitmap */

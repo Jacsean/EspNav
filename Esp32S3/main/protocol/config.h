@@ -27,6 +27,8 @@ typedef struct {
     uint16_t col_hint;        /* 提示/警示行文字（默认黄 0xFFE0） */
     /* ---- M2.5：分光镜 HUD ---- */
     bool     screen_flip;     /* true → 整屏水平镜像：分光镜观察时画面左右翻转，需预先镜像 */
+    /* ---- M7：APK 地图底图总开关（关掉后 ESP 回到原始导航模式，不再贴最后一张图）---- */
+    bool     img_on;          /* true=App 正在推底图；false=丢弃底图 → 模板路面/行程图 */
     char     firmware_ver[16];
 } espnav_config_t;
 
@@ -53,3 +55,5 @@ void         config_set_col_car(uint16_t v);
 void         config_set_col_hint(uint16_t v);
 /* M2.5：分光镜 HUD 整屏水平镜像（App 设置项，默认开） */
 void         config_set_screen_flip(bool v);
+/* M7：APK 地图底图总开关（App 关闭「推送地图底图」时下发 false） */
+void         config_set_img_on(bool v);

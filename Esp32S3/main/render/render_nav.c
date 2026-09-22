@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "config.h"
 #include "map_image.h"    /* 【M3.1】地图底图（App 截图通道） */
+#include "battery.h"       /* 【M7】电量显示（BAT_ADC = GPIO9） */
 #include "wifi_sta.h"      /* 屏幕显示网络状态（AP / STA 已连接） */
 #include "font.h"
 #include <stdio.h>
@@ -716,6 +717,43 @@ static void draw_road(const nav_frame_t *f, float anim)
     }
 }
 
+/* 【M7】电量图标 + 百分比：画在 y≈100..159 的左侧空闲区（罗盘条以下、统计区以上），
+ * 有底图时叠在地图上，所以用"白壳 + 黑腔 + 彩色电量"，任何背景都看得清；
+ * 未接电池（battery_present()==false）时完全不画。 */
+static void draw_battery(void)
+{
+    if (!battery_present()) return;
+    int pct = battery_pct();
+    if (pct < 0) return;
+
+    /* 【M7.1】位置：时间行（y=135..157，右对齐 x=316）的**正上方**，右边缘同样对齐 316。
+     * 于是整块（图标 + 百分比）从右往左排：先量文字宽度，再倒推图标起点。 */
+    const int bw = 22, bh = 11;               /* 电池外壳 22×11 */
+    const int gap = 5;
+    const int right = 316;                    /* 与时间行右边缘对齐 */
+    const int by = 112;                       /* 时间行上方（时间底衬从 y=135 开始）*/
+
+    char buf[16];                             /* 够放 "100%" + NUL */
+    snprintf(buf, sizeof(buf), "%d%%", pct);
+    int tw = font_text_width(buf);
+    int bx = right - (bw + 2 + gap + tw);     /* 2 = 正极凸头宽度 */
+    if (bx < 2) bx = 2;
+
+    /* 底衬：与时间用同一个透明度参数，压在地图上也能看清 */
+    const espnav_config_t *bcfg = config_get();
+    if (bcfg->scrim_on) fb_dim_rect(bx - 4, by - 3, right, by + bh + 3, bcfg->scrim_clock);
+
+    uint16_t col = (pct <= 15) ? RGB565_RED
+                 : (pct <= 40) ? RGB565_YELLOW : s_col_main;
+
+    fb_fill_rect(bx, by, bx + bw - 1, by + bh - 1, RGB565_WHITE);          /* 外壳 */
+    fb_fill_rect(bx + 1, by + 1, bx + bw - 2, by + bh - 2, RGB565_BLACK);  /* 内腔 */
+    int iw = (bw - 4) * pct / 100;
+    if (iw > 0) fb_fill_rect(bx + 2, by + 2, bx + 2 + iw - 1, by + bh - 3, col);
+    fb_fill_rect(bx + bw + 1, by + 3, bx + bw + 2, by + bh - 4, RGB565_WHITE); /* 正极凸头 */
+    font_draw_text(bx + bw + 2 + gap, by, buf, s_col_main);
+}
+
 static void draw_frame(const nav_frame_t *f, float anim)
 {
     const espnav_config_t *cfg = config_get();       /* 【M1.2/M1.3】叠加层可读性参数（App 下发） */
@@ -733,6 +771,10 @@ static void draw_frame(const nav_frame_t *f, float anim)
     /* 【M3.1】地图底图（App 截图通道）：① 有新图先解码（只在这里做 —— 符合"仅显示任务
      * 碰帧缓冲"的约定）② 从底图副本整屏恢复；③ 有底图时不再画模板/兜底路面，
      * 于是画面 = 地图截图 + 半透明底衬 + 罗盘/文字/行程图/时间。 */
+    /* 【M7】App 关掉「推送地图底图」（SET_CONFIG img_on=false）→ 这里丢弃底图副本，
+     * 画面立刻回到模板路面/行程图，而不是一直贴着最后一张截图。
+     * 注意：map_image_clear() 只动 map_image 内部标志，不碰 framebuffer，在本任务调用安全。 */
+    if (!cfg->img_on && map_image_has()) map_image_clear();
     map_image_apply();
     const bool has_img = map_image_has();
     if (has_img) map_image_restore();
@@ -799,6 +841,7 @@ static void draw_frame(const nav_frame_t *f, float anim)
     /* 罗盘 + 行程图 + 底部网络状态（不依赖 RENDER_TEXT 开关） */
     draw_compass(f);
     draw_net_status();
+    draw_battery();                          /* 【M7】电量（未接电池时不画） */
     if (f->road_name[0]) {
         static char rb[64];
         font_clip_utf8(f->road_name, 12 * 16, rb, sizeof(rb));  /* 放宽，超出由滚动显示 */
@@ -942,8 +985,8 @@ void render_nav_boot(int stage, const char *sub)
     fb_line(FB_W - 9, FB_H - 9, FB_W - 9, FB_H - 23, PATH_GREEN);
 
     /* 标题（3 倍放大并上移，避免与网格/副标题叠压）+ 副标题 */
-    w = font_text_width("EspNav v1.2") * 3;
-    font_draw_text_scaled((FB_W - w) / 2, 40, "EspNav v1.2", PATH_GREEN, 3);
+    w = font_text_width("EspNav v1.3") * 3;
+    font_draw_text_scaled((FB_W - w) / 2, 40, "EspNav v1.3", PATH_GREEN, 3);
     w = font_text_width("可穿戴导航屏·骑行版");
     font_draw_text((FB_W - w) / 2, 92, "可穿戴导航屏·骑行版", 0x7BEF);
 

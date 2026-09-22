@@ -30,9 +30,12 @@ object MapShotCapture {
     private const val CHUNK_RAW = 1200       /* 每块原始字节数 */
     private const val JPEG_QUALITY = 70      /* 320×240 地图截图约 12–25KB */
 
-    /** 压暗参数（与预览演示的"暗地图"档一致：亮度 45%、饱和度 45%） */
-    @Volatile var brightness = 0.45f
+    /** 显示参数：亮度/对比度由 App 设置页调节（【M7】用户反馈 ESP 上底图偏暗）。
+     *  brightness 相乘系数（0.70 = 70%，原硬编码 0.45 偏暗）；saturation 保持 45% 的"暗地图"观感；
+     *  contrast 1.0 = 原样，>1 更硬朗。MainActivity 在每次推图前同步这三个值。 */
+    @Volatile var brightness = 0.70f
     @Volatile var saturation = 0.45f
+    @Volatile var contrast = 1.00f
 
     /**
      * 把任意尺寸的截图处理成 320×240 JPEG 字节；失败返回 null。
@@ -67,6 +70,21 @@ object MapShotCapture {
             )
         )
         sat.postConcat(dim)
+
+        /* 【M7】对比度：out = (in - 0.5) * c + 0.5，即对角 c、偏移 (1-c)*127.5 */
+        val c = contrast
+        if (Math.abs(c - 1.0f) > 0.001f) {
+            val t = (1.0f - c) * 127.5f
+            val con = ColorMatrix(
+                floatArrayOf(
+                    c, 0f, 0f, 0f, t,
+                    0f, c, 0f, 0f, t,
+                    0f, 0f, c, 0f, t,
+                    0f, 0f, 0f, 1f, 0f
+                )
+            )
+            sat.postConcat(con)
+        }
 
         val paint = Paint(Paint.FILTER_BITMAP_FLAG)
         paint.colorFilter = ColorMatrixColorFilter(sat)
