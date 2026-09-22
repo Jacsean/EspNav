@@ -1,549 +1,1397 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 【M5】设置页：原「⚙ 设置」对话框的内容整体搬到这里（不再用对话框） -->
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- 【M11】设置页重排：外层 3 个 Tab（连接 / APK 端 / ESP 端，固定不滚动）
+     + 每个 Tab 一个独立 ScrollView（内容区各自滚动）
+     + 内层可收缩小节（点标题展开/收起）
+     + 设置项统一"标题左对齐 / 控件右对齐"（开关用 Switch，天然左文右控件）
+
+     ★ 所有控件 id 与旧版完全一致 —— MainActivity.setupSettingsTab() 的绑定基本无需改动。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/pageSettings"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:orientation="vertical">
 
-    <LinearLayout
+    <!-- ============ 固定顶部：三个分类 Tab ============ -->
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/tabSettings"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:layout_height="wrap_content" />
 
-        <TextView
+    <!-- ============ 内容区：三个 Tab 各一个 ScrollView（独立滚动） ============ -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <!-- ==================== ① 连接 ==================== -->
+        <ScrollView
+            android:id="@+id/scrollSetConn"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/set_group_display"
-            android:textStyle="bold" />
+            android:layout_height="match_parent"
+            android:fillViewport="true">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/label_brightness" />
-
-        <SeekBar
-            android:id="@+id/seekBrightness"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:max="100" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/label_dash_speed" />
-
-        <SeekBar
-            android:id="@+id/seekDashSpeed"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:max="120" />
-
-        <Switch
-            android:id="@+id/switchAnim"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/label_anim" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="10dp"
-            android:text="@string/set_group_map"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="12sp"
-            android:text="@string/set_map_style" />
-
-        <Spinner
-            android:id="@+id/spMapStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/set_group_conn"
-            android:textStyle="bold" />
-
-        <EditText
-            android:id="@+id/setHost"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/set_hint_host"
-            android:inputType="text"
-            android:importantForAutofill="no" />
-
-        <EditText
-            android:id="@+id/setPort"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/set_hint_port"
-            android:inputType="number"
-            android:importantForAutofill="no" />
-
-        <CheckBox
-            android:id="@+id/setAutoConnect"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/set_auto_connect" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="10dp"
-            android:text="@string/set_group_nav"
-            android:textStyle="bold" />
-
-        <EditText
-            android:id="@+id/setFrom"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/set_hint_from"
-            android:inputType="text"
-            android:importantForAutofill="no" />
-
-        <EditText
-            android:id="@+id/setTo"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/set_hint_to"
-            android:inputType="text"
-            android:importantForAutofill="no" />
-
-        <CheckBox
-            android:id="@+id/setAutoCity"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/set_auto_city" />
-
-        <EditText
-            android:id="@+id/setCity"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/set_hint_city"
-            android:inputType="text"
-            android:importantForAutofill="no" />
-
-        <CheckBox
-            android:id="@+id/setEmulate"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/set_emulate" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="10dp"
-            android:text="@string/set_group_map"
-            android:textStyle="bold" />
-
-        <EditText
-            android:id="@+id/setZoom"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/set_hint_zoom"
-            android:inputType="numberDecimal"
-            android:importantForAutofill="no" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="10dp"
-            android:text="@string/set_group_overview"
-            android:textStyle="bold" />
-
-        <RadioGroup
-            android:id="@+id/setSamplerMode"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
-
-            <RadioButton
-                android:id="@+id/setSamplerVw"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/set_overview_vw" />
+                android:orientation="vertical"
+                android:paddingBottom="20dp">
 
-            <RadioButton
-                android:id="@+id/setSamplerDp"
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:animateLayoutChanges="true">
+
+                    <LinearLayout
+                        android:id="@+id/secHeadAddr"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="?android:attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="14dp">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/sec_addr"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/secArrowAddr"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/sec_arrow_open"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/secBodyAddr"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:paddingBottom="12dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/set_hint_host"
+                            android:textSize="13sp" />
+
+                        <EditText
+                            android:id="@+id/setHost"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:hint="@string/set_hint_host"
+                            android:importantForAutofill="no"
+                            android:inputType="text" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="@string/set_hint_port"
+                            android:textSize="13sp" />
+
+                        <EditText
+                            android:id="@+id/setPort"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:hint="@string/set_hint_port"
+                            android:importantForAutofill="no"
+                            android:inputType="number" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:animateLayoutChanges="true">
+
+                    <LinearLayout
+                        android:id="@+id/secHeadConn"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="?android:attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="14dp">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/sec_conn_behav"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/secArrowConn"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/sec_arrow_open"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/secBodyConn"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:paddingBottom="12dp">
+
+                        <Switch
+                            android:id="@+id/setAutoConnect"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="48dp"
+                            android:text="@string/set_auto_connect" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+
+        <!-- ==================== ② APK 端 ==================== -->
+        <ScrollView
+            android:id="@+id/scrollSetApk"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:visibility="gone">
+
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/set_overview_dp" />
-        </RadioGroup>
+                android:orientation="vertical"
+                android:paddingBottom="20dp">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="10dp"
-            android:text="@string/set_group_esp_style"
-            android:textStyle="bold" />
+                <!-- 导航 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:animateLayoutChanges="true">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="12sp"
-            android:text="@string/set_esp_hint" />
+                    <LinearLayout
+                        android:id="@+id/secHeadNav"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="?android:attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="14dp">
 
-        <CheckBox
-            android:id="@+id/setEspScrimOn"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/set_esp_scrim" />
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/sec_nav"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
 
-        <TextView
-            android:id="@+id/tvEspScrimCompass"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textSize="12sp"
-            android:text="@string/set_esp_scrim_compass" />
+                        <TextView
+                            android:id="@+id/secArrowNav"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/sec_arrow_open"
+                            android:textSize="12sp" />
+                    </LinearLayout>
 
-        <SeekBar
-            android:id="@+id/seekEspScrimCompass"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:max="100" />
+                    <LinearLayout
+                        android:id="@+id/secBodyNav"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:paddingBottom="12dp">
 
-        <TextView
-            android:id="@+id/tvEspScrimText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textSize="12sp"
-            android:text="@string/set_esp_scrim_text" />
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/set_hint_from"
+                            android:textSize="13sp" />
 
-        <SeekBar
-            android:id="@+id/seekEspScrimText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:max="100" />
+                        <EditText
+                            android:id="@+id/setFrom"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:hint="@string/set_hint_from"
+                            android:importantForAutofill="no"
+                            android:inputType="text" />
 
-        <TextView
-            android:id="@+id/tvEspScrimRoute"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textSize="12sp"
-            android:text="@string/set_esp_scrim_route" />
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="@string/set_hint_to"
+                            android:textSize="13sp" />
 
-        <SeekBar
-            android:id="@+id/seekEspScrimRoute"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:max="100" />
+                        <EditText
+                            android:id="@+id/setTo"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:hint="@string/set_hint_to"
+                            android:importantForAutofill="no"
+                            android:inputType="text" />
 
-        <TextView
-            android:id="@+id/tvEspScrimClock"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textSize="12sp"
-            android:text="@string/set_esp_scrim_clock" />
+                        <Switch
+                            android:id="@+id/setAutoCity"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:minHeight="48dp"
+                            android:text="@string/set_auto_city" />
 
-        <SeekBar
-            android:id="@+id/seekEspScrimClock"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:max="100" />
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="@string/set_hint_city"
+                            android:textSize="13sp" />
 
-        <TextView
-            android:id="@+id/tvEspGrid"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textSize="12sp"
-            android:text="@string/set_esp_grid" />
+                        <EditText
+                            android:id="@+id/setCity"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:hint="@string/set_hint_city"
+                            android:importantForAutofill="no"
+                            android:inputType="text" />
 
-        <SeekBar
-            android:id="@+id/seekEspGrid"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:max="100" />
+                        <Switch
+                            android:id="@+id/setEmulate"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:minHeight="48dp"
+                            android:text="@string/set_emulate" />
+                    </LinearLayout>
+                </LinearLayout>
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="10dp"
-            android:text="@string/set_group_debug"
-            android:textStyle="bold" />
+                <!-- 行程预览 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:animateLayoutChanges="true">
 
-        <CheckBox
-            android:id="@+id/setDbgAllOff"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/set_dbg_all_off" />
+                    <LinearLayout
+                        android:id="@+id/secHeadOverview"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="?android:attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="14dp">
 
-        <CheckBox
-            android:id="@+id/setDbgRoad"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/set_dbg_road" />
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/sec_overview"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
 
-        <CheckBox
-            android:id="@+id/setDbgCenterLn"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/set_dbg_centerln" />
+                        <TextView
+                            android:id="@+id/secArrowOverview"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/sec_arrow_closed"
+                            android:textSize="12sp" />
+                    </LinearLayout>
 
-        <CheckBox
-            android:id="@+id/setDbgOverview"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/set_dbg_overview" />
+                    <LinearLayout
+                        android:id="@+id/secBodyOverview"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:paddingBottom="12dp"
+                        android:visibility="gone">
 
-        <CheckBox
-            android:id="@+id/setDbgCar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/set_dbg_car" />
+                        <RadioGroup
+                            android:id="@+id/setSamplerMode"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="10dp"
-            android:text="@string/set_group_log"
-            android:textStyle="bold" />
+                            <RadioButton
+                                android:id="@+id/setSamplerVw"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/set_overview_vw" />
 
-        <EditText
-            android:id="@+id/setLogLines"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/set_hint_log"
-            android:inputType="number"
-            android:importantForAutofill="no" />
+                            <RadioButton
+                                android:id="@+id/setSamplerDp"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="16dp"
+                                android:text="@string/set_overview_dp" />
+                        </RadioGroup>
+                    </LinearLayout>
+                </LinearLayout>
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="10dp"
-            android:text="@string/set_group_perm"
-            android:textStyle="bold" />
+                <!-- 地图（App 显示） -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:animateLayoutChanges="true">
 
-        <TextView
-            android:id="@+id/tvPermState"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="12sp"
-            android:text="@string/set_perm_unknown" />
+                    <LinearLayout
+                        android:id="@+id/secHeadAppMap"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="?android:attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="14dp">
 
-        <Button
-            android:id="@+id/btnOpenAppSettings"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/set_open_app_settings" />
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/sec_app_map"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="10dp"
-            android:text="@string/set_group_cfg"
-            android:textStyle="bold" />
+                        <TextView
+                            android:id="@+id/secArrowAppMap"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/sec_arrow_closed"
+                            android:textSize="12sp" />
+                    </LinearLayout>
 
-        <TextView
-            android:id="@+id/tvCfgState"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="12sp"
-            android:text="@string/cfg_absent" />
+                    <LinearLayout
+                        android:id="@+id/secBodyAppMap"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:paddingBottom="12dp"
+                        android:visibility="gone">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="10dp"
-            android:text="@string/set_group_esp_color"
-            android:textStyle="bold" />
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/set_hint_zoom"
+                            android:textSize="13sp" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="12sp"
-            android:text="@string/set_esp_col_hint_text" />
+                        <EditText
+                            android:id="@+id/setZoom"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:hint="@string/set_hint_zoom"
+                            android:importantForAutofill="no"
+                            android:inputType="numberDecimal" />
+                    </LinearLayout>
+                </LinearLayout>
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textSize="12sp"
-            android:text="@string/set_esp_col_main" />
+                <!-- App 界面 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:animateLayoutChanges="true">
 
-        <Spinner
-            android:id="@+id/spEspColMain"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+                    <LinearLayout
+                        android:id="@+id/secHeadAppUi"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="?android:attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="14dp">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textSize="12sp"
-            android:text="@string/set_esp_col_track" />
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/sec_app_ui"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
 
-        <Spinner
-            android:id="@+id/spEspColTrack"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+                        <TextView
+                            android:id="@+id/secArrowAppUi"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/sec_arrow_closed"
+                            android:textSize="12sp" />
+                    </LinearLayout>
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textSize="12sp"
-            android:text="@string/set_esp_col_grid" />
+                    <LinearLayout
+                        android:id="@+id/secBodyAppUi"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:paddingBottom="12dp"
+                        android:visibility="gone">
 
-        <Spinner
-            android:id="@+id/spEspColGrid"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+                        <Switch
+                            android:id="@+id/setDbgTripCard"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="48dp"
+                            android:text="@string/set_dbg_trip_card" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textSize="12sp"
-            android:text="@string/set_esp_col_road" />
+                        <Switch
+                            android:id="@+id/setKeepScreenOn"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="48dp"
+                            android:text="@string/set_keep_screen_on" />
 
-        <Spinner
-            android:id="@+id/spEspColRoad"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="@string/set_hint_log"
+                            android:textSize="13sp" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textSize="12sp"
-            android:text="@string/set_esp_col_car" />
+                        <EditText
+                            android:id="@+id/setLogLines"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:hint="@string/set_hint_log"
+                            android:importantForAutofill="no"
+                            android:inputType="number" />
+                    </LinearLayout>
+                </LinearLayout>
 
-        <Spinner
-            android:id="@+id/spEspColCar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+                <!-- 权限 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:animateLayoutChanges="true">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textSize="12sp"
-            android:text="@string/set_esp_col_hint" />
+                    <LinearLayout
+                        android:id="@+id/secHeadPerm"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="?android:attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="14dp">
 
-        <Spinner
-            android:id="@+id/spEspColHint"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/sec_perm"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
 
-        <CheckBox
-            android:id="@+id/setDbgTripCard"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:text="@string/set_dbg_trip_card" />
+                        <TextView
+                            android:id="@+id/secArrowPerm"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/sec_arrow_closed"
+                            android:textSize="12sp" />
+                    </LinearLayout>
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="10dp"
-            android:text="@string/set_group_esp_map"
-            android:textStyle="bold" />
+                    <LinearLayout
+                        android:id="@+id/secBodyPerm"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:paddingBottom="12dp"
+                        android:visibility="gone">
 
-        <CheckBox
-            android:id="@+id/cbEspMapShot"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/set_esp_map_shot" />
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
 
-        <TextView
-            android:id="@+id/tvEspMapShotInt"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textSize="12sp"
-            android:text="@string/set_esp_map_shot_int" />
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/sec_perm"
+                                android:textSize="13sp" />
 
-        <SeekBar
-            android:id="@+id/seekEspMapShotInt"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+                            <TextView
+                                android:id="@+id/tvPermState"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/set_perm_unknown"
+                                android:textSize="13sp" />
+                        </LinearLayout>
 
-        <TextView
-            android:id="@+id/tvEspMapBright"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textSize="12sp"
-            android:text="@string/set_esp_map_bright" />
+                        <Button
+                            android:id="@+id/btnOpenAppSettings"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:text="@string/set_open_app_settings" />
+                    </LinearLayout>
+                </LinearLayout>
 
-        <SeekBar
-            android:id="@+id/seekEspMapBright"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:max="120" />
+                <!-- 配置文件 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:animateLayoutChanges="true">
 
-        <TextView
-            android:id="@+id/tvEspMapContrast"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textSize="12sp"
-            android:text="@string/set_esp_map_contrast" />
+                    <LinearLayout
+                        android:id="@+id/secHeadCfg"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="?android:attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="14dp">
 
-        <SeekBar
-            android:id="@+id/seekEspMapContrast"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:max="100" />
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/sec_cfg"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
 
-        <CheckBox
-            android:id="@+id/setKeepScreenOn"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/set_keep_screen_on" />
+                        <TextView
+                            android:id="@+id/secArrowCfg"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/sec_arrow_closed"
+                            android:textSize="12sp" />
+                    </LinearLayout>
 
-        <CheckBox
-            android:id="@+id/setScreenFlip"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/set_screen_flip" />
+                    <LinearLayout
+                        android:id="@+id/secBodyCfg"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:paddingBottom="12dp"
+                        android:visibility="gone">
 
-        <CheckBox
-            android:id="@+id/setScreenFlipY"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/set_screen_flip_y" />
+                        <TextView
+                            android:id="@+id/tvCfgState"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/cfg_absent"
+                            android:textSize="13sp" />
 
-        <Button
-            android:id="@+id/btnCfgPerm"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/cfg_grant" />
+                        <Button
+                            android:id="@+id/btnCfgPerm"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:text="@string/cfg_grant" />
 
-        <Button
-            android:id="@+id/btnCfgSave"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/cfg_save" />
+                        <Button
+                            android:id="@+id/btnCfgSave"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/cfg_save" />
 
-        <Button
-            android:id="@+id/btnCfgLoad"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/cfg_load" />
+                        <Button
+                            android:id="@+id/btnCfgLoad"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/cfg_load" />
 
-        <Button
-            android:id="@+id/btnCfgDel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/cfg_del" />
+                        <Button
+                            android:id="@+id/btnCfgDel"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/cfg_del" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
 
-        <Button
-            android:id="@+id/btnSettingsSave"
+        <!-- ==================== ③ ESP 端 ==================== -->
+        <ScrollView
+            android:id="@+id/scrollSetEsp"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:layout_marginBottom="24dp"
-            android:text="@string/btn_settings_save" />
-    </LinearLayout>
-</ScrollView>
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingBottom="20dp">
+
+                <!-- 屏幕 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:animateLayoutChanges="true">
+
+                    <LinearLayout
+                        android:id="@+id/secHeadScreen"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="?android:attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="14dp">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/sec_screen"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/secArrowScreen"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/sec_arrow_open"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/secBodyScreen"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:paddingBottom="12dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/label_brightness"
+                            android:textSize="13sp" />
+
+                        <SeekBar
+                            android:id="@+id/seekBrightness"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:max="100" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="@string/label_dash_speed"
+                            android:textSize="13sp" />
+
+                        <SeekBar
+                            android:id="@+id/seekDashSpeed"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:max="120" />
+
+                        <Switch
+                            android:id="@+id/switchAnim"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:minHeight="48dp"
+                            android:text="@string/label_anim" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- 叠加层底衬 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:animateLayoutChanges="true">
+
+                    <LinearLayout
+                        android:id="@+id/secHeadScrim"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="?android:attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="14dp">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/sec_scrim"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/secArrowScrim"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/sec_arrow_closed"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/secBodyScrim"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:paddingBottom="12dp"
+                        android:visibility="gone">
+
+                        <Switch
+                            android:id="@+id/setEspScrimOn"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="48dp"
+                            android:text="@string/set_esp_scrim" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/set_esp_scrim_compass"
+                                android:textSize="13sp" />
+
+                            <TextView
+                                android:id="@+id/tvEspScrimCompass"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+
+                        <SeekBar
+                            android:id="@+id/seekEspScrimCompass"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:max="100" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/set_esp_scrim_text"
+                                android:textSize="13sp" />
+
+                            <TextView
+                                android:id="@+id/tvEspScrimText"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+
+                        <SeekBar
+                            android:id="@+id/seekEspScrimText"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:max="100" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/set_esp_scrim_route"
+                                android:textSize="13sp" />
+
+                            <TextView
+                                android:id="@+id/tvEspScrimRoute"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+
+                        <SeekBar
+                            android:id="@+id/seekEspScrimRoute"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:max="100" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/set_esp_scrim_clock"
+                                android:textSize="13sp" />
+
+                            <TextView
+                                android:id="@+id/tvEspScrimClock"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+
+                        <SeekBar
+                            android:id="@+id/seekEspScrimClock"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:max="100" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/set_esp_grid"
+                                android:textSize="13sp" />
+
+                            <TextView
+                                android:id="@+id/tvEspGrid"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+
+                        <SeekBar
+                            android:id="@+id/seekEspGrid"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:max="100" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- 屏颜色 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:animateLayoutChanges="true">
+
+                    <LinearLayout
+                        android:id="@+id/secHeadColor"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="?android:attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="14dp">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/sec_esp_color"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/secArrowColor"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/sec_arrow_closed"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/secBodyColor"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:paddingBottom="12dp"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/set_esp_col_hint_text"
+                            android:textSize="12sp" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/set_esp_col_main"
+                                android:textSize="13sp" />
+
+                            <Spinner
+                                android:id="@+id/spEspColMain"
+                                android:layout_width="150dp"
+                                android:layout_height="wrap_content" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/set_esp_col_track"
+                                android:textSize="13sp" />
+
+                            <Spinner
+                                android:id="@+id/spEspColTrack"
+                                android:layout_width="150dp"
+                                android:layout_height="wrap_content" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/set_esp_col_grid"
+                                android:textSize="13sp" />
+
+                            <Spinner
+                                android:id="@+id/spEspColGrid"
+                                android:layout_width="150dp"
+                                android:layout_height="wrap_content" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/set_esp_col_road"
+                                android:textSize="13sp" />
+
+                            <Spinner
+                                android:id="@+id/spEspColRoad"
+                                android:layout_width="150dp"
+                                android:layout_height="wrap_content" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/set_esp_col_car"
+                                android:textSize="13sp" />
+
+                            <Spinner
+                                android:id="@+id/spEspColCar"
+                                android:layout_width="150dp"
+                                android:layout_height="wrap_content" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/set_esp_col_hint"
+                                android:textSize="13sp" />
+
+                            <Spinner
+                                android:id="@+id/spEspColHint"
+                                android:layout_width="150dp"
+                                android:layout_height="wrap_content" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- 地图底图 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:animateLayoutChanges="true">
+
+                    <LinearLayout
+                        android:id="@+id/secHeadEspMap"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="?android:attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="14dp">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/sec_esp_map"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/secArrowEspMap"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/sec_arrow_closed"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/secBodyEspMap"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:paddingBottom="12dp"
+                        android:visibility="gone">
+
+                        <Switch
+                            android:id="@+id/cbEspMapShot"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="48dp"
+                            android:text="@string/set_esp_map_shot" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/set_esp_map_shot_int"
+                                android:textSize="13sp" />
+
+                            <TextView
+                                android:id="@+id/tvEspMapShotInt"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+
+                        <SeekBar
+                            android:id="@+id/seekEspMapShotInt"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/set_esp_map_bright"
+                                android:textSize="13sp" />
+
+                            <TextView
+                                android:id="@+id/tvEspMapBright"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+
+                        <SeekBar
+                            android:id="@+id/seekEspMapBright"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:max="120" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/set_esp_map_contrast"
+                                android:textSize="13sp" />
+
+                            <TextView
+                                android:id="@+id/tvEspMapContrast"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+
+                        <SeekBar
+                            android:id="@+id/seekEspMapContrast"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:max="100" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/set_map_style"
+                                android:textSize="13sp" />
+
+                            <Spinner
+                                android:id="@+id/spMapStyle"
+                                android:layout_width="150dp"
+                                android:layout_height="wrap_content" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- 屏幕翻转 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:animateLayoutChanges="true">
+
+                    <LinearLayout
+                        android:id="@+id/secHeadFlip"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="?android:attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="14dp">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/sec_flip"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/secArrowFlip"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/sec_arrow_closed"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/secBodyFlip"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:paddingBottom="12dp"
+                        android:visibility="gone">
+
+                        <Switch
+                            android:id="@+id/setScreenFlip"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="48dp"
+                            android:text="@string/set_screen_flip" />
+
+                        <Switch
+                            android:id="@+id/setScreenFlipY"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="48dp"
+                            android:text="@string/set_screen_flip_y" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- 调试 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:animateLayoutChanges="true">
+
+                    <LinearLayout
+                        android:id="@+id/secHeadDebug"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="?android:attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="14dp">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/sec_debug"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/secArrowDebug"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/sec_arrow_closed"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/secBodyDebug"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:paddingBottom="12dp"
+                        android:visibility="gone">
+
+                        <Switch
+                            android:id="@+id/setDbgAllOff"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="48dp"
+                            android:text="@string/set_dbg_all_off" />
+
+                        <Switch
+                            android:id="@+id/setDbgRoad"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="48dp"
+                            android:text="@string/set_dbg_road" />
+
+                        <Switch
+                            android:id="@+id/setDbgCenterLn"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="48dp"
+                            android:text="@string/set_dbg_centerln" />
+
+                        <Switch
+                            android:id="@+id/setDbgOverview"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="48dp"
+                            android:text="@string/set_dbg_overview" />
+
+                        <Switch
+                            android:id="@+id/setDbgCar"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="48dp"
+                            android:text="@string/set_dbg_car" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/btnSettingsSave"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="14dp"
+                    android:layout_marginTop="8dp"
+                    android:layout_marginEnd="14dp"
+                    android:layout_marginBottom="24dp"
+                    android:text="@string/btn_settings_save" />
+            </LinearLayout>
+        </ScrollView>
+    </FrameLayout>
+</LinearLayout>
