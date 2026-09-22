@@ -20,6 +20,7 @@
 #include "lcd/lcd_driver.h"
 #include "font/font.h"
 #include "board/battery.h"   /* 【M7】板载电池电压检测（BAT_ADC = GPIO9） */
+#include "audio/audio_out.h"  /* 【M13】音频输出（I2S → ES8311 → 功放） */
 
 /* 临时诊断开关：1 = 只点屏（不启动 WiFi/字库/任务），用于判定显示层；0 = 正常固件 */
 #define LCD_ONLY_TEST 0   /* 点屏已验证通过（2026-09-14），正常固件流程 */
@@ -61,6 +62,11 @@ void app_main(void)
     /* 【M7】电量：初始化 ADC（BAT_ADC=GPIO9）并起 2s 采样任务 */
     battery_init();
     xTaskCreate(battery_task, "battery", 2560, NULL, 3, NULL);
+
+    /* 【M13 第1批】音频输出：初始化 I2S + ES8311 + 功放，并播 3 声测试音自检。
+     * 听到连续三声"嘀"即说明音频链路（I2C 配置 → I2S → ES8311 → 功放 → 喇叭）是通的。 */
+    audio_out_init();
+    audio_out_test_tone();
 
     font_init();
     display_task_start();
