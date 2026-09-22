@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EspNav · 设置页重排演示（连接 / APK 端 / ESP 端）</title>
+<title>EspNav · 设置页重排演示 v2（Tab 固定 + 内层可收缩）</title>
 <style>
   :root{
     --bg:#0f1115; --panel:#171a21; --card:#1e222b; --line:#2a2f3a;
@@ -15,31 +15,44 @@
        font:14px/1.55 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;padding:20px}
   h1{font-size:17px;margin:0 0 4px}
   .sub{color:var(--dim);font-size:12px;margin-bottom:14px}
-  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
   .toolbar button{background:var(--panel);color:var(--fg);border:1px solid var(--line);
        padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px}
   .toolbar button.on{background:var(--accent);color:#08131f;border-color:var(--accent);font-weight:600}
+  .legend{display:flex;gap:16px;font-size:12px;color:var(--dim);margin-bottom:12px;flex-wrap:wrap}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}
   .wrap{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
-  .phone{width:372px;background:var(--panel);border:1px solid var(--line);border-radius:18px;
-       overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.45)}
-  .status{height:26px;background:#12151b;display:flex;align-items:center;justify-content:space-between;
-       padding:0 12px;font-size:11px;color:var(--dim)}
-  .screen{max-height:640px;overflow:auto}
-  .tabbar{display:flex;background:#12151b;border-top:1px solid var(--line)}
+  .hidden{display:none}
+
+  /* ---------- 手机外壳：固定高度，内部再分「固定头 + 滚动体」 ---------- */
+  .phone{width:372px;height:660px;background:var(--panel);border:1px solid var(--line);
+       border-radius:18px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.45);
+       display:flex;flex-direction:column}
+  .status{flex:0 0 auto;height:26px;background:#12151b;display:flex;align-items:center;
+       justify-content:space-between;padding:0 12px;font-size:11px;color:var(--dim)}
+  .tabs{flex:0 0 auto;display:flex;background:var(--card);border-bottom:1px solid var(--line)}
+  .tabs button{flex:1;background:none;border:0;color:var(--dim);padding:13px 0;font-size:13px;
+       cursor:pointer;border-bottom:3px solid transparent}
+  .tabs button.on{color:var(--fg);font-weight:600;border-bottom-color:var(--accent)}
+  /* ★ 关键：内容区独立滚动（Tab 不参与滚动） */
+  .body-scroll{flex:1 1 auto;overflow-y:auto;overflow-x:hidden}
+  .tabbar{flex:0 0 auto;display:flex;background:#12151b;border-top:1px solid var(--line)}
   .tabbar div{flex:1;text-align:center;padding:9px 0;font-size:12px;color:var(--dim)}
   .tabbar div.on{color:var(--accent);border-top:2px solid var(--accent);margin-top:-1px}
-  /* --- 分组（可收缩） --- */
-  .grp{border-bottom:1px solid var(--line)}
-  .grp>summary{list-style:none;cursor:pointer;padding:13px 14px;display:flex;align-items:center;gap:10px;
-       font-weight:600;background:var(--card)}
-  .grp>summary::-webkit-details-marker{display:none}
-  .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
-  .grp .cnt{margin-left:auto;color:var(--dim);font-weight:400;font-size:12px}
+
+  /* ---------- 可收缩小节 ---------- */
+  .sec{border-bottom:1px solid var(--line)}
+  .sec>summary{list-style:none;cursor:pointer;padding:12px 14px;display:flex;align-items:center;gap:9px;
+       font-weight:600;font-size:13.5px}
+  .sec>summary::-webkit-details-marker{display:none}
+  .sec .cnt{margin-left:auto;color:var(--dim);font-weight:400;font-size:11.5px}
   .arrow{color:var(--dim);transition:.2s;font-size:11px}
-  .grp[open] .arrow{transform:rotate(90deg)}
-  .gbody{padding:4px 14px 14px}
-  .sub-h{color:var(--dim);font-size:12px;margin:12px 0 6px;letter-spacing:.04em}
-  .sub-h:first-child{margin-top:6px}
+  .sec[open] .arrow{transform:rotate(90deg)}
+  .gbody{padding:2px 14px 14px}
+  .pane{display:none}
+  .pane.on{display:block}
+  .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+
   label.row{display:block;margin:10px 0 4px;font-size:13px}
   .val{color:var(--accent);font-size:12px}
   input[type=range]{width:100%;accent-color:var(--accent)}
@@ -48,298 +61,255 @@
   select{width:100%;background:#151922;border:1px solid var(--line);color:var(--fg);
        padding:9px 10px;border-radius:8px;font-size:13px}
   .check{display:flex;align-items:center;gap:10px;padding:9px 0;font-size:13px;cursor:pointer}
-  .check input{width:18px;height:18px;accent-color:var(--accent)}
+  .check input{display:none}
   .sw{position:relative;width:42px;height:24px;background:#333a46;border-radius:12px;transition:.2s;flex:0 0 auto}
   .sw::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;
        background:#fff;transition:.2s}
   .check input:checked+.sw{background:var(--accent)}
   .check input:checked+.sw::after{transform:translateX(18px)}
-  .check input{display:none}
   .radio{display:flex;gap:8px;flex-wrap:wrap}
   .radio span{border:1px solid var(--line);border-radius:20px;padding:6px 14px;font-size:12px;cursor:pointer}
   .radio span.on{background:var(--accent);color:#08131f;border-color:var(--accent)}
   button.btn{width:100%;background:#222836;color:var(--fg);border:1px solid var(--line);
        border-radius:9px;padding:10px;margin-top:8px;font-size:13px;cursor:pointer}
   button.btn.primary{background:var(--accent);color:#08131f;border-color:var(--accent);font-weight:600}
-  .note{background:#141821;border:1px dashed var(--line);border-radius:10px;padding:10px 12px;
-       font-size:12px;color:var(--dim);margin-top:10px}
   .state{font-size:12px;color:var(--dim);padding:8px 0}
-  /* --- 方案 B：Tab --- */
-  .tabs{display:flex;background:var(--card);border-bottom:1px solid var(--line)}
-  .tabs button{flex:1;background:none;border:0;color:var(--dim);padding:13px 0;font-size:13px;cursor:pointer;
-       border-bottom:3px solid transparent}
-  .tabs button.on{color:var(--fg);font-weight:600;border-bottom-color:var(--accent)}
-  .pane{display:none;padding:6px 14px 16px}
-  .pane.on{display:block}
-  .legend{display:flex;gap:16px;font-size:12px;color:var(--dim);margin-bottom:10px;flex-wrap:wrap}
-  .legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}
-  .hidden{display:none}
-  .side{width:330px;font-size:12.5px;color:var(--dim)}
+  .note{background:#141821;border:1px dashed var(--line);border-radius:10px;padding:10px 12px;
+       font-size:12px;color:var(--dim);margin:10px 14px 14px}
+  .plain-scroll{flex:1 1 auto;overflow-y:auto}
+  .side{width:340px;font-size:12.5px;color:var(--dim)}
   .side h3{font-size:13px;color:var(--fg);margin:0 0 6px}
   .side ul{margin:0 0 14px;padding-left:18px}
   .side code{background:#141821;border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:11.5px}
+  .ok{color:var(--apk);font-weight:600}
 </style>
 </head>
 <body>
 
-<h1>EspNav · 设置页重排演示</h1>
-<div class="sub">把现有 55+ 项按「连接 / APK 端 / ESP 端」归类，两种展示方式可对比 —— <b>这只是演示，尚未改代码</b></div>
+<h1>EspNav · 设置页重排演示 <span style="color:var(--dim);font-weight:400">v2</span></h1>
+<div class="sub">① 混合（你选的：<b>Tab 固定 + 内层可收缩小节</b>）· ② 一页到底的可收缩分组（对照）— <b>仍然只是演示，代码未改</b></div>
 
 <div class="toolbar">
-  <button id="btnA" data-scheme="accordion" class="on">方案 A：可收缩分组</button>
-  <button id="btnB" data-scheme="tabs">方案 B：Tab 切换</button>
-  <button id="btnC" data-scheme="both">并排对比</button>
+  <button data-scheme="mix" class="on">① 混合 · Tab 固定 + 内层可收缩（你选的）</button>
+  <button data-scheme="plain">② 对照：一页到底（可收缩分组）</button>
+  <button data-scheme="both">并排对比</button>
 </div>
 
 <div class="legend">
   <span><i style="background:var(--conn)"></i>① 连接</span>
   <span><i style="background:var(--apk)"></i>② APK 端</span>
   <span><i style="background:var(--esp)"></i>③ ESP 端</span>
+  <span>↑ 试着<b>滚动内容区</b>：顶部 Tab 与底部导航条<b>保持不动</b></span>
 </div>
 
 <div class="wrap" id="stage">
 
-  <!-- ================= 方案 A：可收缩分组 ================= -->
-  <div class="phone scheme" data-scheme="accordion">
+  <!-- ==================== ① 混合：Tab 固定 + 内层可收缩 ==================== -->
+  <div class="phone scheme" data-scheme="mix">
     <div class="status"><span>EspNav 设置</span><span>已连接 · V1.3.1</span></div>
-    <div class="screen">
 
-      <details class="grp" open>
-        <summary><span class="dot" style="background:var(--conn)"></span>① 连接<span class="cnt">2 项</span><span class="arrow">▶</span></summary>
+    <div class="tabs">
+      <button class="on" data-pane="m1">① 连接</button>
+      <button data-pane="m2">② APK 端</button>
+      <button data-pane="m3">③ ESP 端</button>
+    </div>
+
+    <div class="body-scroll">
+
+      <!-- ---------- ① 连接 ---------- -->
+      <div class="pane on" id="m1">
+        <details class="sec" open>
+          <summary><span class="dot" style="background:var(--conn)"></span>设备地址<span class="cnt">2 项</span><span class="arrow">▶</span></summary>
+          <div class="gbody">
+            <label class="row">主机 / IP</label><input type="text" value="192.168.43.117">
+            <label class="row">端口</label><input type="number" value="8899">
+          </div>
+        </details>
+        <details class="sec" open>
+          <summary><span class="dot" style="background:var(--conn)"></span>连接行为<span class="cnt">1 项</span><span class="arrow">▶</span></summary>
+          <div class="gbody">
+            <label class="check"><input type="checkbox" checked><span class="sw"></span>启动时自动连接</label>
+          </div>
+        </details>
+      </div>
+
+      <!-- ---------- ② APK 端 ---------- -->
+      <div class="pane" id="m2">
+        <details class="sec" open>
+          <summary>导航<span class="cnt">5 项</span><span class="arrow">▶</span></summary>
+          <div class="gbody">
+            <label class="row">起点</label><input type="text" value="北京亦庄泰河三街1号">
+            <label class="row">终点</label><input type="text" value="北京亦庄同济南路地铁站">
+            <label class="check"><input type="checkbox" checked><span class="sw"></span>自动定位城市</label>
+            <label class="row">城市（手动指定）</label><input type="text" placeholder="留空则自动">
+            <label class="check"><input type="checkbox"><span class="sw"></span>模拟导航（不接 ESP 也能跑）</label>
+          </div>
+        </details>
+        <details class="sec">
+          <summary>行程预览<span class="cnt">1 项</span><span class="arrow">▶</span></summary>
+          <div class="gbody"><div class="radio"><span class="on">VW 视图采样</span><span>DP 设备像素</span></div></div>
+        </details>
+        <details class="sec">
+          <summary>地图（App 显示）<span class="cnt">1 项</span><span class="arrow">▶</span></summary>
+          <div class="gbody"><label class="row">默认缩放级别</label><input type="number" value="16"></div>
+        </details>
+        <details class="sec">
+          <summary>App 界面<span class="cnt">3 项</span><span class="arrow">▶</span></summary>
+          <div class="gbody">
+            <label class="check"><input type="checkbox" checked><span class="sw"></span>显示行程图卡片</label>
+            <label class="check"><input type="checkbox" checked><span class="sw"></span>导航期间屏幕常亮（常亮的是手机屏幕）</label>
+            <label class="row">日志最大行数</label><input type="number" value="200">
+          </div>
+        </details>
+        <details class="sec">
+          <summary>权限<span class="cnt">2 项</span><span class="arrow">▶</span></summary>
+          <div class="gbody">
+            <div class="state">存储 / 定位权限：<span class="ok">已授权</span></div>
+            <button class="btn">打开系统应用设置</button>
+          </div>
+        </details>
+        <details class="sec">
+          <summary>配置文件（导入 / 导出）<span class="cnt">5 项</span><span class="arrow">▶</span></summary>
+          <div class="gbody">
+            <div class="state">状态：未发现（Download/EspNav/espnav_config.json）</div>
+            <button class="btn">授权访问</button><button class="btn">保存到文件</button>
+            <button class="btn">从文件加载</button><button class="btn">删除文件</button>
+          </div>
+        </details>
+      </div>
+
+      <!-- ---------- ③ ESP 端 ---------- -->
+      <div class="pane" id="m3">
+        <details class="sec" open>
+          <summary>屏幕<span class="cnt">3 项</span><span class="arrow">▶</span></summary>
+          <div class="gbody">
+            <label class="row">屏幕亮度 <span class="val">80%</span></label><input type="range" min="0" max="100" value="80">
+            <label class="row">虚线流动速度 <span class="val">40 px/s</span></label><input type="range" min="0" max="120" value="40">
+            <label class="check"><input type="checkbox" checked><span class="sw"></span>动画（虚线流动 / 闪烁）</label>
+          </div>
+        </details>
+        <details class="sec">
+          <summary>叠加层底衬（可读性）<span class="cnt">6 项</span><span class="arrow">▶</span></summary>
+          <div class="gbody">
+            <label class="check"><input type="checkbox" checked><span class="sw"></span>启用暗底衬</label>
+            <label class="row">罗盘底衬 <span class="val">65</span></label><input type="range" min="0" max="100" value="65">
+            <label class="row">文字底衬 <span class="val">65</span></label><input type="range" min="0" max="100" value="65">
+            <label class="row">行程图底衬 <span class="val">40</span></label><input type="range" min="0" max="100" value="40">
+            <label class="row">时间底衬 <span class="val">65</span></label><input type="range" min="0" max="100" value="65">
+            <label class="row">行程图网格亮度 <span class="val">55</span></label><input type="range" min="0" max="100" value="55">
+          </div>
+        </details>
+        <details class="sec">
+          <summary>屏颜色<span class="cnt">6 项</span><span class="arrow">▶</span></summary>
+          <div class="gbody">
+            <label class="row">主色（文字 / 罗盘 / 路名 / 时间）</label>
+            <select><option>绿（默认 0x07E0）</option><option>青</option><option>白</option></select>
+            <label class="row">行程图轨迹</label><select><option>亮蓝（默认 0x5D9F）</option><option>橙</option></select>
+            <label class="row">行程图网格</label><select><option>灰绿（默认 0x8450）</option><option>灰</option></select>
+            <label class="row">路面色</label><select><option>灰（默认 0x73AE）</option><option>深灰</option></select>
+            <label class="row">车头三角</label><select><option>黄（默认 0xFFE0）</option><option>红</option></select>
+            <label class="row">提示 / 警示行</label><select><option>黄（默认 0xFFE0）</option><option>橙</option></select>
+          </div>
+        </details>
+        <details class="sec">
+          <summary>地图底图（App 截图 → ESP）<span class="cnt">6 项</span><span class="arrow">▶</span></summary>
+          <div class="gbody">
+            <label class="check"><input type="checkbox" checked><span class="sw"></span>推送地图底图（关掉 = ESP 回原始导航模式）</label>
+            <label class="row">刷新间隔 <span class="val">3.0 s</span></label><input type="range" min="500" max="5000" value="3000">
+            <label class="row">底图亮度 <span class="val">70%</span></label><input type="range" min="30" max="150" value="70">
+            <label class="row">底图对比度 <span class="val">100%</span></label><input type="range" min="50" max="150" value="100">
+            <label class="row">地图样式（决定底图观感）</label>
+            <select><option>普通地图</option><option>导航地图（全蓝）</option><option>夜景</option><option>导航夜景</option></select>
+          </div>
+        </details>
+        <details class="sec">
+          <summary>屏幕翻转（分光镜 / 倒装）<span class="cnt">2 项</span><span class="arrow">▶</span></summary>
+          <div class="gbody">
+            <label class="check"><input type="checkbox" checked><span class="sw"></span>水平翻转（左右镜像）</label>
+            <label class="check"><input type="checkbox"><span class="sw"></span>垂直翻转（上下镜像，可与上面叠加）</label>
+          </div>
+        </details>
+        <details class="sec">
+          <summary>调试（过滤发往 ESP 的图元）<span class="cnt">5 项</span><span class="arrow">▶</span></summary>
+          <div class="gbody">
+            <label class="check"><input type="checkbox"><span class="sw"></span>一键全部关闭</label>
+            <label class="check"><input type="checkbox" checked><span class="sw"></span>发路况模板</label>
+            <label class="check"><input type="checkbox" checked><span class="sw"></span>发车道中线</label>
+            <label class="check"><input type="checkbox" checked><span class="sw"></span>发行程图</label>
+            <label class="check"><input type="checkbox" checked><span class="sw"></span>发车头位置</label>
+          </div>
+        </details>
+        <div style="padding:14px"><button class="btn primary">保存设置</button></div>
+      </div>
+
+      <div class="note">↑ <b>这就是你要的行为</b>：滚动区域只有中间那一段，顶部「① 连接 / ② APK 端 / ③ ESP 端」与底部导航条都<b>固定不动</b>。</div>
+    </div>
+
+    <div class="tabbar"><div class="on">连接</div><div>导航</div><div>行程</div><div>测试</div><div>设置</div></div>
+  </div>
+
+  <!-- ==================== ② 对照：一页到底 ==================== -->
+  <div class="phone scheme hidden" data-scheme="plain">
+    <div class="status"><span>EspNav 设置</span><span>已连接 · V1.3.1</span></div>
+    <div class="plain-scroll">
+      <details class="sec" open>
+        <summary><span class="dot" style="background:var(--conn)"></span>① 连接<span class="cnt">3 项</span><span class="arrow">▶</span></summary>
         <div class="gbody">
-          <div class="sub-h">设备地址</div>
-          <label class="row">主机 / IP</label>
-          <input type="text" value="192.168.43.117">
-          <label class="row">端口</label>
-          <input type="number" value="8899">
-          <div class="sub-h">连接行为</div>
+          <label class="row">主机 / IP</label><input type="text" value="192.168.43.117">
+          <label class="row">端口</label><input type="number" value="8899">
           <label class="check"><input type="checkbox" checked><span class="sw"></span>启动时自动连接</label>
         </div>
       </details>
-
-      <details class="grp" open>
+      <details class="sec" open>
         <summary><span class="dot" style="background:var(--apk)"></span>② APK 端<span class="cnt">15 项</span><span class="arrow">▶</span></summary>
         <div class="gbody">
-          <div class="sub-h">导航</div>
-          <label class="row">起点</label>
-          <input type="text" value="北京亦庄泰河三街1号">
-          <label class="row">终点</label>
-          <input type="text" value="北京亦庄同济南路地铁站">
-          <label class="check"><input type="checkbox" checked><span class="sw"></span>自动定位城市</label>
-          <label class="row">城市（手动指定）</label>
-          <input type="text" placeholder="留空则自动">
-          <label class="check"><input type="checkbox"><span class="sw"></span>模拟导航（不接 ESP 也能跑）</label>
-
-          <div class="sub-h">行程预览</div>
-          <label class="row">采样方式</label>
-          <div class="radio"><span class="on">VW 视图采样</span><span>DP 设备像素</span></div>
-
-          <div class="sub-h">地图（App 显示）</div>
-          <label class="row">默认缩放级别</label>
-          <input type="number" value="16">
-
-          <div class="sub-h">App 界面</div>
-          <label class="check"><input type="checkbox" checked><span class="sw"></span>显示行程图卡片</label>
+          <div class="note" style="margin:0 0 10px">（对照用：内容与①同一份归类，这里只示意结构）</div>
+          <label class="row">起点 / 终点 / 城市 / 模拟导航</label>
           <label class="check"><input type="checkbox" checked><span class="sw"></span>导航期间屏幕常亮</label>
-          <label class="row">日志最大行数</label>
-          <input type="number" value="200">
-
-          <div class="sub-h">权限</div>
-          <div class="state">存储 / 定位权限：<b>已授权</b></div>
-          <button class="btn">打开系统应用设置</button>
-
-          <div class="sub-h">配置文件（导入 / 导出）</div>
-          <div class="state">配置文件状态：<b>未发现</b>（放在 Download/EspNav/espnav_config.json）</div>
-          <button class="btn">授权访问</button>
-          <button class="btn">保存到文件</button>
-          <button class="btn">从文件加载</button>
-          <button class="btn">删除文件</button>
+          <label class="row">日志行数 · 权限 · 配置文件</label>
         </div>
       </details>
-
-      <details class="grp" open>
+      <details class="sec" open>
         <summary><span class="dot" style="background:var(--esp)"></span>③ ESP 端<span class="cnt">24 项</span><span class="arrow">▶</span></summary>
         <div class="gbody">
-          <div class="sub-h">屏幕</div>
-          <label class="row">屏幕亮度 <span class="val">80%</span></label>
-          <input type="range" min="0" max="100" value="80">
-          <label class="row">虚线流动速度 <span class="val">40 px/s</span></label>
-          <input type="range" min="0" max="120" value="40">
-          <label class="check"><input type="checkbox" checked><span class="sw"></span>动画（虚线流动 / 闪烁）</label>
-
-          <div class="sub-h">叠加层底衬（可读性）</div>
-          <label class="check"><input type="checkbox" checked><span class="sw"></span>启用暗底衬</label>
-          <label class="row">罗盘底衬 <span class="val">65</span></label>
-          <input type="range" min="0" max="100" value="65">
-          <label class="row">文字底衬 <span class="val">65</span></label>
-          <input type="range" min="0" max="100" value="65">
-          <label class="row">行程图底衬 <span class="val">40</span></label>
-          <input type="range" min="0" max="100" value="40">
-          <label class="row">时间底衬 <span class="val">65</span></label>
-          <input type="range" min="0" max="100" value="65">
-          <label class="row">行程图网格亮度 <span class="val">55</span></label>
-          <input type="range" min="0" max="100" value="55">
-
-          <div class="sub-h">屏颜色（0 = 固件默认）</div>
-          <label class="row">主色（文字 / 罗盘 / 路名 / 时间）</label>
-          <select><option>绿（默认 0x07E0）</option><option>青</option><option>白</option></select>
-          <label class="row">行程图轨迹</label>
-          <select><option>亮蓝（默认 0x5D9F）</option><option>橙</option></select>
-          <label class="row">行程图网格</label>
-          <select><option>灰绿（默认 0x8450）</option><option>灰</option></select>
-          <label class="row">路面色</label>
-          <select><option>灰（默认 0x73AE）</option><option>深灰</option></select>
-          <label class="row">车头三角</label>
-          <select><option>黄（默认 0xFFE0）</option><option>红</option></select>
-          <label class="row">提示 / 警示行</label>
-          <select><option>黄（默认 0xFFE0）</option><option>橙</option></select>
-
-          <div class="sub-h">地图底图（App 截图 → ESP）</div>
-          <label class="check"><input type="checkbox" checked><span class="sw"></span>推送地图底图（关掉 = ESP 回到原始导航模式）</label>
-          <label class="row">刷新间隔 <span class="val">3.0 s</span></label>
-          <input type="range" min="500" max="5000" value="3000">
-          <label class="row">底图亮度 <span class="val">70%</span></label>
-          <input type="range" min="30" max="150" value="70">
-          <label class="row">底图对比度 <span class="val">100%</span></label>
-          <input type="range" min="50" max="150" value="100">
-          <label class="row">地图样式（决定底图观感）</label>
-          <select><option>普通地图</option><option>导航地图（全蓝）</option><option>夜景</option><option>导航夜景</option></select>
-
-          <div class="sub-h">屏幕翻转（分光镜 / 倒装）</div>
-          <label class="check"><input type="checkbox" checked><span class="sw"></span>水平翻转（左右镜像）</label>
-          <label class="check"><input type="checkbox"><span class="sw"></span>垂直翻转（上下镜像，可与上面叠加）</label>
-
-          <div class="sub-h">调试（过滤发往 ESP 的图元）</div>
-          <label class="check"><input type="checkbox"><span class="sw"></span>一键全部关闭</label>
-          <label class="check"><input type="checkbox" checked><span class="sw"></span>发路况模板</label>
-          <label class="check"><input type="checkbox" checked><span class="sw"></span>发车道中线</label>
-          <label class="check"><input type="checkbox" checked><span class="sw"></span>发行程图</label>
-          <label class="check"><input type="checkbox" checked><span class="sw"></span>发车头位置</label>
+          <div class="note" style="margin:0 0 10px">（对照用）</div>
+          <label class="row">屏幕亮度 / 虚线速度 / 动画</label>
+          <label class="row">底衬 ×6 · 屏颜色 ×6 · 底图 ×6 · 翻转 ×2 · 调试 ×5</label>
         </div>
       </details>
-
-      <div style="padding:14px">
-        <button class="btn primary">保存设置</button>
-        <div class="note">方案 A：三个分组**整块可收缩**，组内用浅色小标题再分节。默认只展开当前最常用的一组（这里全部展开仅为演示）。</div>
-      </div>
-
-      <div class="tabbar"><div class="on">连接</div><div>导航</div><div>行程</div><div>测试</div><div>设置</div></div>
     </div>
+    <div class="tabbar"><div class="on">连接</div><div>导航</div><div>行程</div><div>测试</div><div>设置</div></div>
   </div>
 
-  <!-- ================= 方案 B：Tab ================= -->
-  <div class="phone scheme hidden" data-scheme="tabs">
-    <div class="status"><span>EspNav 设置</span><span>已连接 · V1.3.1</span></div>
-    <div class="screen">
-      <div class="tabs">
-        <button class="on" data-pane="p1">① 连接</button>
-        <button data-pane="p2">② APK 端</button>
-        <button data-pane="p3">③ ESP 端</button>
-      </div>
-
-      <div class="pane on" id="p1">
-        <div class="sub-h">设备地址</div>
-        <label class="row">主机 / IP</label><input type="text" value="192.168.43.117">
-        <label class="row">端口</label><input type="number" value="8899">
-        <div class="sub-h">连接行为</div>
-        <label class="check"><input type="checkbox" checked><span class="sw"></span>启动时自动连接</label>
-        <div class="note">方案 B：三个 Tab 平级切换，任一时刻只看到一类，滚动最短。</div>
-      </div>
-
-      <div class="pane" id="p2">
-        <div class="sub-h">导航</div>
-        <label class="row">起点</label><input type="text" value="北京亦庄泰河三街1号">
-        <label class="row">终点</label><input type="text" value="北京亦庄同济南路地铁站">
-        <label class="check"><input type="checkbox" checked><span class="sw"></span>自动定位城市</label>
-        <label class="row">城市（手动指定）</label><input type="text" placeholder="留空则自动">
-        <label class="check"><input type="checkbox"><span class="sw"></span>模拟导航</label>
-        <div class="sub-h">行程预览</div>
-        <div class="radio"><span class="on">VW 视图采样</span><span>DP 设备像素</span></div>
-        <div class="sub-h">地图（App 显示）</div>
-        <label class="row">默认缩放级别</label><input type="number" value="16">
-        <div class="sub-h">App 界面</div>
-        <label class="check"><input type="checkbox" checked><span class="sw"></span>显示行程图卡片</label>
-        <label class="check"><input type="checkbox" checked><span class="sw"></span>导航期间屏幕常亮</label>
-        <label class="row">日志最大行数</label><input type="number" value="200">
-        <div class="sub-h">权限</div>
-        <div class="state">存储 / 定位权限：<b>已授权</b></div>
-        <button class="btn">打开系统应用设置</button>
-        <div class="sub-h">配置文件</div>
-        <div class="state">状态：<b>未发现</b></div>
-        <button class="btn">授权访问</button><button class="btn">保存到文件</button>
-        <button class="btn">从文件加载</button><button class="btn">删除文件</button>
-      </div>
-
-      <div class="pane" id="p3">
-        <div class="sub-h">屏幕</div>
-        <label class="row">屏幕亮度 <span class="val">80%</span></label><input type="range" min="0" max="100" value="80">
-        <label class="row">虚线流动速度 <span class="val">40 px/s</span></label><input type="range" min="0" max="120" value="40">
-        <label class="check"><input type="checkbox" checked><span class="sw"></span>动画</label>
-        <div class="sub-h">叠加层底衬（可读性）</div>
-        <label class="check"><input type="checkbox" checked><span class="sw"></span>启用暗底衬</label>
-        <label class="row">罗盘 <span class="val">65</span></label><input type="range" min="0" max="100" value="65">
-        <label class="row">文字 <span class="val">65</span></label><input type="range" min="0" max="100" value="65">
-        <label class="row">行程图 <span class="val">40</span></label><input type="range" min="0" max="100" value="40">
-        <label class="row">时间 <span class="val">65</span></label><input type="range" min="0" max="100" value="65">
-        <label class="row">网格亮度 <span class="val">55</span></label><input type="range" min="0" max="100" value="55">
-        <div class="sub-h">屏颜色</div>
-        <label class="row">主色</label><select><option>绿（默认）</option><option>青</option></select>
-        <label class="row">轨迹</label><select><option>亮蓝（默认）</option><option>橙</option></select>
-        <label class="row">网格</label><select><option>灰绿（默认）</option><option>灰</option></select>
-        <label class="row">路面色</label><select><option>灰（默认）</option><option>深灰</option></select>
-        <label class="row">车头</label><select><option>黄（默认）</option><option>红</option></select>
-        <label class="row">提示行</label><select><option>黄（默认）</option><option>橙</option></select>
-        <div class="sub-h">地图底图</div>
-        <label class="check"><input type="checkbox" checked><span class="sw"></span>推送地图底图</label>
-        <label class="row">刷新间隔 <span class="val">3.0 s</span></label><input type="range" min="500" max="5000" value="3000">
-        <label class="row">亮度 <span class="val">70%</span></label><input type="range" min="30" max="150" value="70">
-        <label class="row">对比度 <span class="val">100%</span></label><input type="range" min="50" max="150" value="100">
-        <label class="row">地图样式</label><select><option>普通地图</option><option>导航地图（全蓝）</option><option>夜景</option><option>导航夜景</option></select>
-        <div class="sub-h">屏幕翻转</div>
-        <label class="check"><input type="checkbox" checked><span class="sw"></span>水平翻转</label>
-        <label class="check"><input type="checkbox"><span class="sw"></span>垂直翻转</label>
-        <div class="sub-h">调试</div>
-        <label class="check"><input type="checkbox"><span class="sw"></span>一键全部关闭</label>
-        <label class="check"><input type="checkbox" checked><span class="sw"></span>发路况模板</label>
-        <label class="check"><input type="checkbox" checked><span class="sw"></span>发车道中线</label>
-        <label class="check"><input type="checkbox" checked><span class="sw"></span>发行程图</label>
-        <label class="check"><input type="checkbox" checked><span class="sw"></span>发车头位置</label>
-        <button class="btn primary">保存设置</button>
-      </div>
-
-      <div class="tabbar"><div class="on">连接</div><div>导航</div><div>行程</div><div>测试</div><div>设置</div></div>
-    </div>
-  </div>
-
-  <!-- ================= 说明栏 ================= -->
+  <!-- ==================== 说明 ==================== -->
   <div class="side">
-    <h3>归类结果（两类都在用同一份）</h3>
+    <h3>① 混合（你选的，已按你的要求实现）</h3>
     <ul>
-      <li><b>① 连接</b>：设备地址（IP / 端口）、启动自动连接</li>
-      <li><b>② APK 端</b>：导航（起终点 / 城市 / 模拟）、行程预览采样、App 地图默认缩放、行程图卡片、<b>屏幕常亮</b>、日志行数、权限、配置文件</li>
-      <li><b>③ ESP 端</b>：屏幕亮度 / 虚线速度 / 动画、底衬可读性（总开关 + 4 项 + 网格）、屏颜色 ×6、地图样式、底图推送（开关 / 间隔 / 亮度 / 对比度）、屏幕翻转（水平 / 垂直）、调试帧过滤 ×5</li>
+      <li><b>Tab 固定在顶部</b>：滚动时不动（底部导航条也不动）</li>
+      <li><b>只有中间内容区滚动</b>，且每个 Tab 各自保留独立滚动位置</li>
+      <li>Tab 内用<b>可收缩小节</b>：ESP 端 24 项拆成 6 个小节，默认只展开最常用的</li>
     </ul>
 
-    <h3>顺带修正的两处现有缺陷</h3>
+    <h3>② 一页到底（对照，未选）</h3>
     <ul>
-      <li>「<code>set_group_map</code>」标题<b>出现两次</b>（地图样式组 + 默认缩放组）→ 合并到对应归类里</li>
-      <li>配置文件按钮（授权 / 保存 / 加载 / 删除）原被拆在两组之间 → 归到「配置文件」小节</li>
+      <li>仍是单页滚动，靠展开/收起控制长度；三类内容要一直往下翻</li>
+      <li>优点是一眼看到全貌，代价是滚动很长</li>
     </ul>
 
-    <h3>两方案取舍</h3>
+    <h3>归类（两方案共用）</h3>
     <ul>
-      <li><b>方案 A（可收缩分组）</b>：仍是一页到底，能一眼看到全貌；靠展开/收起控制长度。适合"经常跨类对照调参"。</li>
-      <li><b>方案 B（Tab）</b>：每屏只一类，滚动最短、点得最少；但跨类调参要来回切。</li>
-      <li>也可<b>混合</b>：外层 3 个 Tab，内层仍用可收缩小节（ESP 端内容最多，尤其适合）。</li>
+      <li><b>① 连接</b>：设备地址、启动自动连接 — 3 项</li>
+      <li><b>② APK 端</b>：导航 5、行程预览 1、App 地图 1、App 界面 3（含<b>屏幕常亮</b>）、权限 2、配置文件 5 — 15 项</li>
+      <li><b>③ ESP 端</b>：屏幕 3、底衬 6、屏颜色 6、底图 6、翻转 2、调试 5 — 24 项</li>
     </ul>
 
-    <h3>请挑一个（或提修改）</h3>
+    <h3>顺带修掉的两处现有缺陷</h3>
     <ul>
-      <li>A / B / 混合（Tab + 可收缩小节）</li>
-      <li>分组名是否就叫「连接 / APK 端 / ESP 端」</li>
-      <li>是否有条目应换组（例如「屏幕常亮」你更想放 ESP 端？）</li>
+      <li>「<code>set_group_map</code>」标题<b>出现两次</b> → 分别归入 ESP 端（底图观感）与 APK 端（App 地图）</li>
+      <li>配置文件按钮原被拆在两组之间 → 归拢为一个「配置文件」小节</li>
     </ul>
-    <div class="note">确认后我再改 <code>page_settings.xml</code> + <code>MainActivity.kt</code>（只动布局与绑定，功能逻辑不变）。</div>
+
+    <div class="note" style="margin:0">视觉 OK 的话我就动手改 <code>page_settings.xml</code>（重排为 Tab + 可收缩小节，<b>所有控件 id 保持不变</b>，因此 <code>MainActivity.kt</code> 的绑定逻辑基本不用动）+ 编译验证。</div>
   </div>
 
 </div>
@@ -347,48 +317,40 @@
 <script>
 (function(){
   var stage = document.getElementById('stage');
-  function apply(scheme){
+  function apply(s){
     document.querySelectorAll('.toolbar button').forEach(function(b){
-      b.classList.toggle('on', b.dataset.scheme === scheme);
+      b.classList.toggle('on', b.dataset.scheme === s);
     });
     stage.querySelectorAll('.scheme').forEach(function(el){
-      var s = el.dataset.scheme;
-      el.classList.toggle('hidden', scheme === 'both' ? false : (s !== scheme));
+      el.classList.toggle('hidden', s === 'both' ? false : (el.dataset.scheme !== s));
     });
   }
   document.querySelectorAll('.toolbar button').forEach(function(b){
     b.addEventListener('click', function(){ apply(b.dataset.scheme); });
   });
-
-  // 方案 B 的 Tab
   document.querySelectorAll('.tabs button').forEach(function(b){
     b.addEventListener('click', function(){
-      var box = b.closest('.screen');
-      box.querySelectorAll('.tabs button').forEach(function(x){ x.classList.remove('on'); });
+      var ph = b.closest('.phone');
+      ph.querySelectorAll('.tabs button').forEach(function(x){ x.classList.remove('on'); });
       b.classList.add('on');
-      box.querySelectorAll('.pane').forEach(function(p){ p.classList.toggle('on', p.id === b.dataset.pane); });
+      ph.querySelectorAll('.pane').forEach(function(p){ p.classList.toggle('on', p.id === b.dataset.pane); });
+      var sc = ph.querySelector('.body-scroll'); if (sc) sc.scrollTop = 0;   /* 切 Tab 回到顶部 */
     });
   });
-
-  // 单选 pill
   document.querySelectorAll('.radio span').forEach(function(s){
     s.addEventListener('click', function(){
       s.parentNode.querySelectorAll('span').forEach(function(x){ x.classList.remove('on'); });
       s.classList.add('on');
     });
   });
-
-  // 滑块旁的数值随手拖动更新
   document.querySelectorAll('input[type=range]').forEach(function(r){
     r.addEventListener('input', function(){
-      var label = r.previousElementSibling;
-      if (!label) return;
-      var v = label.querySelector('.val');
-      if (!v) return;
-      if (r.max === '5000') v.textContent = (r.value / 1000).toFixed(1) + ' s';
+      var label = r.previousElementSibling; if (!label) return;
+      var v = label.querySelector('.val'); if (!v) return;
+      var txt = label.textContent;
+      if (r.max === '5000') v.textContent = (r.value/1000).toFixed(1) + ' s';
       else if (r.max === '150') v.textContent = r.value + '%';
-      else if (r.previousElementSibling.textContent.indexOf('px/s') >= 0) v.textContent = r.value + ' px/s';
-      else if (r.previousElementSibling.textContent.indexOf('%') >= 0) v.textContent = r.value + '%';
+      else if (txt.indexOf('px/s') >= 0) v.textContent = r.value + ' px/s';
       else v.textContent = r.value;
     });
   });
