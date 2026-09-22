@@ -115,10 +115,10 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         binding.btnAddVia.isEnabled = false
         binding.btnAddVia.text = getString(R.string.btn_add_via_paid)
         /* 日志区是公共组件（两个 Tab 都可见），点标题可折叠/展开 */
-        binding.logHeader.setOnClickListener {
-            val show = binding.svLog.visibility != View.VISIBLE
-            binding.svLog.visibility = if (show) View.VISIBLE else View.GONE
-            binding.tvLogTitle.text = getString(R.string.label_log) + (if (show) "  ▾" else "  ▸")
+        binding.pageTest.logHeader.setOnClickListener {
+            val show = binding.pageTest.svLog.visibility != View.VISIBLE
+            binding.pageTest.svLog.visibility = if (show) View.VISIBLE else View.GONE
+            binding.pageTest.tvLogTitle.text = getString(R.string.label_log) + (if (show) "  ▾" else "  ▸")
         }
         binding.btnDisconnect.setOnClickListener {
             intentionalDisconnect = true                  /* 手动断开：不自动重连 */
@@ -126,30 +126,30 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             send(OutMsg.bye())
             client.disconnect("手动断开")
         }
-        binding.btnPing.setOnClickListener { send(OutMsg.ping(System.currentTimeMillis() / 1000)) }
-        binding.btnGetConfig.setOnClickListener { send(OutMsg.getConfig()) }
-        binding.btnClear.setOnClickListener { send(OutMsg.clearScreen()) }
-        binding.btnSendOnce.setOnClickListener {
+        binding.pageTest.btnPing.setOnClickListener { send(OutMsg.ping(System.currentTimeMillis() / 1000)) }
+        binding.pageTest.btnGetConfig.setOnClickListener { send(OutMsg.getConfig()) }
+        binding.pageTest.btnClear.setOnClickListener { send(OutMsg.clearScreen()) }
+        binding.pageTest.btnSendOnce.setOnClickListener {
             val f = NavStateMapper.toFrame(navSource.latest())
             send(OutMsg.navFrame(f))
-            binding.tvStage.text = "单帧：${navSource.displayName} 剩余 ${f.turnDist} m"
+            binding.pageTest.tvStage.text = "单帧：${navSource.displayName} 剩余 ${f.turnDist} m"
         }
-        binding.btnMockStart.setOnClickListener { startMock() }
-        binding.btnMockStop.setOnClickListener { stopMock() }
-        binding.btnAmapNav.setOnClickListener { startAmapNav() }
-        binding.btnCopyLog.setOnClickListener { copyLog() }
+        binding.pageTest.btnMockStart.setOnClickListener { startMock() }
+        binding.pageTest.btnMockStop.setOnClickListener { stopMock() }
+        binding.pageTest.btnAmapNav.setOnClickListener { startAmapNav() }
+        binding.pageTest.btnCopyLog.setOnClickListener { copyLog() }
 
-        binding.seekBrightness.progress = 80
-        binding.seekDashSpeed.progress = 40
-        binding.switchAnim.isChecked = true
+        binding.pageSettings.seekBrightness.progress = 80
+        binding.pageSettings.seekDashSpeed.progress = 40
+        binding.pageSettings.switchAnim.isChecked = true
 
-        binding.seekBrightness.setOnSeekBarChangeListener(
+        binding.pageSettings.seekBrightness.setOnSeekBarChangeListener(
             onSeek("亮度") { v -> send(OutMsg.setConfig(brightness = v)) }
         )
-        binding.seekDashSpeed.setOnSeekBarChangeListener(
+        binding.pageSettings.seekDashSpeed.setOnSeekBarChangeListener(
             onSeek("速度") { v -> send(OutMsg.setConfig(dashSpeed = v)) }
         )
-        binding.switchAnim.setOnCheckedChangeListener { _, checked ->
+        binding.pageSettings.switchAnim.setOnCheckedChangeListener { _, checked ->
             send(OutMsg.setConfig(animEnable = checked))
             log("设置 流动动画 = $checked")
         }
@@ -595,7 +595,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             while (isActive) {
                 val f = NavStateMapper.toFrame(navSource.latest())
                 client.queue(OutMsg.navFrame(applyDbgMask(f)))
-                binding.tvStage.text =
+                binding.pageTest.tvStage.text =
                     "${label}：剩余 ${f.turnDist} m  进度 ${f.progressPct}%  ${f.hint}"
                 /* 导航画面：与发帧同频刷新（失败不影响推流） */
                 (navSource as? AmapNavSource)?.let { s ->
@@ -653,7 +653,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     private fun onSeek(tag: String, action: (Int) -> Unit) = object : SeekBar.OnSeekBarChangeListener {
         override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-            if (fromUser) binding.tvStage.text = "调整 $tag：$progress"
+            if (fromUser) binding.pageTest.tvStage.text = "调整 $tag：$progress"
         }
         override fun onStartTrackingTouch(sb: SeekBar?) = Unit
         override fun onStopTrackingTouch(sb: SeekBar?) {
@@ -723,8 +723,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         binding.pageConnect.visibility = if (index == 0) View.VISIBLE else View.GONE
         binding.pageNav.visibility = if (nav) View.VISIBLE else View.GONE
         binding.pageCompare.visibility = if (cmp) View.VISIBLE else View.GONE
-        binding.pageTest.visibility = if (index == 3) View.VISIBLE else View.GONE
-        binding.pageSettings.visibility = if (index == 4) View.VISIBLE else View.GONE
+        binding.pageTest.root.visibility = if (index == 3) View.VISIBLE else View.GONE
+        binding.pageSettings.root.visibility = if (index == 4) View.VISIBLE else View.GONE
         if (nav) ensureMap() else runCatching { binding.mapView.onPause() }
         if (cmp) ensureCompare() else releaseCompare()   /* 懒加载 + 切走释放，避免 WebView 常驻内存 */
         refreshActionStates()
@@ -847,7 +847,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     /** 【M5】设置页（Tab 4）：原「⚙ 设置」对话框的内容搬到这里，
      *  改由页面底部的「保存设置」按钮触发写入（逻辑与原来的 setPositiveButton 一致）。 */
     private fun setupSettingsTab() {
-        val v: android.view.View = binding.pageSettings
+        val v: android.view.View = binding.pageSettings.root
         fun ed(id: Int) = v.findViewById<android.widget.EditText>(id)
         val cbAutoConn = v.findViewById<android.widget.CheckBox>(R.id.setAutoConnect)
         val cbAutoCity = v.findViewById<android.widget.CheckBox>(R.id.setAutoCity)
@@ -1281,9 +1281,9 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         binding.btnQuickConnect.isEnabled = !on
         binding.btnDisconnect.isEnabled = on
         for (v in listOf<android.view.View>(
-                binding.btnSendOnce, binding.btnClear, binding.btnMockStart, binding.btnMockStop,
-                binding.btnAmapNav, binding.btnPing, binding.btnGetConfig,
-                binding.seekBrightness, binding.seekDashSpeed, binding.switchAnim)) {
+                binding.pageTest.btnSendOnce, binding.pageTest.btnClear, binding.pageTest.btnMockStart, binding.pageTest.btnMockStop,
+                binding.pageTest.btnAmapNav, binding.pageTest.btnPing, binding.pageTest.btnGetConfig,
+                binding.pageSettings.seekBrightness, binding.pageSettings.seekDashSpeed, binding.pageSettings.switchAnim)) {
             v.isEnabled = on
         }
         updatePickState()                     /* 导航页的操作也随连接状态刷新 */
@@ -2001,7 +2001,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private fun copyLog() {
         runCatching {
             val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-            cm.setPrimaryClip(ClipData.newPlainText("espnav-log", binding.tvLog.text.toString()))
+            cm.setPrimaryClip(ClipData.newPlainText("espnav-log", binding.pageTest.tvLog.text.toString()))
             Toast.makeText(this, "日志已复制到剪贴板", Toast.LENGTH_SHORT).show()
             log("日志已复制到剪贴板（可直接粘贴反馈）")
         }.onFailure { log("复制日志失败：" + it.message) }
@@ -2012,12 +2012,12 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     private fun log(msg: String) {
-        binding.tvLog.append(timeFmt.format(Date()) + "  " + msg + "\n")
-        if (binding.tvLog.lineCount > appPrefs.maxLogLines) {
-            val all = binding.tvLog.text.toString()
-            binding.tvLog.text = all.substring(all.length / 3)   // 超限时丢弃最早 1/3
+        binding.pageTest.tvLog.append(timeFmt.format(Date()) + "  " + msg + "\n")
+        if (binding.pageTest.tvLog.lineCount > appPrefs.maxLogLines) {
+            val all = binding.pageTest.tvLog.text.toString()
+            binding.pageTest.tvLog.text = all.substring(all.length / 3)   // 超限时丢弃最早 1/3
         }
-        binding.svLog.post { binding.svLog.fullScroll(View.FOCUS_DOWN) }
+        binding.pageTest.svLog.post { binding.pageTest.svLog.fullScroll(View.FOCUS_DOWN) }
     }
 
     companion object {

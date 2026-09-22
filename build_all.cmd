@@ -61,8 +61,11 @@ popd
 
 echo.
 echo ============================================================
-echo  DONE - artifacts in out\ (timestamps below must be NOW):
+echo ##                                                        ##
+echo ##   BUILD OK  -  FIRMWARE + APK  BOTH BUILT SUCCESSFULLY  ##
+echo ##                                                        ##
 echo ============================================================
+echo  artifacts in out\ (timestamps below must be NOW):
 dir "%OUT%\espnav.bin" "%OUT%\espnav-debug.apk"
 echo.
 echo  NEXT (your side):
@@ -73,7 +76,9 @@ goto end
 :fail_fw
 popd
 echo.
-echo ############################################################
+echo !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+echo !!!  BUILD FAILED : FIRMWARE  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+echo !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 echo  ##  FIRMWARE BUILD FAILED
 echo  ##  out\ has NO firmware (old ones were deleted on purpose).
 echo  ##  Scroll UP, copy the "error:" lines and send them to the agent.
@@ -83,7 +88,9 @@ goto end
 :fail_apk
 popd
 echo.
-echo ############################################################
+echo !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+echo !!!  BUILD FAILED : APK       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+echo !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 echo  ##  APK BUILD FAILED
 echo  ##  out\ has NO apk (the old one was deleted on purpose),
 echo  ##  so a stale build can never be installed again.
