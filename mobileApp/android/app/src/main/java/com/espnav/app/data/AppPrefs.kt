@@ -155,6 +155,17 @@ class AppPrefs(ctx: Context) {
         get() = sp.getInt(K_EMAPSHOT_INT, 3000)
         set(v) = sp.edit().putInt(K_EMAPSHOT_INT, v.coerceIn(MAP_SHOT_INT_MIN, MAP_SHOT_INT_MAX)).apply()
 
+    /* ---- 【M7】底图显示效果（可调）：亮度 / 对比度 ----
+     * 亮度：原来硬编码 45%（偏暗，用户反馈 ESP 上画面发暗）→ 默认 70%，范围 30–150%。
+     * 对比度：100% = 原样，范围 50–150%。两者都在每次推图前同步给 MapShotCapture，改完立即生效。 */
+    var espMapBright: Int
+        get() = sp.getInt(K_EMAP_BRIGHT, 70).coerceIn(MAP_BRIGHT_MIN, MAP_BRIGHT_MAX)
+        set(v) = sp.edit().putInt(K_EMAP_BRIGHT, v.coerceIn(MAP_BRIGHT_MIN, MAP_BRIGHT_MAX)).apply()
+
+    var espMapContrast: Int
+        get() = sp.getInt(K_EMAP_CONTRAST, 100).coerceIn(MAP_CONTRAST_MIN, MAP_CONTRAST_MAX)
+        set(v) = sp.edit().putInt(K_EMAP_CONTRAST, v.coerceIn(MAP_CONTRAST_MIN, MAP_CONTRAST_MAX)).apply()
+
     /** 【M2.5】屏幕内容水平翻转（分光镜 HUD）：默认开。
      *  分光镜（半透半反镜）让人眼看到的是左右镜像画面，所以 ESP 端送屏前要预先水平镜像。
      *  用字面 key（暂不进配置文件导出项），后续若要纳入配置再补常量与导出。 */
@@ -279,6 +290,9 @@ class AppPrefs(ctx: Context) {
 
     companion object {
         private const val NAME = "espnav_prefs"
+        /* 【M7】底图显示效果（字面 key，与 screen_flip 同样的处理方式：暂不进配置文件导出） */
+        private const val K_EMAP_BRIGHT = "esp_map_bright"
+        private const val K_EMAP_CONTRAST = "esp_map_contrast"
         private const val K_HOST = "host"
         private const val K_PORT = "port"
         private const val K_AUTO_CONN = "auto_connect"
@@ -337,6 +351,12 @@ class AppPrefs(ctx: Context) {
         /** 【M3.2】底图刷新间隔范围（ms）：与设置页滑杆一致 */
         const val MAP_SHOT_INT_MIN = 500
         const val MAP_SHOT_INT_MAX = 5000
+
+        /* 【M7】底图亮度/对比度范围（百分比） */
+        const val MAP_BRIGHT_MIN = 30
+        const val MAP_BRIGHT_MAX = 150
+        const val MAP_CONTRAST_MIN = 50
+        const val MAP_CONTRAST_MAX = 150
 
         const val DEF_HOST = "192.168.43.117"
         const val DEF_PORT = 8899

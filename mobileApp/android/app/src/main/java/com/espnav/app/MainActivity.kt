@@ -544,6 +544,11 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private var mapShotTick = 0          /* 【M3.2】主循环计数：每 N 帧推一张底图 */
 
     private fun captureAndSendMapShot() {
+        /* 【M7】推图前同步底图显示参数（设置页改完立即生效，无需重启/重连） */
+        com.espnav.app.data.MapShotCapture.brightness =
+            appPrefs.espMapBright / 100f
+        com.espnav.app.data.MapShotCapture.contrast =
+            appPrefs.espMapContrast / 100f
         val am = aMap ?: run { log("底图截图跳过：地图未就绪"); return }
         if (!client.isConnected) { log("底图截图跳过：未连接"); return }
         log("底图截图：调用 getMapScreenShot …")
@@ -973,6 +978,50 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                     com.espnav.app.data.AppPrefs.MAP_SHOT_INT_MIN + p * 100
                 refreshMapShotLabel()
                 log("底图刷新间隔 = " + (appPrefs.espMapShotIntervalMs / 1000.0) + " s")
+            }
+
+            override fun onStartTrackingTouch(sb: android.widget.SeekBar?) = Unit
+            override fun onStopTrackingTouch(sb: android.widget.SeekBar?) = Unit
+        })
+
+        /* 【M7】底图亮度 30–150%（默认 70；原来硬编码 45% 偏暗）+ 对比度 50–150%（默认 100）。
+         * 滑杆 progress 是偏移量：亮度 = 30 + p（max 120），对比度 = 50 + p（max 100）。 */
+        val skEspMapBright = v.findViewById<android.widget.SeekBar>(R.id.seekEspMapBright)
+        val skEspMapContrast = v.findViewById<android.widget.SeekBar>(R.id.seekEspMapContrast)
+        val tvEspMapBright = v.findViewById<android.widget.TextView>(R.id.tvEspMapBright)
+        val tvEspMapContrast = v.findViewById<android.widget.TextView>(R.id.tvEspMapContrast)
+
+        fun applyMapDisp() {
+            com.espnav.app.data.MapShotCapture.brightness = appPrefs.espMapBright / 100f
+            com.espnav.app.data.MapShotCapture.contrast = appPrefs.espMapContrast / 100f
+        }
+        fun refreshMapDispLabels() {
+            tvEspMapBright.text = getString(R.string.set_esp_map_bright) + "：" + appPrefs.espMapBright + "%"
+            tvEspMapContrast.text = getString(R.string.set_esp_map_contrast) + "：" + appPrefs.espMapContrast + "%"
+        }
+        skEspMapBright.max = 120
+        skEspMapContrast.max = 100
+        skEspMapBright.progress = appPrefs.espMapBright - 30
+        skEspMapContrast.progress = appPrefs.espMapContrast - 50
+        applyMapDisp()
+        refreshMapDispLabels()
+        skEspMapBright.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                appPrefs.espMapBright = 30 + p
+                applyMapDisp()
+                refreshMapDispLabels()
+            }
+
+            override fun onStartTrackingTouch(sb: android.widget.SeekBar?) = Unit
+            override fun onStopTrackingTouch(sb: android.widget.SeekBar?) = Unit
+        })
+        skEspMapContrast.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                appPrefs.espMapContrast = 50 + p
+                applyMapDisp()
+                refreshMapDispLabels()
             }
 
             override fun onStartTrackingTouch(sb: android.widget.SeekBar?) = Unit
