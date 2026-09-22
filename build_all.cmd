@@ -65,9 +65,9 @@ echo  DONE - artifacts in out\ (timestamps below must be NOW):
 echo ============================================================
 dir "%OUT%\espnav.bin" "%OUT%\espnav-debug.apk"
 echo.
-echo  NEXT:
-echo    1) flash firmware : double-click flash.cmd        (default COM3)
-echo    2) install APK    : double-click install_apk.cmd (or copy out\espnav-debug.apk)
+echo  NEXT (your side):
+echo    1) flash firmware : run inside Esp32S3\ : idf.py -p COM3 flash monitor
+echo    2) install APK    : copy out\espnav-debug.apk to the phone and tap it
 goto end
 
 :fail_fw
