@@ -151,6 +151,8 @@ object OutMsg {
         scrimClock: Int? = null,
         gridBright: Int? = null,
         screenFlip: Boolean? = null,
+        /* 【M9】整屏垂直镜像（上下翻转） */
+        screenFlipY: Boolean? = null,
         /* 【M2.4】ESP 屏颜色（RGB565 十进制；0 = 用固件默认色） */
         colMain: Int? = null,
         colTrack: Int? = null,
@@ -174,6 +176,7 @@ object OutMsg {
         gridBright?.let { p.put("grid_bright", it) }
         /* 【M2.5】分光镜 HUD：整屏水平镜像 */
         screenFlip?.let { p.put("screen_flip", it) }
+        screenFlipY?.let { p.put("screen_flip_y", it) }
         colMain?.let { p.put("col_main", it) }
         colTrack?.let { p.put("col_track", it) }
         colGrid?.let { p.put("col_grid", it) }

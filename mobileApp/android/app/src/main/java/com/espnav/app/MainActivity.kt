@@ -949,6 +949,15 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             log("ESP 屏幕水平翻转 = $c")
         }
 
+        /* 【M9】垂直翻转（上下镜像）：与水平翻转独立，可同时开启 */
+        val cbScreenFlipY = v.findViewById<android.widget.CheckBox>(R.id.setScreenFlipY)
+        cbScreenFlipY.isChecked = appPrefs.screenFlipY
+        cbScreenFlipY.setOnCheckedChangeListener { _, c ->
+            appPrefs.screenFlipY = c
+            if (client.isConnected) send(OutMsg.setConfig(screenFlipY = c))
+            log("ESP 屏幕垂直翻转 = $c")
+        }
+
         /* 【M2.4】ESP 屏颜色：6 个预设色下拉；选择即保存 + 一次性下发全部颜色 */
         val colorNames = resources.getStringArray(R.array.esp_color_names)
         val colorVals = com.espnav.app.data.AppPrefs.ESP_COLORS

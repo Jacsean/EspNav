@@ -508,6 +508,12 @@
             android:layout_height="wrap_content"
             android:text="@string/set_screen_flip" />
 
+        <CheckBox
+            android:id="@+id/setScreenFlipY"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/set_screen_flip_y" />
+
         <Button
             android:id="@+id/btnCfgPerm"
             android:layout_width="match_parent"

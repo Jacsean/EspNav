@@ -154,7 +154,13 @@ void lcd_ili9341_backlight(uint8_t pct) { bl_set(pct); }
  * 软件倒序的"水平镜像"语义确定，且每行仅 320 次读写（相对整屏 SPI 传输 31ms 可忽略）。 */
 static bool s_flip_x = true;      /* 【M1.7】默认开：分光镜 HUD 场景（与 config.screen_flip 默认一致） */
 
+/* 【M9】整屏垂直镜像：把"行的发送顺序"倒过来（第 y 行发 fb 的第 h-1-y 行）。
+ * 与水平镜像同样**故意不用 MADCTL 的 MY 位** —— 横屏下位名与实际效果相反、需真机试错；
+ * 软件倒序语义确定，且这里只是换一个取行指针，零额外拷贝。 */
+static bool s_flip_y = false;     /* 【M9】默认关（与 config.screen_flip_y 默认一致） */
+
 void lcd_ili9341_set_flip_x(bool on) { s_flip_x = on; }
+void lcd_ili9341_set_flip_y(bool on) { s_flip_y = on; }
 
 void lcd_ili9341_flush(const uint16_t *fb, int w, int h)
 {
@@ -164,7 +170,8 @@ void lcd_ili9341_flush(const uint16_t *fb, int w, int h)
     lcd_ili9341_set_window(0, 0, (uint16_t)(w - 1), (uint16_t)(h - 1));
     gpio_set_level(LCD_PIN_DC, 1);
     for (int y = 0; y < h; y++) {
-        const uint16_t *src = &fb[y * w];
+        /* 【M9】s_flip_y：行的发送顺序倒序 = 整屏垂直镜像（上下翻转） */
+        const uint16_t *src = &fb[(s_flip_y ? (h - 1 - y) : y) * w];
         if (s_flip_x) {
             for (int x = 0; x < w; x++) {
                 uint16_t c = src[w - 1 - x];              /* 左右倒序 = 水平镜像 */
