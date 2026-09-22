@@ -43,7 +43,17 @@ class EspNavClient(private val scope: CoroutineScope) {
     private var readJob: Job? = null
     private var beatJob: Job? = null
     private var sendJob: Job? = null
-    private val sendQueue = Channel<String>(Channel.UNLIMITED)
+    /* 【M12】有界发送队列 —— 修"导航中过几个路口后闪退"的根因：
+     * 导航帧是实时状态（每 200ms 一帧，JSON 里含路况模版/行程图等较大字段）。
+     * 原来用 Channel.UNLIMITED：只要 TCP 变慢（信号差 / 热点抖动 / 对端 GC），
+     * 生产者就永远快于消费者 → 队列无限增长 → 几分钟后 OutOfMemory。
+     * 现在容量 16 帧（≈3.2 秒数据）：队列满时丢弃**新**帧（对"实时状态"来说，
+     * 丢新与丢旧等价 —— 反正下一帧马上就到），并累计计数便于在日志里观察。 */
+    private val sendQueue = Channel<String>(capacity = 16)
+    private val droppedCount = java.util.concurrent.atomic.AtomicLong(0)
+
+    /** 因队列满而被丢弃的报文数（诊断用：持续增长说明链路太慢） */
+    val droppedFrames: Long get() = droppedCount.get()
 
     @Volatile
     private var connectedFlag = false
@@ -81,7 +91,9 @@ class EspNavClient(private val scope: CoroutineScope) {
             notifyMain { listener?.onError("未连接，丢弃报文") }
             return
         }
-        sendQueue.trySend(json)
+        if (sendQueue.trySend(json).isFailure) {
+            droppedCount.incrementAndGet()      /* 【M12】队列满 → 丢弃本帧（不再无界堆积）*/
+        }
     }
 
     private suspend fun sendLoop() {

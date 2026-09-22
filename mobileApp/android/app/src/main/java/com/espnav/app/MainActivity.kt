@@ -737,6 +737,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private var navCarMarker: com.amap.api.maps.model.Marker? = null
     private var navCarIcon: com.amap.api.maps.model.BitmapDescriptor? = null
     private var navLastSplit = -1
+    private var navLastSplitAt = 0L        /* 【M12】上次重建聚线的时刻（节流用）*/
     private var navLastLat = Double.NaN
     private var navLastLon = Double.NaN
     private var navLastHeading = -999
@@ -1977,8 +1978,15 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         /* 已走(灰)/未走(蓝) 分色 + 行程图卡片：切分点变化 >=3 才重建（每帧重建 polyline 会卡） */
         val all = src.fullPath()
         val i0 = if (o != null) src.currentPathIndex() else 0
-        if (all.size >= 2 && (navLastSplit < 0 || kotlin.math.abs(i0 - navLastSplit) >= 3)) {
+        /* 【M12】节流：原来每移动 3 个路径点就 remove + 重建两条聚线，长路线会重建上千次，
+         * 高德 native 侧反复创建/销毁图形有累积风险。改为 ≥12 点 且 至少间隔 1.5 秒。 */
+        val nowMs = android.os.SystemClock.elapsedRealtime()
+        if (all.size >= 2 &&
+            (navLastSplit < 0 ||
+                (kotlin.math.abs(i0 - navLastSplit) >= 12 && nowMs - navLastSplitAt >= 1500))
+        ) {
             navLastSplit = i0
+            navLastSplitAt = nowMs
             runCatching {
                 navWalkedLine?.remove()
                 navRemainLine?.remove()
