@@ -19,11 +19,23 @@
 #include "comm/tcp_server.h"
 #include "lcd/lcd_driver.h"
 #include "font/font.h"
+#include "board/battery.h"   /* 【M7】板载电池电压检测（BAT_ADC = GPIO9） */
 
 /* 临时诊断开关：1 = 只点屏（不启动 WiFi/字库/任务），用于判定显示层；0 = 正常固件 */
 #define LCD_ONLY_TEST 0   /* 点屏已验证通过（2026-09-14），正常固件流程 */
 
 static const char *TAG = "app_main";
+
+/* 【M7】电量采样任务：2s 采一次（9 样本取中位数在 battery_poll 内完成）。
+ * 只写 battery 模块内部缓存，渲染任务只读 —— 不碰帧缓冲。 */
+static void battery_task(void *arg)
+{
+    (void)arg;
+    for (;;) {
+        battery_poll();
+        vTaskDelay(pdMS_TO_TICKS(2000));
+    }
+}
 
 void app_main(void)
 {
@@ -45,6 +57,10 @@ void app_main(void)
     geo_init();
     comm_if_init();
     lcd_driver_init();
+
+    /* 【M7】电量：初始化 ADC（BAT_ADC=GPIO9）并起 2s 采样任务 */
+    battery_init();
+    xTaskCreate(battery_task, "battery", 2560, NULL, 3, NULL);
 
     font_init();
     display_task_start();

@@ -202,6 +202,7 @@ object InMsg {
                     "${p.optInt("scrim_text")},${p.optInt("scrim_route")},${p.optInt("scrim_clock")} " +
                     "网格=${p.optInt("grid_bright")} " +
                     "底图=${p.optBoolean("img_on")} " +
+                    "电量=${p.optInt("batt")}%(${p.optInt("vbat")}mV) " +
                     "版本=${p.optString("firmware_ver")} err=${p.optInt("err")}"
             "PONG" -> "PONG ts=${p.optLong("ts")}"
             else -> line

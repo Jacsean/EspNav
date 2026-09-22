@@ -6,6 +6,7 @@
 #include "json_lite.h"
 #include "nav_frame.h"
 #include "config.h"
+#include "battery.h"   /* 【M7】电量上报（vbat/batt） */
 #include "lcd_driver.h"
 #include "render_nav.h"
 #include "map_image.h"     /* 【M3.1】IMG_BEGIN/CHUNK/END 的接收接口 */
@@ -49,6 +50,7 @@ static void send_dev_status(proto_send_fn send, void *ctx)
              "\"scrim_on\":%s,\"scrim_compass\":%u,\"scrim_text\":%u,"
              "\"scrim_route\":%u,\"scrim_clock\":%u,\"grid_bright\":%u,\"map_area\":%u,"
              "\"img_on\":%s,"
+             "\"vbat\":%d,\"batt\":%d,"
              "\"firmware_ver\":\"%s\",\"err\":%lu}}\n",
              (unsigned)c->lcd_brightness, (unsigned)c->dash_speed,
              c->anim_enable ? "true" : "false", (unsigned)c->popup_timeout,
@@ -57,6 +59,7 @@ static void send_dev_status(proto_send_fn send, void *ctx)
              (unsigned)c->scrim_route, (unsigned)c->scrim_clock,
              (unsigned)c->grid_bright, (unsigned)c->map_area,
              c->img_on ? "true" : "false",
+             (int)battery_mv(), battery_pct(),
              c->firmware_ver, (unsigned long)s_err);
     if (send) send(buf, ctx);
     ESP_LOGI(TAG, "TX DEV_STATUS bright=%u dash=%u anim=%d popup=%u scrim=%d/%u,%u,%u,%u grid=%u area=%u ver=%s err=%lu",

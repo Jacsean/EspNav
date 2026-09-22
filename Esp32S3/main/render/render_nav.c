@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "config.h"
 #include "map_image.h"    /* 【M3.1】地图底图（App 截图通道） */
+#include "battery.h"       /* 【M7】电量显示（BAT_ADC = GPIO9） */
 #include "wifi_sta.h"      /* 屏幕显示网络状态（AP / STA 已连接） */
 #include "font.h"
 #include <stdio.h>
@@ -716,6 +717,31 @@ static void draw_road(const nav_frame_t *f, float anim)
     }
 }
 
+/* 【M7】电量图标 + 百分比：画在 y≈100..159 的左侧空闲区（罗盘条以下、统计区以上），
+ * 有底图时叠在地图上，所以用"白壳 + 黑腔 + 彩色电量"，任何背景都看得清；
+ * 未接电池（battery_present()==false）时完全不画。 */
+static void draw_battery(void)
+{
+    if (!battery_present()) return;
+    int pct = battery_pct();
+    if (pct < 0) return;
+
+    const int bx = 4, by = 106;
+    const int bw = 22, bh = 11;                                  /* 外壳 22×11 */
+    uint16_t col = (pct <= 15) ? RGB565_RED
+                 : (pct <= 40) ? RGB565_YELLOW : s_col_main;
+
+    fb_fill_rect(bx, by, bx + bw - 1, by + bh - 1, RGB565_WHITE);          /* 外壳 */
+    fb_fill_rect(bx + 1, by + 1, bx + bw - 2, by + bh - 2, RGB565_BLACK);  /* 内腔 */
+    int iw = (bw - 4) * pct / 100;
+    if (iw > 0) fb_fill_rect(bx + 2, by + 2, bx + 2 + iw - 1, by + bh - 3, col);
+    fb_fill_rect(bx + bw + 1, by + 3, bx + bw + 2, by + bh - 4, RGB565_WHITE); /* 正极凸头 */
+
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%d%%", pct);
+    font_draw_text(bx + bw + 6, by, buf, s_col_main);
+}
+
 static void draw_frame(const nav_frame_t *f, float anim)
 {
     const espnav_config_t *cfg = config_get();       /* 【M1.2/M1.3】叠加层可读性参数（App 下发） */
@@ -803,6 +829,7 @@ static void draw_frame(const nav_frame_t *f, float anim)
     /* 罗盘 + 行程图 + 底部网络状态（不依赖 RENDER_TEXT 开关） */
     draw_compass(f);
     draw_net_status();
+    draw_battery();                          /* 【M7】电量（未接电池时不画） */
     if (f->road_name[0]) {
         static char rb[64];
         font_clip_utf8(f->road_name, 12 * 16, rb, sizeof(rb));  /* 放宽，超出由滚动显示 */
