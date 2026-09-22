@@ -325,23 +325,32 @@
                         android:paddingBottom="12dp"
                         android:visibility="gone">
 
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginBottom="4dp"
+                            android:text="@string/label_sampler"
+                            android:textSize="13sp" />
+
+                        <!-- 两个选项文字都很长（20+ 字），必须纵向排列并整宽，否则会挤压错乱 -->
                         <RadioGroup
                             android:id="@+id/setSamplerMode"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="horizontal">
+                            android:orientation="vertical">
 
                             <RadioButton
                                 android:id="@+id/setSamplerVw"
-                                android:layout_width="wrap_content"
+                                android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
+                                android:minHeight="44dp"
                                 android:text="@string/set_overview_vw" />
 
                             <RadioButton
                                 android:id="@+id/setSamplerDp"
-                                android:layout_width="wrap_content"
+                                android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:layout_marginStart="16dp"
+                                android:minHeight="44dp"
                                 android:text="@string/set_overview_dp" />
                         </RadioGroup>
                     </LinearLayout>
