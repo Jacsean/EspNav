@@ -101,3 +101,57 @@
 - **预防措施**：① 凡"用脚本生成源码"，脚本里若要产出 `\n` 字面量，必须写成 `\\n`；
   ② 落盘后除了跑 `kotlin_precheck.py`，**还必须编译一次** —— 本次预检 0 问题却编译失败，
   说明预检覆盖不到"字符串跨行"这一类；③ 快速定位手段：`grep -n '+ "$' <file>`（行尾以 `+ "` 结尾即跨行字符串）。
+
+## F16. 编译失败：CMakeLists 的 SRCS 条目误加逗号（CMake 把逗号当成独立源文件名）
+
+- **现象**：`CMake Error at component.cmake:494 (add_library): Cannot find source file: .../Esp32S3/main/,` +
+  `No SOURCES given to target: __idf_main` + `CMake Generate step failed`。
+- **原因**：本项目 `CMakeLists.txt` 的 `SRCS` 是**空白分隔**列表（文件里所有条目都**没有逗号**）。
+  新增 `"board/battery.c",` 时带了逗号 → CMake 解析出两个 token：`"board/battery.c"` 和独立的 `,`，
+  后者被当成"相对路径的源文件名"。
+- **解决方案**：去掉逗号，与文件内既有条目的风格保持一致。
+- **预防措施**：① 往 `SRCS` 加条目时**照抄相邻条目的写法**（本项目无逗号，靠换行分隔）；
+  ② 改完 CMake 相关文件后必须让 CMake **重新 configure 一次**验证（`ninja` 会自动触发，
+  也可用 `idf.py reconfigure`）；③ CMake 报"找不到某文件，而那个'文件名'看着像标点"时，先查分隔符。
+
+## F17. 自检通过但用户编译失败：`-fsyntax-only` 抓不到 `-Werror=format-truncation`
+
+- **现象**：我自建的"用真实编译参数做语法检查"10 个文件全部 rc=0，但用户编译报
+  `render_nav.c:741:33: error: '%d' directive output may be truncated writing between 1 and 9 bytes into a region of size 8 [-Werror=format-truncation=]`。
+- **原因**：`-fsyntax-only` **只做语法分析，不做优化/格式串宽度分析**；`-Wformat-truncation` 属于
+  优化阶段（`-O2`）的分析。`char buf[8]` + `"%d%%"`（编译器按 `int` 最坏情况算最多 11 字节）即触发。
+- **解决方案**：`buf[8]` → `buf[16]`。
+- **预防措施**：① 交付前自检**不能只做 `-fsyntax-only`**，必须**真正编译到 .o**
+  （固件：`Esp32S3/tools/build_fw.ps1` → `ninja`；APK：`gradlew assembleDebug`）；
+  ② `snprintf` 的目标缓冲按"最坏情况"给（整型至少 12 字节，`%u/%d` 一律别按当前取值范围算）。
+
+## F18. native 崩溃：高德 SDK 被暂停后仍被调用（`runCatching` 抓不住）
+
+- **现象**：导航中**锁屏**或**切到别的 App** → 立刻闪退；**一直导航到结束**（点「停止导航」）→ 也闪退。
+  App 自带的 `crash.log` 为空。
+- **原因**：`onPause` 时已执行 `mapView.onPause()`，但推流与相机跟随循环跑在 `lifecycleScope` 里
+  （**`onPause` 不会取消它**）。循环继续调 `getMapScreenShot()` / `moveCamera()` / `addPolyline()` /
+  `addMarker()` / `remove()` —— 对**已暂停的地图实例**调 API → 高德 **C++ 层崩溃（SIGSEGV）**。
+  导航结束时则是因为 `endNav()` **顺序不当**（先 `stop()` 数据源、再动地图对象）+ 无防重入。
+  **关键认知**：Kotlin 的 `try/catch` / `runCatching` 只能抓 Java 异常，**抓不到 native 崩**。
+- **解决方案**：① 新增 `mapActive` 闸门（`onPause`/`onDestroy` 置 false，`onResume` 置 true）→
+  推图、`updateNavUi`（相机/折线/标记）、`setNavUi(false)` 的 `remove()` **全部在调用前判断**；
+  ② 截图回调到达时若已后台/已销毁 → 丢弃 bitmap；③ `endNav` 重排为"停循环 → 清图形 → 停数据源"，
+  加防重入 `navEnding`，恢复视角改为延迟一拍 + `mapActive/isFinishing/isDestroyed` 三重守卫。
+- **预防措施**：① **任何"后台仍在跑"的循环，碰 SDK 对象之前必须有显式可用性闸门**，不能只靠 `runCatching`；
+  ② 生命周期成对调用（`onCreate/onResume/onPause/onDestroy`）后，要保证**同帧内没有其它路径**再调该 SDK；
+  ③ native 崩溃**只能用 `adb logcat -b crash`** 定位（`crash.log` 看不到）。
+
+## F19. `TextureMapView` 在 `visibility=GONE` 后停止渲染 → 切 Tab 时 ESP 底图停更
+
+- **现象**：App 切到别的 Tab 后，ESP 端底图**停止更新**（导航文字信息照常刷新，因为那是定时发帧）。
+- **原因**：`applyPage()` 切非导航 Tab 时执行了 `pageNav.visibility = GONE` + `mapView.onPause()`。
+  `TextureMapView`（派生自 `TextureView`）**一旦 GONE 就停止渲染**，`getMapScreenShot()` 自然拿不到内容。
+- **解决方案**：导航页**常驻 `VISIBLE`**，非导航 Tab 只把整页 `translationY` **移出可视区**
+  （View 仍在 View 层级中、仍持有 Surface → **继续渲染**）；三处原本用
+  `pageNav.visibility == VISIBLE` 判断"是否在导航页"的地方改用新状态变量 `curTab`
+  （否则**返回键会永久失效**）。
+- **预防措施**：① 用 `TextureMapView` 时牢记"**`GONE` = 停止渲染**"；需要"离开页面仍持续出图"
+  就只能**移出可视区**（`translationX/Y`）或常驻可见，不能改可见性；
+  ② 凡是把某控件的 `visibility` 当"当前页面"判据的代码，一律换成独立的状态变量（如 `curTab`），
+  避免语义被后续改动破坏。

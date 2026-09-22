@@ -985,8 +985,8 @@ void render_nav_boot(int stage, const char *sub)
     fb_line(FB_W - 9, FB_H - 9, FB_W - 9, FB_H - 23, PATH_GREEN);
 
     /* 标题（3 倍放大并上移，避免与网格/副标题叠压）+ 副标题 */
-    w = font_text_width("EspNav v1.2") * 3;
-    font_draw_text_scaled((FB_W - w) / 2, 40, "EspNav v1.2", PATH_GREEN, 3);
+    w = font_text_width("EspNav v1.3") * 3;
+    font_draw_text_scaled((FB_W - w) / 2, 40, "EspNav v1.3", PATH_GREEN, 3);
     w = font_text_width("可穿戴导航屏·骑行版");
     font_draw_text((FB_W - w) / 2, 92, "可穿戴导航屏·骑行版", 0x7BEF);
 
