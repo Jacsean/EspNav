@@ -726,8 +726,23 @@ static void draw_battery(void)
     int pct = battery_pct();
     if (pct < 0) return;
 
-    const int bx = 4, by = 106;
-    const int bw = 22, bh = 11;                                  /* 外壳 22×11 */
+    /* 【M7.1】位置：时间行（y=135..157，右对齐 x=316）的**正上方**，右边缘同样对齐 316。
+     * 于是整块（图标 + 百分比）从右往左排：先量文字宽度，再倒推图标起点。 */
+    const int bw = 22, bh = 11;               /* 电池外壳 22×11 */
+    const int gap = 5;
+    const int right = 316;                    /* 与时间行右边缘对齐 */
+    const int by = 112;                       /* 时间行上方（时间底衬从 y=135 开始）*/
+
+    char buf[16];                             /* 够放 "100%" + NUL */
+    snprintf(buf, sizeof(buf), "%d%%", pct);
+    int tw = font_text_width(buf);
+    int bx = right - (bw + 2 + gap + tw);     /* 2 = 正极凸头宽度 */
+    if (bx < 2) bx = 2;
+
+    /* 底衬：与时间用同一个透明度参数，压在地图上也能看清 */
+    const espnav_config_t *bcfg = config_get();
+    if (bcfg->scrim_on) fb_dim_rect(bx - 4, by - 3, right, by + bh + 3, bcfg->scrim_clock);
+
     uint16_t col = (pct <= 15) ? RGB565_RED
                  : (pct <= 40) ? RGB565_YELLOW : s_col_main;
 
@@ -736,10 +751,7 @@ static void draw_battery(void)
     int iw = (bw - 4) * pct / 100;
     if (iw > 0) fb_fill_rect(bx + 2, by + 2, bx + 2 + iw - 1, by + bh - 3, col);
     fb_fill_rect(bx + bw + 1, by + 3, bx + bw + 2, by + bh - 4, RGB565_WHITE); /* 正极凸头 */
-
-    char buf[16];   /* 够放 "100%" + NUL（buf[8] 会被 -Werror=format-truncation 拒绝）*/
-    snprintf(buf, sizeof(buf), "%d%%", pct);
-    font_draw_text(bx + bw + 6, by, buf, s_col_main);
+    font_draw_text(bx + bw + 2 + gap, by, buf, s_col_main);
 }
 
 static void draw_frame(const nav_frame_t *f, float anim)

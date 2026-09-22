@@ -7,6 +7,8 @@
  */
 #include "battery.h"
 
+#include <stdlib.h>            /* abs()：显示平滑的迟滞判断 */
+
 #include "esp_log.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"
@@ -28,8 +30,10 @@ static adc_cali_handle_t         s_cali;
 static bool                      s_cali_ok;
 static bool                      s_inited;
 
-static int s_mv;                             /* 最近一次电池电压（mV） */
-static int s_pct = -1;                       /* 0-100；-1 = 未接电池 */
+static int s_mv;                             /* 最近一次电池电压（mV，已平滑） */
+static int s_pct = -1;                       /* 0-100（已平滑 + 迟滞）；-1 = 未接电池 */
+static int s_mv_ema;                         /* 电压指数滑动平均 (EMA, α=1/4) */
+static int s_pct_ema = -1;                   /* 百分比指数滑动平均 */
 
 /* 电压 → 电量百分比：锂电池放电曲线的分段线性近似（比纯线性更贴近实际显示） */
 static int mv_to_pct(int mv)
@@ -103,8 +107,26 @@ void battery_poll(void)
         int v = 0;
         if (adc_cali_raw_to_voltage(s_cali, raw_mid, &v) == ESP_OK) mv = v;
     }
-    s_mv  = mv * BAT_DIVIDER;                                /* 还原电池真实电压 */
-    s_pct = (s_mv >= BAT_PRESENT_MV) ? mv_to_pct(s_mv) : -1;
+    int real = mv * BAT_DIVIDER;                             /* 还原电池真实电压 */
+
+    /* 【M7.1】平滑：EMA(α=1/4) + 2% 迟滞。
+     * 为什么需要：ESP32-S3 的 SAR ADC 自身有噪声，叠加 WiFi 发射瞬间的电源波动，
+     * 原始读数会在 ±1~3% 内跳动（用户实测"92% 附近不断波动"）。
+     * ⚠️ USB 供电时 TP4054 正在充电，端电压虚高且不稳 —— 该读数不代表真实电量，
+     *    要看真实电量请拔掉 USB、用电池供电观察。 */
+    if (real < BAT_PRESENT_MV) {                             /* 未接电池：立即归零，不做平滑 */
+        s_mv = real;
+        s_mv_ema = 0;
+        s_pct_ema = -1;
+        s_pct = -1;
+        return;
+    }
+    s_mv_ema = (s_mv_ema <= 0) ? real : (s_mv_ema * 3 + real) / 4;
+    s_mv     = s_mv_ema;
+
+    int pct_now = mv_to_pct(s_mv);
+    s_pct_ema = (s_pct_ema < 0) ? pct_now : (s_pct_ema * 3 + pct_now) / 4;
+    if (s_pct < 0 || abs(s_pct_ema - s_pct) >= 2) s_pct = s_pct_ema;   /* 迟滞：≥2% 才更新 */
 }
 
 int  battery_mv(void)      { return s_mv; }
