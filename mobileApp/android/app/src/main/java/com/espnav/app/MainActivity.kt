@@ -1155,7 +1155,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         spMapStyle.adapter = android.widget.ArrayAdapter(
             this, android.R.layout.simple_spinner_item, mapStyleNames
         ).also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
-        spMapStyle.setSelection(appPrefs.mapStyle.coerceIn(0, 2), false)
+        spMapStyle.setSelection(appPrefs.mapStyle.coerceIn(0, 3), false)
         spMapStyle.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
             override fun onItemSelected(
                 parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long
@@ -1176,6 +1176,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private fun mapTypeOf(style: Int): Int = when (style) {
         1 -> com.amap.api.maps.AMap.MAP_TYPE_NAVI
         2 -> com.amap.api.maps.AMap.MAP_TYPE_NIGHT
+        3 -> com.amap.api.maps.AMap.MAP_TYPE_NAVI_NIGHT
         else -> com.amap.api.maps.AMap.MAP_TYPE_NORMAL
     }
 
@@ -1183,6 +1184,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private fun mapStyleName(style: Int): String = when (style) {
         1 -> "导航地图（全蓝）"
         2 -> "夜景"
+        3 -> "导航夜景"
         else -> "普通"
     }
 
@@ -1495,6 +1497,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                     am.mapType = when (appPrefs.mapStyle) {
                         1 -> com.amap.api.maps.AMap.MAP_TYPE_NAVI
                         2 -> com.amap.api.maps.AMap.MAP_TYPE_NIGHT
+                        3 -> com.amap.api.maps.AMap.MAP_TYPE_NAVI_NIGHT
                         else -> com.amap.api.maps.AMap.MAP_TYPE_NORMAL
                     }
                     log("地图样式 = " + mapStyleName(appPrefs.mapStyle))

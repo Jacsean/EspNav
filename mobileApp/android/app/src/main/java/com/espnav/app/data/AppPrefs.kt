@@ -139,7 +139,7 @@ class AppPrefs(ctx: Context) {
      * 2 = 夜景（暗色）。高德地图 SDK 的 setMapType，不额外计费。 */
     var mapStyle: Int
         get() = sp.getInt(K_MAPSTYLE, 0)
-        set(v) = sp.edit().putInt(K_MAPSTYLE, v.coerceIn(0, 2)).apply()
+        set(v) = sp.edit().putInt(K_MAPSTYLE, v.coerceIn(0, 3)).apply()
 
     /* ---- 【M3.2】地图底图：导航中按间隔推送截图（App 侧定时） ---- */
 

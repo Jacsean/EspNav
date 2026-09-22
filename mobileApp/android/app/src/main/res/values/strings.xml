@@ -121,6 +121,7 @@
         <item>普通（黄白全彩）</item>
         <item>导航地图（全蓝）</item>
         <item>夜景（暗色）</item>
+        <item>导航夜景（深蓝暗色）</item>
     </string-array>
     <string name="tab_settings">设置</string>
     <string name="set_group_test">调试 / 测试（原「连接」页上的按钮集中到这里）</string>
