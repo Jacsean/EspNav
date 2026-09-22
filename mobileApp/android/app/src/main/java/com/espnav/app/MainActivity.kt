@@ -612,6 +612,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             }
         }
         log("开始 $label（每 ${FRAME_INTERVAL_MS}ms 一帧）")
+        /* 【M7】把底图开关的真实状态同步给固件（重连/换设备后不会沿用旧值） */
+        if (client.isConnected) send(OutMsg.setConfig(imgOn = appPrefs.espMapShotOn))
         /* 【M3.1 最小可用版】开始导航后延迟 1.2s 截 1 张地图底图推给 ESP（单次，不做周期刷新） */
         binding.root.postDelayed({ runCatching { captureAndSendMapShot() } }, 1200)
     }
@@ -960,7 +962,9 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         refreshMapShotLabel()
         cbEspMapShot.setOnCheckedChangeListener { _, c ->
             appPrefs.espMapShotOn = c
-            log("ESP 地图底图 = $c")
+            /* 【M7】立刻同步固件：关掉时固件丢弃底图、回到原始导航模式（否则会一直贴最后一张图） */
+            if (client.isConnected) send(OutMsg.setConfig(imgOn = c))
+            log("ESP 地图底图 = $c（已同步固件 img_on）")
         }
         skEspMapShotInt.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {

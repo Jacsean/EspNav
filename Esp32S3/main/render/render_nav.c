@@ -733,6 +733,10 @@ static void draw_frame(const nav_frame_t *f, float anim)
     /* 【M3.1】地图底图（App 截图通道）：① 有新图先解码（只在这里做 —— 符合"仅显示任务
      * 碰帧缓冲"的约定）② 从底图副本整屏恢复；③ 有底图时不再画模板/兜底路面，
      * 于是画面 = 地图截图 + 半透明底衬 + 罗盘/文字/行程图/时间。 */
+    /* 【M7】App 关掉「推送地图底图」（SET_CONFIG img_on=false）→ 这里丢弃底图副本，
+     * 画面立刻回到模板路面/行程图，而不是一直贴着最后一张截图。
+     * 注意：map_image_clear() 只动 map_image 内部标志，不碰 framebuffer，在本任务调用安全。 */
+    if (!cfg->img_on && map_image_has()) map_image_clear();
     map_image_apply();
     const bool has_img = map_image_has();
     if (has_img) map_image_restore();

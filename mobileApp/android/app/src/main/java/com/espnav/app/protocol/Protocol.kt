@@ -157,7 +157,9 @@ object OutMsg {
         colGrid: Int? = null,
         colRoad: Int? = null,
         colCar: Int? = null,
-        colHint: Int? = null
+        colHint: Int? = null,
+        /* 【M7】APK 地图底图总开关：false = 固件丢弃底图、回到原始导航模式 */
+        imgOn: Boolean? = null
     ): String {
         val p = JSONObject()
         brightness?.let { p.put("lcd_brightness", it) }
@@ -178,6 +180,7 @@ object OutMsg {
         colRoad?.let { p.put("col_road", it) }
         colCar?.let { p.put("col_car", it) }
         colHint?.let { p.put("col_hint", it) }
+        imgOn?.let { p.put("img_on", it) }
         return Json.obj("msg_type" to "SET_CONFIG", "payload" to p).toString()
     }
 }
@@ -198,6 +201,7 @@ object InMsg {
                     "底衬=${p.optBoolean("scrim_on")}/${p.optInt("scrim_compass")}," +
                     "${p.optInt("scrim_text")},${p.optInt("scrim_route")},${p.optInt("scrim_clock")} " +
                     "网格=${p.optInt("grid_bright")} " +
+                    "底图=${p.optBoolean("img_on")} " +
                     "版本=${p.optString("firmware_ver")} err=${p.optInt("err")}"
             "PONG" -> "PONG ts=${p.optLong("ts")}"
             else -> line

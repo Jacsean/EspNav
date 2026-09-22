@@ -41,13 +41,14 @@ void     protocol_err_reset(void) { s_err = 0; }
 static void send_dev_status(proto_send_fn send, void *ctx)
 {
     const espnav_config_t *c = config_get();
-    char buf[384];
+    char buf[512];   /* 【M7】追加 img_on 等字段后防截断（原 384 是 M1 时的余量）*/
     snprintf(buf, sizeof(buf),
              "{\"msg_type\":\"DEV_STATUS\",\"payload\":{"
              "\"lcd_brightness\":%u,\"dash_speed\":%u,\"anim_enable\":%s,"
              "\"popup_timeout\":%u,"
              "\"scrim_on\":%s,\"scrim_compass\":%u,\"scrim_text\":%u,"
              "\"scrim_route\":%u,\"scrim_clock\":%u,\"grid_bright\":%u,\"map_area\":%u,"
+             "\"img_on\":%s,"
              "\"firmware_ver\":\"%s\",\"err\":%lu}}\n",
              (unsigned)c->lcd_brightness, (unsigned)c->dash_speed,
              c->anim_enable ? "true" : "false", (unsigned)c->popup_timeout,
@@ -55,6 +56,7 @@ static void send_dev_status(proto_send_fn send, void *ctx)
              (unsigned)c->scrim_compass, (unsigned)c->scrim_text,
              (unsigned)c->scrim_route, (unsigned)c->scrim_clock,
              (unsigned)c->grid_bright, (unsigned)c->map_area,
+             c->img_on ? "true" : "false",
              c->firmware_ver, (unsigned long)s_err);
     if (send) send(buf, ctx);
     ESP_LOGI(TAG, "TX DEV_STATUS bright=%u dash=%u anim=%d popup=%u scrim=%d/%u,%u,%u,%u grid=%u area=%u ver=%s err=%lu",
@@ -149,6 +151,13 @@ static void apply_set_config(const char *line)
         config_set_screen_flip(on);
         lcd_ili9341_set_flip_x(on);              /* 直接作用于驱动，下次刷屏即生效 */
         ESP_LOGI(TAG, "apply screen_flip=%d", (int)on);
+    }
+    /* ---- 【M7】APK 地图底图总开关：false = 丢弃底图回原始导航模式 ----
+     * 只改配置；渲染侧（draw_frame，仅显示任务碰帧缓冲）看到 false 时自行 map_image_clear()，
+     * 因此这里不跨线程调用渲染侧接口。 */
+    if (jl_get_bool(line, "img_on", &on)) {
+        config_set_img_on(on);
+        ESP_LOGI(TAG, "apply img_on=%d (0=drop map image, back to template road)", (int)on);
     }
 }
 
