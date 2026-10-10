@@ -134,7 +134,7 @@ void app_main(void)
     }
 
     static bool s_ap_on = false;
-    static bool s_prov_on = false;
+    static bool s_warned_sta_lost = false;   /* 【M16.3】掉线提示只打一次 */
     if (sta_ok) {
         ESP_LOGI(TAG, "已连上热点：IP=%s（不启动配网热点）", wifi_sta_ip_str());
     } else {
@@ -142,7 +142,6 @@ void app_main(void)
         wifi_ap_start();
         softap_prov_init();
         s_ap_on = true;
-        s_prov_on = true;
     }
     mdns_service_init();
     tcp_server_start();
@@ -152,13 +151,15 @@ void app_main(void)
              s_ap_on ? "http://192.168.4.1" : "未开启");
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(10000));
-        /* 【M14】保险：运行中 STA 掉线而热点尚未开启 → 补开配网热点
-         * （否则"连上热点后 AP 从未启动"，一旦掉线就再也连不上、也进不了配网页） */
-        if (!s_ap_on && !wifi_sta_is_connected()) {
-            ESP_LOGW(TAG, "检测到 STA 掉线且未开热点 → 补开配网热点 ESPNav-AP");
-            wifi_ap_start();
-            if (!s_prov_on) { softap_prov_init(); s_prov_on = true; }
-            s_ap_on = true;
+        /* 【M16.3】这里**不再**"掉线就补开热点"（原 M14 的设计，实测有严重副作用）：
+         *   wifi_ap_start() 内部执行 esp_wifi_set_mode(WIFI_APSTA)，
+         *   而**切换 WiFi 模式会重启 WiFi** ⇒ 所有 TCP 连接被 RST
+         *   ⇒ APK 看到 Connection reset ⇒ 自动重连 ⇒ 若 STA 又短暂掉线 ⇒ 再次切换 → 无限循环。
+         * 现在：热点是否开启**只在启动阶段决定**（连不上才开）；运行中不再切换模式，
+         *       因此已建立的 TCP 不会被"配网动作"打断。STA 掉线由 wifi_sta 自己重连。 */
+        if (!s_ap_on && !wifi_sta_is_connected() && !s_warned_sta_lost) {
+            s_warned_sta_lost = true;
+            ESP_LOGW(TAG, "STA 掉线（由 wifi_sta 自动重连；不再切换 WiFi 模式，避免打断已建立的 TCP）");
         }
         ESP_LOGI(TAG, "alive ... STA=%s ip=%s rssi=%d AP_clients_ok",
                  wifi_sta_is_connected() ? "已连接" : "未连接",

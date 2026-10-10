@@ -21,6 +21,9 @@ static const char *TAG = "wifi_sta";
 
 static bool          s_inited = false;
 static int           s_fail_count = 0;
+/* 【M16.3】STA 配置缓存：避免每轮重连都 esp_wifi_set_config()（会打断已建立连接） */
+static bool          s_cfg_set = false;
+static char          s_cfg_ssid[64] = { 0 };
 static volatile bool s_connected = false;
 static char          s_ip[16] = "";
 
@@ -145,16 +148,28 @@ static void sta_task(void *arg)
             if (n > 0) {
                 if (idx >= n) idx = 0;
                 if (cred_read(idx, ssid, sizeof(ssid), pass, sizeof(pass))) {
-                    wifi_config_t wc = { 0 };
-                    /* 显式限定长度：目标 ssid[32]/password[64]，用 memcpy 避免 -Werror=format-truncation */
-                    size_t sl = strlen(ssid);
-                    size_t pl = strlen(pass);
-                    if (sl > sizeof(wc.sta.ssid) - 1) sl = sizeof(wc.sta.ssid) - 1;
-                    if (pl > sizeof(wc.sta.password) - 1) pl = sizeof(wc.sta.password) - 1;
-                    memcpy(wc.sta.ssid, ssid, sl);
-                    memcpy(wc.sta.password, pass, pl);
-                    wc.sta.threshold.authmode = WIFI_AUTH_OPEN;
-                    esp_wifi_set_config(WIFI_IF_STA, &wc);
+                    /* 【M16.3】只在"首次"或"换了凭据"时才 esp_wifi_set_config()。
+                     * 原来每轮重连都调用它 —— 它会对 STA 做重配置，可能打断已建立的连接，
+                     * 表现为对端（APK）看到周期性 Connection reset。 */
+                    if (!s_cfg_set || strcmp(s_cfg_ssid, ssid) != 0) {
+                        wifi_config_t wc = { 0 };
+                        /* 显式限定长度：目标 ssid[32]/password[64]，用 memcpy 避免 -Werror=format-truncation */
+                        size_t sl = strlen(ssid);
+                        size_t pl = strlen(pass);
+                        if (sl > sizeof(wc.sta.ssid) - 1) sl = sizeof(wc.sta.ssid) - 1;
+                        if (pl > sizeof(wc.sta.password) - 1) pl = sizeof(wc.sta.password) - 1;
+                        memcpy(wc.sta.ssid, ssid, sl);
+                        memcpy(wc.sta.password, pass, pl);
+                        wc.sta.threshold.authmode = WIFI_AUTH_OPEN;
+                        /* 只在**设置成功**时才记"已配置" —— 否则首次失败会永不重试（Review 时发现） */
+                        if (esp_wifi_set_config(WIFI_IF_STA, &wc) == ESP_OK) {
+                            snprintf(s_cfg_ssid, sizeof(s_cfg_ssid), "%s", ssid);
+                            s_cfg_set = true;
+                            ESP_LOGI(TAG, "STA 凭据已设置：SSID=%s（后续重连不再重复设置）", ssid);
+                        } else {
+                            ESP_LOGW(TAG, "esp_wifi_set_config 失败，下次重连会重试");
+                        }
+                    }
                     ESP_LOGI(TAG, "尝试连接 [%d/%d] SSID=%s", idx + 1, n, ssid);
                     esp_wifi_connect();
                 }
