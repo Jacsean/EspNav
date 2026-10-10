@@ -199,12 +199,14 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
          * 前台时**不再**因为切 Tab 而暂停，否则 ESP 会收不到底图。 */
         mapActive = false
         runCatching { binding.mapView.onPause() }
+        runCatching { binding.mapOffscreen.onPause() }   /* 【M17】离屏地图成对调用 */
         super.onPause()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         runCatching { binding.mapView.onSaveInstanceState(outState) }
+        runCatching { binding.mapOffscreen.onSaveInstanceState(outState) }   /* 【M17】 */
     }
 
     override fun onDestroy() {
@@ -571,7 +573,9 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             appPrefs.espMapContrast / 100f
         /* 【M16】A6：推图前同步 JPEG 质量（设置页改完立即生效） */
         com.espnav.app.data.MapShotCapture.jpegQuality = appPrefs.espJpegQuality
-        val am = aMap ?: run { log("底图截图跳过：地图未就绪"); return }
+        /* 【M17】优先用离屏小地图截图：它天生 320×240，避免"整屏大图"压垮内存/GL。
+         * 若尚未就绪则回退主地图（只影响尺寸，不影响功能）。 */
+        val am = offMap ?: aMap ?: run { log("底图截图跳过：地图未就绪"); return }
         if (!client.isConnected) { log("底图截图跳过：未连接"); return }
         log("底图截图：调用 getMapScreenShot …")
         binding.root.postDelayed({
@@ -690,6 +694,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         mockJob = null
         runCatching { navSource.stop() }
         runCatching { binding.mapView.onDestroy() }
+        runCatching { binding.mapOffscreen.onDestroy() }   /* 【M17】离屏地图成对调用 */
         NavService.stop(this)
     }
 
@@ -740,6 +745,13 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private var navRemainLine: com.amap.api.maps.model.Polyline? = null
     private var navCarMarker: com.amap.api.maps.model.Marker? = null
     private var navCarIcon: com.amap.api.maps.model.BitmapDescriptor? = null
+    /* ================= 【M17】离屏小地图（专供 ESP 底图）=================
+     * 320×240、移出屏幕但保持 VISIBLE 的 TextureMapView；截图尺寸天生等于 ESP 屏，
+     * 避免"抓整屏大图（8.9MB/张 × 每 3 秒）"把内存/GL 压垮。 */
+    private var offMap: com.amap.api.maps.AMap? = null
+    private var offRouteLine: com.amap.api.maps.model.Polyline? = null
+    private var offRoutePts = -1            /* 上次建线的点数（变了才重建） */
+
     private var navLastSplit = -1
     private var navLastSplitAt = 0L        /* 【M12】上次重建聚线的时刻（节流用）*/
     private var navLastLat = Double.NaN
@@ -1707,6 +1719,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 binding.mapView.onResume()
                 binding.mapView.requestLayout()
                 binding.mapView.postInvalidate()
+                runCatching { binding.mapOffscreen.onResume() }   /* 【M17】离屏地图同步恢复 */
             }
             /* 【M3.3】地图"空白"修复：GL 上下文在切走/熄屏后可能失效，
              * 只 requestLayout + postInvalidate 不够 —— 再把**当前相机参数原样设回去**，
@@ -1731,6 +1744,14 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             binding.mapView.onCreate(savedBundle)
             val am = binding.mapView.map ?: throw IllegalStateException("map 对象为空")
             aMap = am
+
+            /* 【M17】离屏小地图：也要 onCreate（否则不渲染、截图拿不到内容）。
+             * 它只是"移出屏幕"，保持在 View 层级里且 VISIBLE → 持续渲染。 */
+            runCatching {
+                binding.mapOffscreen.onCreate(savedBundle)
+                offMap = binding.mapOffscreen.map
+                log("离屏小地图就绪（320×240，专供 ESP 底图）")
+            }
             am.uiSettings.isMyLocationButtonEnabled = true
             am.uiSettings.isZoomControlsEnabled = true
             val st = com.amap.api.maps.model.MyLocationStyle()
@@ -2022,6 +2043,11 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             navWalkedLine = null
             navRemainLine = null
             navCarMarker = null
+            /* 【M17】离屏小地图的路线也要清：否则下次导航若点数恰好相同，
+             * offRoutePts 判据会认为"没变"而不重建，画面会残留上一条路线。 */
+            runCatching { if (mapActive) offRouteLine?.remove() }
+            offRouteLine = null
+            offRoutePts = -1
             navLastSplit = -1
             navLastLat = Double.NaN
             navLastLon = Double.NaN
@@ -2106,6 +2132,34 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             navLastLat = o.lat
             navLastLon = o.lon
             navLastHeading = head
+        }
+
+        /* 【M17】同步离屏小地图：相机跟随 + 一条完整路线
+         * （已走/未走的区分由 ESP 端自己画，这里只要"有路线"即可）*/
+        val om = offMap
+        if (om != null) {
+            runCatching {
+                om.moveCamera(
+                    com.amap.api.maps.CameraUpdateFactory.newCameraPosition(
+                        com.amap.api.maps.model.CameraPosition(
+                            cur, appPrefs.navZoom.toFloat(), head.toFloat(), appPrefs.navTilt.toFloat()
+                        )
+                    )
+                )
+            }
+            if (all.size >= 2 && offRoutePts != all.size) {
+                offRoutePts = all.size
+                runCatching {
+                    offRouteLine?.remove()
+                    val ll2 = { p: com.espnav.app.data.GeoPoint ->
+                        com.amap.api.maps.model.LatLng(p.lat, p.lon)
+                    }
+                    offRouteLine = om.addPolyline(
+                        com.amap.api.maps.model.PolylineOptions().addAll(all.map(ll2))
+                            .width(14f).color(0xFF1E88E5.toInt()).zIndex(2f)
+                    )
+                }
+            }
         }
 
         /* 车头箭头：地图已随车头旋转（bearing = heading），因此箭头固定朝屏幕上方 */
