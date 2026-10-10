@@ -299,19 +299,6 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent" />
 
-            <!-- 【M17】离屏小地图：专供"给 ESP 出底图"。
-                 尺寸固定 320×240（就是 ESP 屏的像素数，用 px 而不是 dp）；
-                 用 translationX 移到屏幕外，但**保持 VISIBLE** —— TextureMapView 只要
-                 attached 且非 GONE 就会持续渲染，于是截图天生 320×240（≈0.3MB/张）。
-                 原来直接抓可见地图，它按**整屏**尺寸出图（实测 1152×1934 ≈ 8.9MB/张，
-                 每 3 秒一张）→ 内存与 GL 压力过大 → APK 地图先空白、随后连接断开。 -->
-            <com.amap.api.maps.TextureMapView
-                android:id="@+id/mapOffscreen"
-                android:layout_width="320px"
-                android:layout_height="240px"
-                android:layout_gravity="top|start"
-                android:translationX="-1000px" />
-
             <!-- 导航覆盖层：转向提示 + 剩余/预计 + 结束导航（与百度/高德顶部信息条对应） -->
             <LinearLayout
                 android:id="@+id/navOverlay"
