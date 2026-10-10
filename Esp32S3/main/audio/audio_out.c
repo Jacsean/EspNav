@@ -21,6 +21,10 @@
 static const char *TAG = "audio_out";
 
 #define PIN_PA_EN       1               /* 功放使能，低有效 */
+#define PIN_MCLK_NUM    4
+#define PIN_BCLK_NUM    5
+#define PIN_WS_NUM      7
+#define PIN_DOUT_NUM    8
 #define PIN_I2C_SCL     15
 #define PIN_I2C_SDA     16
 
@@ -73,7 +77,13 @@ esp_err_t audio_out_init(void)
 
     /* ---- I2S：主机 + 只开 TX（本项目不录音，DIN 不接）---- */
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
-    ESP_ERROR_CHECK(i2s_new_channel(&chan_cfg, &s_tx, NULL));
+    /* 【M16.1】这里**不能用 ESP_ERROR_CHECK**：失败会 abort 整机（白屏、无热点）。
+     * 音频失败必须只影响音频本身。 */
+    esp_err_t _e = i2s_new_channel(&chan_cfg, &s_tx, NULL);
+    if (_e != ESP_OK) {
+        ESP_LOGE(TAG, "i2s_new_channel 失败：%s —— 音频功能不可用（其余功能正常）", esp_err_to_name(_e));
+        return _e;
+    }
 
     i2s_std_config_t std_cfg = {
         .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(AUDIO_SAMPLE_RATE),
@@ -89,8 +99,17 @@ esp_err_t audio_out_init(void)
         },
     };
     std_cfg.clk_cfg.mclk_multiple = I2S_MCLK_MULTIPLE_256;   /* 16k*256 = 4.096MHz */
-    ESP_ERROR_CHECK(i2s_channel_init_std_mode(s_tx, &std_cfg));
-    ESP_ERROR_CHECK(i2s_channel_enable(s_tx));
+    _e = i2s_channel_init_std_mode(s_tx, &std_cfg);
+    if (_e != ESP_OK) {
+        ESP_LOGE(TAG, "i2s_channel_init_std_mode 失败：%s（检查引脚 GPIO%d/%d/%d/%d 是否被占用）",
+                 esp_err_to_name(_e), PIN_MCLK_NUM, PIN_BCLK_NUM, PIN_WS_NUM, PIN_DOUT_NUM);
+        return _e;
+    }
+    _e = i2s_channel_enable(s_tx);
+    if (_e != ESP_OK) {
+        ESP_LOGE(TAG, "i2s_channel_enable 失败：%s", esp_err_to_name(_e));
+        return _e;
+    }
     ESP_LOGI(TAG, "I2S 就绪：%d Hz / 16bit / mono，MCLK=GPIO4 BCLK=GPIO5 WS=GPIO7 DOUT=GPIO8",
              AUDIO_SAMPLE_RATE);
 

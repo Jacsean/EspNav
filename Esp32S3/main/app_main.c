@@ -27,6 +27,21 @@
 
 static const char *TAG = "app_main";
 
+/* 【M16.1】音频启动任务：延迟后初始化音频并播自检音；失败只记日志，不影响整机。
+ * 为什么独立成任务：音频是可选功能，显示与联网必须先跑起来。 */
+static void audio_boot_task(void *arg)
+{
+    (void)arg;
+    vTaskDelay(pdMS_TO_TICKS(3000));            /* 先让显示与联网起来 */
+    if (audio_out_init() != ESP_OK) {
+        ESP_LOGE(TAG, "音频初始化失败 —— 已跳过（导航/联网不受影响）");
+        vTaskDelete(NULL);
+        return;
+    }
+    audio_out_test_tone();                      /* 自检音：喇叭接好后能听到 3 声 */
+    vTaskDelete(NULL);
+}
+
 /* 【M14/M15】开机"先尝试连接已保存热点"的等待时长，现在由配置项 ap_delay_s 决定
  * （默认 15 秒；App 可修改并持久化到 NVS，下次上电生效）。 */
 
@@ -66,10 +81,11 @@ void app_main(void)
     battery_init();
     xTaskCreate(battery_task, "battery", 2560, NULL, 3, NULL);
 
-    /* 【M13 第1批】音频输出：初始化 I2S + ES8311 + 功放，并播 3 声测试音自检。
-     * 听到连续三声"嘀"即说明音频链路（I2C 配置 → I2S → ES8311 → 功放 → 喇叭）是通的。 */
-    audio_out_init();
-    audio_out_test_tone();
+    /* 【M16.1】音频初始化**不在主流程里做** —— 它涉及 I2S/I2C 两块新硬件，
+     * 一旦失败绝不能拖垮显示与联网（此前直接调用且内部用 ESP_ERROR_CHECK，
+     * 失败即 abort → 重启循环 → 屏幕全白 + 热点起不来）。
+     * 改为**独立任务**：延迟 3 秒等显示/联网就绪后再初始化，失败只记日志。 */
+    xTaskCreate(audio_boot_task, "audio_boot", 4096, NULL, 3, NULL);
 
     font_init();
     display_task_start();
