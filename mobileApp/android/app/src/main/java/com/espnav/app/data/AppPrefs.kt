@@ -180,6 +180,30 @@ class AppPrefs(ctx: Context) {
         get() = sp.getInt(K_AP_DELAY, 15).coerceIn(AP_DELAY_MIN, AP_DELAY_MAX)
         set(v) = sp.edit().putInt(K_AP_DELAY, v.coerceIn(AP_DELAY_MIN, AP_DELAY_MAX)).apply()
 
+    /* ================= 【M16】A 组：可配置项（批 1，纯 APK）=================
+     * A6 底图 JPEG 质量 / A7 发送帧率 / A8 相机 zoom / A9 相机 tilt
+     * 这四项都只影响 App 自己的行为，**不需要下发给固件**，改动立即生效。 */
+
+    /** A6 底图 JPEG 质量（40-95，默认 70）。画质 ⇄ 流量/CPU 的权衡。 */
+    var espJpegQuality: Int
+        get() = sp.getInt(K_JPEG_Q, 70).coerceIn(JPEG_Q_MIN, JPEG_Q_MAX)
+        set(v) = sp.edit().putInt(K_JPEG_Q, v.coerceIn(JPEG_Q_MIN, JPEG_Q_MAX)).apply()
+
+    /** A7 发送帧率（毫秒/帧，50-500，默认 200）。直接决定 ESP 画面流畅度。 */
+    var espFrameIntervalMs: Int
+        get() = sp.getInt(K_FRAME_MS, 200).coerceIn(FRAME_MS_MIN, FRAME_MS_MAX)
+        set(v) = sp.edit().putInt(K_FRAME_MS, v.coerceIn(FRAME_MS_MIN, FRAME_MS_MAX)).apply()
+
+    /** A8 导航相机缩放级别（3-20，默认 17）。越大看得越近。 */
+    var navZoom: Int
+        get() = sp.getInt(K_NAV_ZOOM, 17).coerceIn(NAV_ZOOM_MIN, NAV_ZOOM_MAX)
+        set(v) = sp.edit().putInt(K_NAV_ZOOM, v.coerceIn(NAV_ZOOM_MIN, NAV_ZOOM_MAX)).apply()
+
+    /** A9 导航相机俯角（0-67 度，默认 45）。0=平视，越大越俯视。 */
+    var navTilt: Int
+        get() = sp.getInt(K_NAV_TILT, 45).coerceIn(NAV_TILT_MIN, NAV_TILT_MAX)
+        set(v) = sp.edit().putInt(K_NAV_TILT, v.coerceIn(NAV_TILT_MIN, NAV_TILT_MAX)).apply()
+
     /** 【M2.5】屏幕内容水平翻转（分光镜 HUD）：默认开。
      *  分光镜（半透半反镜）让人眼看到的是左右镜像画面，所以 ESP 端送屏前要预先水平镜像。
      *  用字面 key（暂不进配置文件导出项），后续若要纳入配置再补常量与导出。 */
@@ -312,6 +336,10 @@ class AppPrefs(ctx: Context) {
         private const val NAME = "espnav_prefs"
         /* 【M7】底图显示效果（字面 key，与 screen_flip 同样的处理方式：暂不进配置文件导出） */
         private const val K_AP_DELAY = "esp_ap_delay_s"
+        private const val K_JPEG_Q = "esp_jpeg_quality"
+        private const val K_FRAME_MS = "esp_frame_interval_ms"
+        private const val K_NAV_ZOOM = "nav_zoom"
+        private const val K_NAV_TILT = "nav_tilt"
         private const val K_EMAP_BRIGHT = "esp_map_bright"
         private const val K_EMAP_CONTRAST = "esp_map_contrast"
         private const val K_HOST = "host"
@@ -372,6 +400,16 @@ class AppPrefs(ctx: Context) {
         /** 【M3.2】底图刷新间隔范围（ms）：与设置页滑杆一致 */
         const val MAP_SHOT_INT_MIN = 500
         const val MAP_SHOT_INT_MAX = 5000
+
+        /* 【M16】批 1 的范围 */
+        const val JPEG_Q_MIN = 40
+        const val JPEG_Q_MAX = 95
+        const val FRAME_MS_MIN = 50
+        const val FRAME_MS_MAX = 500
+        const val NAV_ZOOM_MIN = 3
+        const val NAV_ZOOM_MAX = 20
+        const val NAV_TILT_MIN = 0
+        const val NAV_TILT_MAX = 67
 
         /* 【M15】开机等待热点时间范围（秒） */
         const val AP_DELAY_MIN = 5

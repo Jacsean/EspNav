@@ -569,6 +569,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             appPrefs.espMapBright / 100f
         com.espnav.app.data.MapShotCapture.contrast =
             appPrefs.espMapContrast / 100f
+        /* 【M16】A6：推图前同步 JPEG 质量（设置页改完立即生效） */
+        com.espnav.app.data.MapShotCapture.jpegQuality = appPrefs.espJpegQuality
         val am = aMap ?: run { log("底图截图跳过：地图未就绪"); return }
         if (!client.isConnected) { log("底图截图跳过：未连接"); return }
         log("底图截图：调用 getMapScreenShot …")
@@ -636,15 +638,17 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 /* 【M3.2】地图底图：按设置间隔推一张（默认 3s；开关关掉就完全不发）
                  * 【M8.1】mapActive 为假（App 在后台）时不截图 */
                 mapShotTick++
-                val shotEvery = (appPrefs.espMapShotIntervalMs / FRAME_INTERVAL_MS).coerceAtLeast(1)
+                val frameMs = appPrefs.espFrameIntervalMs.toLong()      /* 【M16】A7：帧率可配 */
+                val shotEvery = (appPrefs.espMapShotIntervalMs / frameMs).coerceAtLeast(1)
                 if (appPrefs.espMapShotOn && mapActive && mapShotTick >= shotEvery) {
                     mapShotTick = 0
                     runCatching { captureAndSendMapShot() }
                 }
-                delay(FRAME_INTERVAL_MS)
+                delay(frameMs)
             }
         }
-        log("开始 $label（每 ${FRAME_INTERVAL_MS}ms 一帧）")
+        log("开始 $label（每 ${appPrefs.espFrameIntervalMs}ms 一帧 = " +
+            "${"%.1f".format(1000.0 / appPrefs.espFrameIntervalMs)} fps）")
         /* 【M8.1】导航期间保持屏幕常亮（骑行时不能自动锁屏；也顺带避开了
          * "锁屏 → onPause → 地图暂停 → 后台循环碰地图" 这条崩溃链） */
         if (appPrefs.keepScreenOn) {
@@ -944,6 +948,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             Triple(R.id.secHeadAddr, R.id.secBodyAddr, R.id.secArrowAddr),
             Triple(R.id.secHeadConn, R.id.secBodyConn, R.id.secArrowConn),
             Triple(R.id.secHeadNav, R.id.secBodyNav, R.id.secArrowNav),
+            Triple(R.id.secHeadSend, R.id.secBodySend, R.id.secArrowSend),
             Triple(R.id.secHeadOverview, R.id.secBodyOverview, R.id.secArrowOverview),
             Triple(R.id.secHeadAppMap, R.id.secBodyAppMap, R.id.secArrowAppMap),
             Triple(R.id.secHeadAppUi, R.id.secBodyAppUi, R.id.secArrowAppUi),
@@ -1132,6 +1137,41 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 toast("已保存到设备：开机等待热点 " + appPrefs.espApDelayS + " 秒 —— 需重启 ESP 后生效")
             }
         })
+
+        /* ================= 【M16】批 1：4 个纯 APK 设置项 =================
+         * A6 JPEG 质量、A7 发送帧率、A8 相机 zoom、A9 相机 tilt。
+         * 都不下发固件，改动立即生效（帧率/相机在下一帧/下次相机更新时生效）。 */
+        fun bindPercentSeek(seekId: Int, tvId: Int, cur: Int, lo: Int, hi: Int,
+                            suffix: String, onSet: (Int) -> Unit) {
+            val sk = v.findViewById<android.widget.SeekBar>(seekId)
+            val tv = v.findViewById<android.widget.TextView>(tvId)
+            sk.max = hi - lo
+            sk.progress = (cur - lo).coerceIn(0, hi - lo)
+            fun show() { tv.text = (sk.progress + lo).toString() + suffix }
+            show()
+            sk.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
+                    if (!fromUser) return
+                    onSet(p + lo)
+                    show()
+                }
+
+                override fun onStartTrackingTouch(sb: android.widget.SeekBar?) = Unit
+                override fun onStopTrackingTouch(sb: android.widget.SeekBar?) = Unit
+            })
+        }
+        bindPercentSeek(R.id.seekNavZoom, R.id.tvNavZoom, appPrefs.navZoom,
+            com.espnav.app.data.AppPrefs.NAV_ZOOM_MIN, com.espnav.app.data.AppPrefs.NAV_ZOOM_MAX, "",
+            { appPrefs.navZoom = it })
+        bindPercentSeek(R.id.seekNavTilt, R.id.tvNavTilt, appPrefs.navTilt,
+            com.espnav.app.data.AppPrefs.NAV_TILT_MIN, com.espnav.app.data.AppPrefs.NAV_TILT_MAX, "°",
+            { appPrefs.navTilt = it })
+        bindPercentSeek(R.id.seekFrameMs, R.id.tvFrameMs, appPrefs.espFrameIntervalMs,
+            com.espnav.app.data.AppPrefs.FRAME_MS_MIN, com.espnav.app.data.AppPrefs.FRAME_MS_MAX, " ms",
+            { appPrefs.espFrameIntervalMs = it })
+        bindPercentSeek(R.id.seekJpegQ, R.id.tvJpegQ, appPrefs.espJpegQuality,
+            com.espnav.app.data.AppPrefs.JPEG_Q_MIN, com.espnav.app.data.AppPrefs.JPEG_Q_MAX, "",
+            { appPrefs.espJpegQuality = it })
 
         /* 【M8.1】导航期间屏幕常亮（立即生效：正在导航时改动会马上生效） */
         val cbKeepScreenOn = v.findViewById<android.widget.CompoundButton>(R.id.setKeepScreenOn)
@@ -2056,7 +2096,10 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             runCatching {
                 am.moveCamera(
                     com.amap.api.maps.CameraUpdateFactory.newCameraPosition(
-                        com.amap.api.maps.model.CameraPosition(cur, 17f, head.toFloat(), 45f)
+                        /* 【M16】A8/A9：缩放与俯角可在设置页调整 */
+                        com.amap.api.maps.model.CameraPosition(
+                            cur, appPrefs.navZoom.toFloat(), head.toFloat(), appPrefs.navTilt.toFloat()
+                        )
                     )
                 )
             }

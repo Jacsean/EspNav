@@ -73,6 +73,13 @@
     <string name="set_hint_zoom">默认缩放级别 10~19（16 较近，11 约 20 公里）</string>
     <string name="label_sampler">采样方式</string>
     <string name="sec_boot">启动与联网</string>
+    <string name="sec_send">发送与画质</string>
+    <string name="set_nav_zoom">相机缩放级别</string>
+    <string name="set_nav_tilt">相机俯角（0=平视）</string>
+    <string name="set_frame_ms">发送帧率</string>
+    <string name="set_frame_ms_hint">越小越流畅，但 App 与 ESP 的负载、耗电也越高（默认 200ms = 5 帧/秒）。</string>
+    <string name="set_jpeg_q">底图 JPEG 质量</string>
+    <string name="set_jpeg_q_hint">质量越高越清晰，但每一帧的字节数、传输时间与 ESP 解码耗时也越大（默认 70）。</string>
     <string name="set_ap_delay">开机等待热点（重启 ESP 后生效）</string>
     <string name="set_ap_delay_hint">开机后先连接已保存的热点；超过该时间仍连不上，才启动配网热点 ESPNav-AP。\n注意：该值保存在设备里，需重启（重新上电 / 复位）ESP 后生效，不是即时生效。</string>
     <string name="set_group_overview">行程图</string>
