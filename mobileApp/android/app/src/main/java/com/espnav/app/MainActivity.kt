@@ -751,6 +751,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private var offMap: com.amap.api.maps.AMap? = null
     private var offRouteLine: com.amap.api.maps.model.Polyline? = null
     private var offRoutePts = -1            /* 上次建线的点数（变了才重建） */
+    private var offTick = 0                 /* 【M20】帧计数：离屏地图低频跟随用 */
+    private val OFF_ZOOM_DROP = 2           /* 【M20】离屏地图比主地图低 2 档缩放（见下方说明） */
 
     private var navLastSplit = -1
     private var navLastSplitAt = 0L        /* 【M12】上次重建聚线的时刻（节流用）*/
@@ -2168,14 +2170,24 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
          * （已走/未走的区分由 ESP 端自己画，这里只要"有路线"即可）*/
         val om = offMap
         if (om != null) {
-            runCatching {
-                om.moveCamera(
-                    com.amap.api.maps.CameraUpdateFactory.newCameraPosition(
-                        com.amap.api.maps.model.CameraPosition(
-                            cur, appPrefs.navZoom.toFloat(), head.toFloat(), appPrefs.navTilt.toFloat()
+            /* 【M20】离屏地图**低频跟随**：ESP 底图本来就 3 秒才推一张，没必要每帧（200ms）重绘它。
+             * 之前每帧 moveCamera 导致两个地图同时以 5fps 渲染 → APK 侧负担翻倍 → 截图变慢 →
+             * 底图更新变慢（用户实测"卡顿"）。现在每 3 帧（≈600ms）跟一次：滞后 <0.6s，负担降到 1/3。 */
+            if (offTick++ % 3 == 0) {
+                runCatching {
+                    om.moveCamera(
+                        com.amap.api.maps.CameraUpdateFactory.newCameraPosition(
+                            com.amap.api.maps.model.CameraPosition(
+                                cur,
+                                /* 【M20】视野比主地图低 2 档：让 ESP 看到的范围与原来"整屏地图"相当。
+                                 * 原来主地图按 1152 宽缩到 320，等于放大 3.6 倍；每降 1 档边长×2，
+                                 * 故降 2 档 ≈ 4 倍，最接近原来的观感。高德 zoom 下限 3，做夹取。 */
+                                (appPrefs.navZoom - OFF_ZOOM_DROP).coerceAtLeast(3).toFloat(),
+                                head.toFloat(), appPrefs.navTilt.toFloat()
+                            )
                         )
                     )
-                )
+                }
             }
             if (all.size >= 2 && offRoutePts != all.size) {
                 offRoutePts = all.size
