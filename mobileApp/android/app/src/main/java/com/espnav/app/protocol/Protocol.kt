@@ -161,7 +161,9 @@ object OutMsg {
         colCar: Int? = null,
         colHint: Int? = null,
         /* 【M7】APK 地图底图总开关：false = 固件丢弃底图、回到原始导航模式 */
-        imgOn: Boolean? = null
+        imgOn: Boolean? = null,
+        /* 【M15】开机等待热点时间（秒）；固件存 NVS，下次上电生效 */
+        apDelayS: Int? = null
     ): String {
         val p = JSONObject()
         brightness?.let { p.put("lcd_brightness", it) }
@@ -184,6 +186,7 @@ object OutMsg {
         colCar?.let { p.put("col_car", it) }
         colHint?.let { p.put("col_hint", it) }
         imgOn?.let { p.put("img_on", it) }
+        apDelayS?.let { p.put("ap_delay_s", it) }
         return Json.obj("msg_type" to "SET_CONFIG", "payload" to p).toString()
     }
 }

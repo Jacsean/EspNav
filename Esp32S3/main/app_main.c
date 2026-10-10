@@ -27,8 +27,8 @@
 
 static const char *TAG = "app_main";
 
-/* 【M14】开机先尝试连接已保存热点的时间（秒）；超时后才启动配网热点 */
-#define STA_WAIT_S  15
+/* 【M14/M15】开机"先尝试连接已保存热点"的等待时长，现在由配置项 ap_delay_s 决定
+ * （默认 15 秒；App 可修改并持久化到 NVS，下次上电生效）。 */
 
 /* 【M7】电量采样任务：2s 采一次（9 样本取中位数在 battery_poll 内完成）。
  * 只写 battery 模块内部缓存，渲染任务只读 —— 不碰帧缓冲。 */
@@ -93,12 +93,15 @@ void app_main(void)
      *   4) 运行中若 STA 掉线且热点还没开 → 补开，否则再也进不了配网页
      * 这样"通电就冒出一个热点"的行为就消除了。 */
     wifi_common_init();
+    config_load_nvs();                  /* 【M15】载入 NVS 里的 ap_delay_s（须在 NVS init 之后）*/
     wifi_sta_init();
 
+    /* 【M15】等待时长来自配置（App 可设，存 NVS，下次上电生效） */
+    const int wait_s = (int)config_get()->ap_delay_s;
     bool sta_ok = false;
     if (wifi_sta_has_saved()) {
-        ESP_LOGI(TAG, "NVS 有 WiFi 凭据：尝试连接，最多等 %d 秒…", STA_WAIT_S);
-        for (int i = 0; i < STA_WAIT_S * 5; i++) {          /* 每 200ms 查一次 */
+        ESP_LOGI(TAG, "NVS 有 WiFi 凭据：尝试连接，最多等 %d 秒（可由 App 设置）…", wait_s);
+        for (int i = 0; i < wait_s * 5; i++) {              /* 每 200ms 查一次 */
             if (wifi_sta_is_connected()) { sta_ok = true; break; }
             vTaskDelay(pdMS_TO_TICKS(200));
         }

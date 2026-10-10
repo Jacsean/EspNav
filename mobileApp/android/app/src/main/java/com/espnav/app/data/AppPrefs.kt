@@ -173,6 +173,13 @@ class AppPrefs(ctx: Context) {
         get() = sp.getBoolean("keep_screen_on", true)
         set(v) = sp.edit().putBoolean("keep_screen_on", v).apply()
 
+    /* ---- 【M15】开机等待热点时间（秒）----
+     * 通电后先尝试连接已保存热点，超过这个时间仍连不上，才启动配网热点 ESPNav-AP。
+     * ⚠️ 该值用于**开机阶段**，因此下发后固件会存 NVS，**下次上电才生效**。 */
+    var espApDelayS: Int
+        get() = sp.getInt(K_AP_DELAY, 15).coerceIn(AP_DELAY_MIN, AP_DELAY_MAX)
+        set(v) = sp.edit().putInt(K_AP_DELAY, v.coerceIn(AP_DELAY_MIN, AP_DELAY_MAX)).apply()
+
     /** 【M2.5】屏幕内容水平翻转（分光镜 HUD）：默认开。
      *  分光镜（半透半反镜）让人眼看到的是左右镜像画面，所以 ESP 端送屏前要预先水平镜像。
      *  用字面 key（暂不进配置文件导出项），后续若要纳入配置再补常量与导出。 */
@@ -304,6 +311,7 @@ class AppPrefs(ctx: Context) {
     companion object {
         private const val NAME = "espnav_prefs"
         /* 【M7】底图显示效果（字面 key，与 screen_flip 同样的处理方式：暂不进配置文件导出） */
+        private const val K_AP_DELAY = "esp_ap_delay_s"
         private const val K_EMAP_BRIGHT = "esp_map_bright"
         private const val K_EMAP_CONTRAST = "esp_map_contrast"
         private const val K_HOST = "host"
@@ -364,6 +372,10 @@ class AppPrefs(ctx: Context) {
         /** 【M3.2】底图刷新间隔范围（ms）：与设置页滑杆一致 */
         const val MAP_SHOT_INT_MIN = 500
         const val MAP_SHOT_INT_MAX = 5000
+
+        /* 【M15】开机等待热点时间范围（秒） */
+        const val AP_DELAY_MIN = 5
+        const val AP_DELAY_MAX = 180
 
         /* 【M7】底图亮度/对比度范围（百分比） */
         const val MAP_BRIGHT_MIN = 30

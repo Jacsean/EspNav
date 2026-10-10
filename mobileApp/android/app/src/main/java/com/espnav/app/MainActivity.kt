@@ -949,6 +949,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             Triple(R.id.secHeadAppUi, R.id.secBodyAppUi, R.id.secArrowAppUi),
             Triple(R.id.secHeadPerm, R.id.secBodyPerm, R.id.secArrowPerm),
             Triple(R.id.secHeadCfg, R.id.secBodyCfg, R.id.secArrowCfg),
+            Triple(R.id.secHeadBoot, R.id.secBodyBoot, R.id.secArrowBoot),
             Triple(R.id.secHeadScreen, R.id.secBodyScreen, R.id.secArrowScreen),
             Triple(R.id.secHeadScrim, R.id.secBodyScrim, R.id.secArrowScrim),
             Triple(R.id.secHeadColor, R.id.secBodyColor, R.id.secArrowColor),
@@ -1105,6 +1106,29 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
         /* 【M7】底图亮度 30–150%（默认 70；原来硬编码 45% 偏暗）+ 对比度 50–150%（默认 100）。
          * 滑杆 progress 是偏移量：亮度 = 30 + p（max 120），对比度 = 50 + p（max 100）。 */
+        /* 【M15】开机等待热点时间（5-180 秒）：改动即写 AppPrefs 并下发；
+         * 固件会把它存进 NVS —— **下次上电才生效**（该值用于开机阶段）。 */
+        val skApDelay = v.findViewById<android.widget.SeekBar>(R.id.seekApDelay)
+        val tvApDelay = v.findViewById<android.widget.TextView>(R.id.tvApDelay)
+        skApDelay.max = com.espnav.app.data.AppPrefs.AP_DELAY_MAX - com.espnav.app.data.AppPrefs.AP_DELAY_MIN
+        skApDelay.progress = appPrefs.espApDelayS - com.espnav.app.data.AppPrefs.AP_DELAY_MIN
+        fun refreshApDelayLabel() {
+            tvApDelay.text = appPrefs.espApDelayS.toString() + " s"
+        }
+        refreshApDelayLabel()
+        skApDelay.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                appPrefs.espApDelayS = com.espnav.app.data.AppPrefs.AP_DELAY_MIN + p
+                refreshApDelayLabel()
+                if (client.isConnected) send(OutMsg.setConfig(apDelayS = appPrefs.espApDelayS))
+                log("开机等待热点 = ${appPrefs.espApDelayS} s（已下发，下次上电生效）")
+            }
+
+            override fun onStartTrackingTouch(sb: android.widget.SeekBar?) = Unit
+            override fun onStopTrackingTouch(sb: android.widget.SeekBar?) = Unit
+        })
+
         /* 【M8.1】导航期间屏幕常亮（立即生效：正在导航时改动会马上生效） */
         val cbKeepScreenOn = v.findViewById<android.widget.CompoundButton>(R.id.setKeepScreenOn)
         cbKeepScreenOn.isChecked = appPrefs.keepScreenOn

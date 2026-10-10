@@ -49,7 +49,7 @@ static void send_dev_status(proto_send_fn send, void *ctx)
              "\"popup_timeout\":%u,"
              "\"scrim_on\":%s,\"scrim_compass\":%u,\"scrim_text\":%u,"
              "\"scrim_route\":%u,\"scrim_clock\":%u,\"grid_bright\":%u,\"map_area\":%u,"
-             "\"img_on\":%s,\"screen_flip_y\":%s,"
+             "\"img_on\":%s,\"screen_flip_y\":%s,\"ap_delay_s\":%u,"
              "\"vbat\":%d,\"batt\":%d,"
              "\"firmware_ver\":\"%s\",\"err\":%lu}}\n",
              (unsigned)c->lcd_brightness, (unsigned)c->dash_speed,
@@ -59,6 +59,7 @@ static void send_dev_status(proto_send_fn send, void *ctx)
              (unsigned)c->scrim_route, (unsigned)c->scrim_clock,
              (unsigned)c->grid_bright, (unsigned)c->map_area,
              c->img_on ? "true" : "false", c->screen_flip_y ? "true" : "false",
+             (unsigned)c->ap_delay_s,
              (int)battery_mv(), battery_pct(),
              c->firmware_ver, (unsigned long)s_err);
     if (send) send(buf, ctx);
@@ -160,6 +161,11 @@ static void apply_set_config(const char *line)
         config_set_screen_flip_y(on);
         lcd_ili9341_set_flip_y(on);              /* 直接作用于驱动，下次刷屏即生效 */
         ESP_LOGI(TAG, "apply screen_flip_y=%d", (int)on);
+    }
+    /* ---- 【M15】开机等待热点时间：写入 NVS，**下次上电生效** ---- */
+    if (jl_get_int(line, "ap_delay_s", -1, &v) && v >= 0) {
+        config_set_ap_delay_s((uint8_t)v);
+        ESP_LOGI(TAG, "apply ap_delay_s=%d（存 NVS，下次上电生效）", v);
     }
     /* ---- 【M7】APK 地图底图总开关：false = 丢弃底图回原始导航模式 ----
      * 只改配置；渲染侧（draw_frame，仅显示任务碰帧缓冲）看到 false 时自行 map_image_clear()，
