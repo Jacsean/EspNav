@@ -1122,11 +1122,15 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 appPrefs.espApDelayS = com.espnav.app.data.AppPrefs.AP_DELAY_MIN + p
                 refreshApDelayLabel()
                 if (client.isConnected) send(OutMsg.setConfig(apDelayS = appPrefs.espApDelayS))
-                log("开机等待热点 = ${appPrefs.espApDelayS} s（已下发，下次上电生效）")
+                log("开机等待热点 = ${appPrefs.espApDelayS} s（已保存到设备，需重启 ESP 后生效）")
             }
 
             override fun onStartTrackingTouch(sb: android.widget.SeekBar?) = Unit
-            override fun onStopTrackingTouch(sb: android.widget.SeekBar?) = Unit
+
+            /* 【M15.1】松手时提示一次：拖动过程中不弹，避免刷屏 */
+            override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {
+                toast("已保存到设备：开机等待热点 " + appPrefs.espApDelayS + " 秒 —— 需重启 ESP 后生效")
+            }
         })
 
         /* 【M8.1】导航期间屏幕常亮（立即生效：正在导航时改动会马上生效） */

@@ -73,8 +73,8 @@
     <string name="set_hint_zoom">默认缩放级别 10~19（16 较近，11 约 20 公里）</string>
     <string name="label_sampler">采样方式</string>
     <string name="sec_boot">启动与联网</string>
-    <string name="set_ap_delay">开机等待热点</string>
-    <string name="set_ap_delay_hint">开机后先连接已保存的热点；超过该时间仍连不上，才启动配网热点 ESPNav-AP。该值保存在设备里，下次上电生效。</string>
+    <string name="set_ap_delay">开机等待热点（重启 ESP 后生效）</string>
+    <string name="set_ap_delay_hint">开机后先连接已保存的热点；超过该时间仍连不上，才启动配网热点 ESPNav-AP。\n注意：该值保存在设备里，需重启（重新上电 / 复位）ESP 后生效，不是即时生效。</string>
     <string name="set_group_overview">行程图</string>
     <string name="set_overview_vw">Visvalingam 高保真（长弧线优先保留）</string>
     <string name="set_overview_dp">Douglas-Peucker 误差有界（实现简单）</string>
