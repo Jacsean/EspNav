@@ -1,4 +1,5 @@
 #include "wifi_sta.h"
+#include "wifi_ap.h"       /* 【M14】wifi_common_init() */
 #include <stdio.h>
 #include <string.h>
 #include "freertos/FreeRTOS.h"
@@ -171,13 +172,23 @@ void wifi_sta_init(void)
 {
     if (s_inited) return;
 
-    esp_netif_create_default_wifi_sta();     /* AP 的 netif 已在 wifi_ap_start() 创建 */
+    /* 【M14】联网顺序改为"先试连热点、连不上才开 AP"，所以这里：
+     *   - 公共初始化由 wifi_common_init() 完成（本函数不再依赖 wifi_ap_start()）
+     *   - 模式用**纯 STA**（AP 需要时由 wifi_ap_start() 切到 APSTA）
+     *   - 首次必须显式 esp_wifi_start()（原先靠 wifi_ap_start() 里那次 start） */
+    wifi_common_init();
+
+    esp_netif_create_default_wifi_sta();
     esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, sta_event, NULL, NULL);
     esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, sta_event, NULL, NULL);
 
-    /* AP + STA 并存；set_mode 会自动重启 Wi-Fi，无需再 esp_wifi_start() */
-    esp_err_t r = esp_wifi_set_mode(WIFI_MODE_APSTA);
-    if (r != ESP_OK) ESP_LOGE(TAG, "set_mode(APSTA) -> %s", esp_err_to_name(r));
+    esp_err_t r = esp_wifi_set_mode(WIFI_MODE_STA);
+    if (r != ESP_OK) ESP_LOGE(TAG, "set_mode(STA) -> %s", esp_err_to_name(r));
+
+    r = esp_wifi_start();
+    if (r != ESP_OK && r != ESP_ERR_WIFI_STATE) {
+        ESP_LOGE(TAG, "esp_wifi_start -> %s", esp_err_to_name(r));
+    }
 
     s_inited = true;
     xTaskCreate(sta_task, "wifi_sta", 4096, NULL, 4, NULL);

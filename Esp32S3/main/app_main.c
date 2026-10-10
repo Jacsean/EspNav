@@ -27,6 +27,9 @@
 
 static const char *TAG = "app_main";
 
+/* 【M14】开机先尝试连接已保存热点的时间（秒）；超时后才启动配网热点 */
+#define STA_WAIT_S  15
+
 /* 【M7】电量采样任务：2s 采一次（9 样本取中位数在 battery_poll 内完成）。
  * 只写 battery 模块内部缓存，渲染任务只读 —— 不碰帧缓冲。 */
 static void battery_task(void *arg)
@@ -83,14 +86,53 @@ void app_main(void)
      * 3) 配网页：http://192.168.4.1 搜索/填写 WiFi，保存后自动连接
      * 4) mDNS：espnav.local（需 espressif/mdns 组件，当前为空实现）
      * 5) TCP :8899：接收 NAV_FRAME */
-    wifi_ap_start();
+    /* 【M14】联网顺序（用户要求）：
+     *   1) 先以**纯 STA** 启动，尝试连接 NVS 里已保存的热点（手机热点/路由器）
+     *   2) 最多等 STA_WAIT_S 秒；连上就直接对外服务（**不产生热点**）
+     *   3) 仍连不上（或压根没有凭据）→ 才启动配网热点 ESPNav-AP（配网页 192.168.4.1）
+     *   4) 运行中若 STA 掉线且热点还没开 → 补开，否则再也进不了配网页
+     * 这样"通电就冒出一个热点"的行为就消除了。 */
+    wifi_common_init();
     wifi_sta_init();
-    softap_prov_init();
+
+    bool sta_ok = false;
+    if (wifi_sta_has_saved()) {
+        ESP_LOGI(TAG, "NVS 有 WiFi 凭据：尝试连接，最多等 %d 秒…", STA_WAIT_S);
+        for (int i = 0; i < STA_WAIT_S * 5; i++) {          /* 每 200ms 查一次 */
+            if (wifi_sta_is_connected()) { sta_ok = true; break; }
+            vTaskDelay(pdMS_TO_TICKS(200));
+        }
+    } else {
+        ESP_LOGI(TAG, "NVS 无 WiFi 凭据 → 直接进入配网模式");
+    }
+
+    static bool s_ap_on = false;
+    static bool s_prov_on = false;
+    if (sta_ok) {
+        ESP_LOGI(TAG, "已连上热点：IP=%s（不启动配网热点）", wifi_sta_ip_str());
+    } else {
+        ESP_LOGW(TAG, "未连上热点 → 启动配网热点 ESPNav-AP（配网页 http://192.168.4.1）");
+        wifi_ap_start();
+        softap_prov_init();
+        s_ap_on = true;
+        s_prov_on = true;
+    }
     mdns_service_init();
     tcp_server_start();
-    ESP_LOGI(TAG, "M6: 通信就绪（AP:192.168.4.1 / 配网页:http://192.168.4.1 / TCP:8899）");
+    ESP_LOGI(TAG, "M14: 通信就绪（STA=%s IP=%s / 配网页 %s / TCP:8899）",
+             wifi_sta_is_connected() ? "已连接" : "未连接",
+             wifi_sta_ip_str()[0] ? wifi_sta_ip_str() : "-",
+             s_ap_on ? "http://192.168.4.1" : "未开启");
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(10000));
+        /* 【M14】保险：运行中 STA 掉线而热点尚未开启 → 补开配网热点
+         * （否则"连上热点后 AP 从未启动"，一旦掉线就再也连不上、也进不了配网页） */
+        if (!s_ap_on && !wifi_sta_is_connected()) {
+            ESP_LOGW(TAG, "检测到 STA 掉线且未开热点 → 补开配网热点 ESPNav-AP");
+            wifi_ap_start();
+            if (!s_prov_on) { softap_prov_init(); s_prov_on = true; }
+            s_ap_on = true;
+        }
         ESP_LOGI(TAG, "alive ... STA=%s ip=%s rssi=%d AP_clients_ok",
                  wifi_sta_is_connected() ? "已连接" : "未连接",
                  wifi_sta_ip_str()[0] ? wifi_sta_ip_str() : "-", wifi_sta_rssi());

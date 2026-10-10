@@ -44,6 +44,11 @@ static esp_err_t es_wr_ok(uint8_t reg, uint8_t val)
     return e;
 }
 
+static esp_err_t es_rd(uint8_t reg, uint8_t *val)
+{
+    return i2c_master_transmit_receive(s_dev, &reg, 1, val, 1, 100);
+}
+
 /* ---- 4.096MHz / 16kHz 的时钟寄存器值（系数表项 {4096000,16000,...}）---- */
 static const uint8_t CLK_4096000_16000[][2] = {
     { 0x02, 0x00 },     /* DIV_PRE=1, MULT_PRE=1 */
@@ -133,6 +138,7 @@ esp_err_t es8311_init(int scl_gpio, int sda_gpio, int sample_rate)
 
     s_ready = true;
     ESP_LOGI(TAG, "ES8311 配置完成（16kHz/16bit，MCLK=4.096MHz）");
+    es8311_dump_regs();                 /* 【M13-1.1】回读校验（无喇叭时的关键证据）*/
     return ESP_OK;
 }
 
@@ -148,3 +154,52 @@ void es8311_set_volume(int vol_0_100)
 }
 
 bool es8311_is_ready(void) { return s_ready; }
+
+/* 回读关键寄存器并与期望值比对。
+ * 为什么需要：喇叭没到货时"听不到声音"无法区分是"没配好"还是"没喇叭"，
+ * 而回读能直接证明配置已写进芯片 —— 软件侧正确性就不再依赖听觉。 */
+void es8311_dump_regs(void)
+{
+    if (!s_dev) {
+        ESP_LOGW(TAG, "寄存器回读跳过：I2C 设备未就绪");
+        return;
+    }
+    static const struct { uint8_t reg; uint8_t exp; const char *name; } T[] = {
+        { 0x00, 0x80, "CSM 上电 + 从模式" },
+        { 0x01, 0x3F, "内部时钟全开(MCLK 取自 MCLK 脚)" },
+        { 0x02, 0x00, "DIV_PRE=1 / MULT_PRE=1" },
+        { 0x03, 0x10, "ADC OSR=16" },
+        { 0x04, 0x10, "DAC OSR=16" },
+        { 0x05, 0x00, "ADC/DAC divider=1" },
+        { 0x06, 0x03, "BCLK divider=4" },
+        { 0x07, 0x00, "LRCK 高字节" },
+        { 0x08, 0xFF, "LRCK 低字节" },
+        { 0x09, 0x0C, "SDP In = 16bit" },
+        { 0x0A, 0x0C, "SDP Out = 16bit" },
+        { 0x0D, 0x01, "模拟电路上电" },
+        { 0x0E, 0x02, "PGA / ADC 调制器使能" },
+        { 0x12, 0x00, "DAC 上电" },
+        { 0x13, 0x10, "输出驱动使能(接功放)" },
+    };
+    int ok = 0, bad = 0;
+    ESP_LOGI(TAG, "==== ES8311 寄存器回读（无喇叭时用它确认配置是否真的写入）====");
+    for (size_t i = 0; i < sizeof(T) / sizeof(T[0]); i++) {
+        uint8_t v = 0;
+        esp_err_t e = es_rd(T[i].reg, &v);
+        if (e != ESP_OK) {
+            ESP_LOGW(TAG, "  R[0x%02X] 读取失败：%s", T[i].reg, esp_err_to_name(e));
+            bad++;
+            continue;
+        }
+        bool hit = (v == T[i].exp);
+        if (hit) ok++; else bad++;
+        ESP_LOGI(TAG, "  R[0x%02X]=0x%02X (期望 0x%02X) %s  %s",
+                 T[i].reg, v, T[i].exp, hit ? "OK  " : "!!!!", T[i].name);
+    }
+    uint8_t vol = 0;
+    if (es_rd(0x32, &vol) == ESP_OK) {
+        ESP_LOGI(TAG, "  R[0x32]=0x%02X (DAC 音量，0xBF≈0dB)", vol);
+    }
+    ESP_LOGI(TAG, "==== 回读汇总：%d 项符合 / %d 项不符 %s ====",
+             ok, bad, bad ? "<<< 有不符项，音频配置可能没写进去" : "(全部符合)");
+}
