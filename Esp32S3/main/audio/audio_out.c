@@ -16,6 +16,7 @@
 #include "freertos/task.h"
 
 #include "es8311.h"
+#include "audio_rx.h"      /* 【M13-2】语音播放缓冲（由 protocol 侧写入）*/
 
 static const char *TAG = "audio_out";
 
@@ -31,6 +32,31 @@ static void pa_enable(bool on)
 {
     gpio_set_level((gpio_num_t)PIN_PA_EN, on ? 0 : 1);   /* 低电平使能 */
     s_pa_on = on;
+}
+
+/* 【M13-2】播放任务：从 audio_rx 的缓冲取 PCM 写 I2S。
+ * 空闲（500ms 无数据）时关掉功放 —— 既省电，也避免功放底噪一直"嘶嘶"响。 */
+static void audio_play_task(void *arg)
+{
+    (void)arg;
+    static uint8_t buf[2048];
+    for (;;) {
+        size_t n = audio_rx_take(buf, sizeof(buf), 500);
+        if (n == 0) {
+            if (s_pa_on) {
+                pa_enable(false);
+                ESP_LOGI(TAG, "播放结束，功放已关闭");
+            }
+            continue;
+        }
+        if (!s_pa_on) {
+            pa_enable(true);
+            ESP_LOGI(TAG, "开始播放，功放已打开");
+        }
+        size_t w = 0;
+        esp_err_t e = i2s_channel_write(s_tx, buf, n, &w, 1000);
+        if (e != ESP_OK) ESP_LOGW(TAG, "i2s_channel_write: %s", esp_err_to_name(e));
+    }
 }
 
 esp_err_t audio_out_init(void)
@@ -80,6 +106,10 @@ esp_err_t audio_out_init(void)
 
     s_ready = true;
     ESP_LOGI(TAG, "audio_out 初始化完成（PA 使能脚 GPIO%d 已拉低）", PIN_PA_EN);
+
+    /* 【M13-2】启动语音播放任务（等 App 下发 AUDIO_* 帧）*/
+    xTaskCreate(audio_play_task, "audio_play", 4096, NULL, 5, NULL);
+    ESP_LOGI(TAG, "语音播放任务已启动（等待 App 下发 AUDIO_*）");
     return ESP_OK;
 }
 

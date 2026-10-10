@@ -10,6 +10,7 @@
 #include "lcd_driver.h"
 #include "render_nav.h"
 #include "map_image.h"     /* 【M3.1】IMG_BEGIN/CHUNK/END 的接收接口 */
+#include "audio_rx.h"      /* 【M13-2】AUDIO_BEGIN/CHUNK/END 的接收接口 */
 
 static const char *TAG = "proto";
 static uint32_t s_err = 0;
@@ -249,6 +250,33 @@ void protocol_handle(const char *line, int len, proto_send_fn send, void *ctx)
     }
     /* ---- 【M3.1】地图截图通道：接收侧只累积 base64 字节 + 置标志，
      * 不碰 framebuffer（解码/贴图由显示任务在 draw_frame 里做，见 fault_log F5 线程约定）---- */
+    /* ---- 【M13-2】语音下发通道：AUDIO_BEGIN / AUDIO_CHUNK / AUDIO_END ----
+     * 约定：16kHz / 16bit / 单声道 PCM；base64 分块（每块原始 ≤1200 字节）。
+     * 接收侧只解码 + 写入播放缓冲，播放由 audio_out.c 的播放任务完成
+     * （与 IMG_* 同样的线程约定：TCP 任务不碰 I2S 之外的共享资源）。 */
+    if (!strcmp(mt, "AUDIO_BEGIN")) {
+        int seq = 0, rate = 16000, bits = 16, ch = 1, bytes = 0;
+        jl_get_int(line, "seq", 0, &seq);
+        jl_get_int(line, "rate", 16000, &rate);
+        jl_get_int(line, "bits", 16, &bits);
+        jl_get_int(line, "ch", 1, &ch);
+        jl_get_int(line, "bytes", 0, &bytes);
+        audio_rx_begin(seq, rate, bits, ch, bytes);
+        return;
+    }
+    if (!strcmp(mt, "AUDIO_CHUNK")) {
+        int seq = 0;
+        char b64[1800];
+        jl_get_int(line, "seq", 0, &seq);
+        if (jl_get_str(line, "b64", b64, sizeof(b64))) audio_rx_chunk(seq, b64);
+        return;
+    }
+    if (!strcmp(mt, "AUDIO_END")) {
+        int seq = 0;
+        jl_get_int(line, "seq", 0, &seq);
+        audio_rx_end(seq);
+        return;
+    }
     if (!strcmp(mt, "IMG_BEGIN")) {
         int seq = 0, w = 0, h = 0, x = 0, y = 0, bytes = 0;
         jl_get_int(line, "seq", 0, &seq);

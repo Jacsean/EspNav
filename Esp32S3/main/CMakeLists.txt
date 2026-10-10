@@ -13,6 +13,8 @@ idf_component_register(
     "render/map_image.c"
     "board/battery.c"
     "audio/es8311.c"
+    "audio/audio_rx.c"
+    "protocol/b64.c"
     "audio/audio_out.c"
     "comm/comm_if.c"
     "comm/wifi_ap.c"
