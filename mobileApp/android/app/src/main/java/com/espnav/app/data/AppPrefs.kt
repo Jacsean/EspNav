@@ -12,6 +12,13 @@ class AppPrefs(ctx: Context) {
 
     private val sp = ctx.getSharedPreferences(NAME, Context.MODE_PRIVATE)
 
+    /**
+     * 【M19】是否"全新安装"（SharedPreferences 里什么都没有）。
+     * 卸载 App 会删掉 /data/data/<包>/ 下的 SharedPreferences，所以重装后这里是 true；
+     * 此时若公共目录存在 espnav_config.json，应当**自动恢复**而不必弹窗询问。
+     */
+    fun isFresh(): Boolean = !sp.contains(K_HOST)
+
     /** 设备地址（连接候选首选项） */
     var host: String
         get() = sp.getString(K_HOST, DEF_HOST) ?: DEF_HOST

@@ -1496,6 +1496,25 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     /** 刷新“起点/终点是否已选”的显眼状态行 */
+    /* ================= 【M19】退到后台就**静默导出**设置到公共目录 =================
+     * 为什么需要它：Android 卸载 App 会连 /data/data/<包>/ 一起删掉，而设置（SharedPreferences）
+     * 就存在那里 —— 这就是"卸载后设置全没了"的根因。公共目录（/sdcard/Download/EspNav/）不会被删，
+     * 所以退到后台时自动写一份 JSON，重装后即可恢复。
+     * 效果：你**不需要用 adb 脚本**，直接"复制 APK 到手机 → 安装 → 启动"就能保住设置。
+     * ========================================================================= */
+    override fun onStop() {
+        super.onStop()
+        runCatching {
+            if (!com.espnav.app.data.ConfigFile.hasPermission()) {
+                log("提示：缺少「所有文件访问」权限，本次未能自动备份设置（可在设置页授予）")
+                return@runCatching
+            }
+            if (!com.espnav.app.data.ConfigFile.save(appPrefs.exportToJson())) {
+                log("提示：自动备份设置失败（写入被拒）")
+            }
+        }
+    }
+
     // ---------------- 独立配置文件（/sdcard/Download/EspNav/espnav_config.json） ----------------
 
     /** 启动时检测外部配置文件：存在且与当前不同 → 询问是否覆盖 */
@@ -1506,6 +1525,17 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             return
         }
         val json = com.espnav.app.data.ConfigFile.load() ?: return
+
+        /* 【M19】全新安装（重装/首次装机，SharedPreferences 为空）→ **直接自动恢复**，不弹窗。
+         * 因为卸载一定会清空内部存储，这里弹窗只是多一次点击，反而容易误点"不覆盖"而丢设置。 */
+        if (appPrefs.isFresh()) {
+            val n = appPrefs.importFromJson(json)
+            applyPrefsToUi()
+            log("检测到全新安装：已自动恢复 " + n + " 项设置（来源：" +
+                com.espnav.app.data.ConfigFile.pathText() + "）")
+            return
+        }
+
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle(R.string.cfg_found_title)
             .setMessage(com.espnav.app.data.ConfigFile.pathText() + "\n\n是否用它覆盖当前设置？")
