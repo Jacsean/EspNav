@@ -114,6 +114,11 @@ void app_main(void)
 
     /* 【M15】等待时长来自配置（App 可设，存 NVS，下次上电生效） */
     const int wait_s = (int)config_get()->ap_delay_s;
+
+    /* 【M16.2】先把"有没有凭据"打出来 —— 这是"为什么上电就出热点"的唯一判据。
+     * 注意：手机热点**有密码**，ESP 不可能凭空连上；必须先配网一次把凭据存进 NVS。 */
+    ESP_LOGI(TAG, "NVS 里的 WiFi 凭据数 = %d", wifi_sta_cred_count());
+
     bool sta_ok = false;
     if (wifi_sta_has_saved()) {
         ESP_LOGI(TAG, "NVS 有 WiFi 凭据：尝试连接，最多等 %d 秒（可由 App 设置）…", wait_s);
@@ -122,7 +127,10 @@ void app_main(void)
             vTaskDelay(pdMS_TO_TICKS(200));
         }
     } else {
-        ESP_LOGI(TAG, "NVS 无 WiFi 凭据 → 直接进入配网模式");
+        ESP_LOGW(TAG, "NVS 无 WiFi 凭据 → 直接进入配网模式（**这是设计行为，不是故障**）");
+        ESP_LOGW(TAG, "    配网步骤：① 手机连热点 ESPNav-AP（密码 espnav1234）");
+        ESP_LOGW(TAG, "              ② 浏览器打开 http://192.168.4.1 → 选择/填写手机热点并保存");
+        ESP_LOGW(TAG, "    保存后本机会自动连上；**此后每次上电都会先连该热点，不再出现 ESPNav-AP**。");
     }
 
     static bool s_ap_on = false;
