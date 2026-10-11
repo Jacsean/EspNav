@@ -992,6 +992,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             Triple(R.id.secHeadColor, R.id.secBodyColor, R.id.secArrowColor),
             Triple(R.id.secHeadEspMap, R.id.secBodyEspMap, R.id.secArrowEspMap),
             Triple(R.id.secHeadVoice, R.id.secBodyVoice, R.id.secArrowVoice),   /* 【M21】语音播报 */
+            Triple(R.id.secHeadBattery, R.id.secBodyBattery, R.id.secArrowBattery),  /* 【M24】电量显示 */
             Triple(R.id.secHeadFlip, R.id.secBodyFlip, R.id.secArrowFlip),
             Triple(R.id.secHeadDebug, R.id.secBodyDebug, R.id.secArrowDebug)
         )
@@ -1005,6 +1006,55 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 arrow.text = getString(if (show) R.string.sec_arrow_open else R.string.sec_arrow_closed)
             }
         }
+        /* ================= 【M24】A 组批 2：电量三阈值 =================
+         * 滑杆用"绝对百分比"（不是偏移量），拖动时节流（变化满 2 才发一次，避免 ESP 反复写 NVS），
+         * 松手时补发最终值。三项一起发（协议是单条 SET_CONFIG 带三个字段）。 */
+        var lastBatSent = Triple(-1, -1, -1)
+        fun pushBattery() {
+            val t = Triple(appPrefs.batRedPct, appPrefs.batYellowPct, appPrefs.batPresentMv)
+            if (t == lastBatSent) return
+            lastBatSent = t
+            send(OutMsg.setBattery(t.first, t.second, t.third))
+        }
+        fun bindBatSeek(seekId: Int, tvId: Int, cur: Int, lo: Int, hi: Int, suffix: String, onSet: (Int) -> Unit) {
+            val sk = v.findViewById<android.widget.SeekBar>(seekId)
+            val tv = v.findViewById<android.widget.TextView>(tvId)
+            sk.max = hi - lo
+            sk.progress = (cur - lo).coerceIn(0, hi - lo)
+            tv.text = cur.toString() + suffix
+            sk.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
+                    if (!fromUser) return
+                    val x = p + lo
+                    tv.text = x.toString() + suffix
+                    onSet(x)
+                    val t = Triple(appPrefs.batRedPct, appPrefs.batYellowPct, appPrefs.batPresentMv)
+                    /* 节流：任一项变化 >= 2 才发（避免拖动一格发一次） */
+                    if (kotlin.math.abs(t.first - lastBatSent.first) >= 2 ||
+                        kotlin.math.abs(t.second - lastBatSent.second) >= 2 ||
+                        kotlin.math.abs(t.third - lastBatSent.third) >= 2) {
+                        lastBatSent = t
+                        send(OutMsg.setBattery(t.first, t.second, t.third))
+                    }
+                }
+
+                override fun onStartTrackingTouch(sb: android.widget.SeekBar?) = Unit
+                override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {
+                    pushBattery()
+                    log("电量阈值：红 $appPrefs.batRedPct% 黄 ${appPrefs.batYellowPct}% 未接<${appPrefs.batPresentMv}mV")
+                }
+            })
+        }
+        bindBatSeek(R.id.seekBatRed, R.id.tvBatRed, appPrefs.batRedPct,
+            com.espnav.app.data.AppPrefs.BAT_RED_MIN, com.espnav.app.data.AppPrefs.BAT_RED_MAX, "%",
+            { appPrefs.batRedPct = it })
+        bindBatSeek(R.id.seekBatYellow, R.id.tvBatYellow, appPrefs.batYellowPct,
+            com.espnav.app.data.AppPrefs.BAT_YELLOW_MIN, com.espnav.app.data.AppPrefs.BAT_YELLOW_MAX, "%",
+            { appPrefs.batYellowPct = it })
+        bindBatSeek(R.id.seekBatPmv, R.id.tvBatPmv, appPrefs.batPresentMv,
+            com.espnav.app.data.AppPrefs.BAT_PMV_MIN, com.espnav.app.data.AppPrefs.BAT_PMV_MAX, " mV",
+            { appPrefs.batPresentMv = it })
+
         /* 【M21】语音播报：总开关 + 语音测试按钮 */
         val cbVoiceOn = v.findViewById<android.widget.CompoundButton>(R.id.setVoiceOn)
         cbVoiceOn.isChecked = appPrefs.voiceOn

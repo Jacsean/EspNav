@@ -86,6 +86,19 @@ static void apply_set_config(const char *line)
         if (ops && ops->backlight) ops->backlight((uint8_t)v);
         ESP_LOGI(TAG, "apply lcd_brightness=%d", v);
     }
+    /* 【M24】A 组批 2：电量阈值（立即生效 + 入 NVS） */
+    if (jl_get_int(line, "bat_red_pct", -1, &v) && v >= 0) {
+        config_set_bat_red_pct((uint8_t)v);
+        ESP_LOGI(TAG, "apply bat_red_pct=%d", v);
+    }
+    if (jl_get_int(line, "bat_yellow_pct", -1, &v) && v >= 0) {
+        config_set_bat_yellow_pct((uint8_t)v);
+        ESP_LOGI(TAG, "apply bat_yellow_pct=%d", v);
+    }
+    if (jl_get_int(line, "bat_present_mv", -1, &v) && v >= 0) {
+        config_set_bat_present_mv((uint16_t)v);
+        ESP_LOGI(TAG, "apply bat_present_mv=%d", v);
+    }
     /* 【M22】语音音量（0-300%，立即生效；同时入 NVS 供下次开机使用） */
     if (jl_get_int(line, "audio_vol", -1, &v) && v >= 0) {
         config_set_audio_vol((uint16_t)v);

@@ -19,6 +19,22 @@ class AppPrefs(ctx: Context) {
      */
     fun isFresh(): Boolean = !sp.contains(K_HOST)
 
+    /* ================= 【M24】A 组批 2：电量显示阈值 ================= */
+    /** 电量 <= 此值显示红色 */
+    var batRedPct: Int
+        get() = sp.getInt(K_BAT_RED, 15)
+        set(v) = sp.edit().putInt(K_BAT_RED, v.coerceIn(BAT_RED_MIN, BAT_RED_MAX)).apply()
+
+    /** 电量 <= 此值显示黄色（ESP 侧保证 >= 红色阈值） */
+    var batYellowPct: Int
+        get() = sp.getInt(K_BAT_YELLOW, 40)
+        set(v) = sp.edit().putInt(K_BAT_YELLOW, v.coerceIn(BAT_YELLOW_MIN, BAT_YELLOW_MAX)).apply()
+
+    /** 低于此电压视为"未接电池"（不显示电量图标） */
+    var batPresentMv: Int
+        get() = sp.getInt(K_BAT_PMV, 2500)
+        set(v) = sp.edit().putInt(K_BAT_PMV, v.coerceIn(BAT_PMV_MIN, BAT_PMV_MAX)).apply()
+
     /** 【M22】语音播报音量 0-300%（默认 200%：ESP 硬件 100% + 软件 2.0x）。
      *  <=100：只用 ESP 端的 ES8311 硬件音量；>100：硬件满档，超出部分 ESP 侧做软件增益。 */
     var audioVol: Int
@@ -420,6 +436,17 @@ class AppPrefs(ctx: Context) {
         const val K_AUDIO_VOL = "audio_vol"        /* 【M22】语音音量（%），0-300 */
         const val AUDIO_VOL_MIN = 0                /* 【M22】0 = 静音 */
         const val AUDIO_VOL_MAX = 300              /* 【M22】上限 300%（ESP 侧超 100% 走软件增益） */
+
+        /* 【M24】A 组批 2：电量阈值范围（按用户确认，做可调） */
+        const val K_BAT_RED = "bat_red_pct"
+        const val K_BAT_YELLOW = "bat_yellow_pct"
+        const val K_BAT_PMV = "bat_present_mv"
+        const val BAT_RED_MIN = 5
+        const val BAT_RED_MAX = 50
+        const val BAT_YELLOW_MIN = 20
+        const val BAT_YELLOW_MAX = 100
+        const val BAT_PMV_MIN = 1000
+        const val BAT_PMV_MAX = 3000
 
         const val MAP_SHOT_INT_MIN = 500
         const val MAP_SHOT_INT_MAX = 5000

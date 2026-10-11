@@ -31,6 +31,10 @@ void config_init(void)
     s_cfg.screen_flip_y  = false;/* 【M9】默认不做垂直翻转 */
     s_cfg.ap_delay_s     = 15;   /* 【M15】上电先试连热点 15 秒，超时才开配网热点 */
     s_cfg.audio_vol      = 200;  /* 【M22】语音音量 200%（硬件 100% + 软件 2.0x）；嫌大可调低 */
+    /* 【M24】A 组批 2：电量阈值（与原写死值一致，保证行为不变） */
+    s_cfg.bat_red_pct    = 15;
+    s_cfg.bat_yellow_pct = 40;
+    s_cfg.bat_present_mv = 2500;
     s_cfg.img_on         = true; /* 【M7】默认允许底图；App 连接/开始导航时会同步真实开关状态 */
     strncpy(s_cfg.firmware_ver, "V1.4.0", sizeof(s_cfg.firmware_ver) - 1);
     ESP_LOGI(TAG, "config default ready");
@@ -68,6 +72,54 @@ void config_set_screen_flip_y(bool v)    { s_cfg.screen_flip_y = v; }
 #define NVS_NS      "espnav"
 #define NVS_K_APDLY "ap_delay_s"
 #define NVS_K_AVOL  "audio_vol"     /* 【M22】语音音量（%），NVS 持久化 */
+#define NVS_K_BATR  "bat_red"       /* 【M24】电量红色阈值（%） */
+#define NVS_K_BATY  "bat_yellow"    /* 【M24】电量黄色阈值（%） */
+#define NVS_K_BATP  "bat_pmv"       /* 【M24】未接电池判据（mV） */
+
+/* 【M24】电量阈值。黄色恒 >= 红色，避免"红黄颠倒"导致颜色判断失去意义。 */
+void config_set_bat_red_pct(uint8_t v)
+{
+    if (v > 100) v = 100;
+    s_cfg.bat_red_pct = v;
+    if (s_cfg.bat_yellow_pct < v) s_cfg.bat_yellow_pct = v;   /* 红升则黄跟随 */
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u8(h, NVS_K_BATR, s_cfg.bat_red_pct);
+        nvs_set_u8(h, NVS_K_BATY, s_cfg.bat_yellow_pct);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    ESP_LOGI(TAG, "bat_red_pct=%u（yellow 跟随为 %u）", (unsigned)s_cfg.bat_red_pct,
+             (unsigned)s_cfg.bat_yellow_pct);
+}
+
+void config_set_bat_yellow_pct(uint8_t v)
+{
+    if (v > 100) v = 100;
+    if (v < s_cfg.bat_red_pct) v = s_cfg.bat_red_pct;          /* 不得低于红色阈值 */
+    s_cfg.bat_yellow_pct = v;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u8(h, NVS_K_BATY, v);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    ESP_LOGI(TAG, "bat_yellow_pct=%u", (unsigned)v);
+}
+
+void config_set_bat_present_mv(uint16_t v)
+{
+    if (v < 500)  v = 500;
+    if (v > 4000) v = 4000;
+    s_cfg.bat_present_mv = v;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u16(h, NVS_K_BATP, v);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    ESP_LOGI(TAG, "bat_present_mv=%u", (unsigned)v);
+}
 
 void config_set_audio_vol(uint16_t v)
 {
@@ -118,6 +170,17 @@ void config_load_nvs(void)
     } else {
         ESP_LOGI(TAG, "NVS 无 ap_delay_s，使用默认 %u 秒", (unsigned)s_cfg.ap_delay_s);
     }
+    /* 【M24】电量阈值（读不到就保持默认） */
+    uint8_t  br = 0, by = 0;
+    uint16_t bp = 0;
+    if (nvs_get_u8(h, NVS_K_BATR, &br) == ESP_OK && br <= 100) s_cfg.bat_red_pct = br;
+    if (nvs_get_u8(h, NVS_K_BATY, &by) == ESP_OK && by <= 100) s_cfg.bat_yellow_pct = by;
+    if (s_cfg.bat_yellow_pct < s_cfg.bat_red_pct) s_cfg.bat_yellow_pct = s_cfg.bat_red_pct;
+    if (nvs_get_u16(h, NVS_K_BATP, &bp) == ESP_OK && bp >= 500 && bp <= 4000) s_cfg.bat_present_mv = bp;
+    ESP_LOGI(TAG, "电量阈值：红<=%u%% 黄<=%u%% 未接电池<%u mV",
+             (unsigned)s_cfg.bat_red_pct, (unsigned)s_cfg.bat_yellow_pct,
+             (unsigned)s_cfg.bat_present_mv);
+
     /* 【M22】语音音量 */
     uint16_t av = 0;
     if (nvs_get_u16(h, NVS_K_AVOL, &av) == ESP_OK && av <= 300) {
