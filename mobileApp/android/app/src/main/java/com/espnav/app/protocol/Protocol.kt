@@ -127,6 +127,25 @@ object OutMsg {
     fun imgChunk(seq: Int, b64: String): String =
         Json.obj("msg_type" to "IMG_CHUNK", "payload" to Json.obj("seq" to seq, "d" to b64)).toString()
 
+    /* ================= 【M21】语音下发（TTS → PCM）=================
+     * AUDIO_BEGIN(seq,rate,bits,ch,bytes) → N×AUDIO_CHUNK(seq,b64) → AUDIO_END(seq)
+     * 格式固定 16kHz / 16bit / 单声道（ESP 侧 audio_rx 只接受这一种）。
+     * ⚠ 注意：音频分块的 base64 字段名是 "b64"（图像用的是 "d"），别写错，否则固件取不到。
+     * 每块原始字节 ≤1200（base64 ≤1600 字符 < 固件缓冲区 1800）。 */
+    fun audioBegin(seq: Int, rate: Int, bits: Int, ch: Int, bytes: Int): String =
+        Json.obj(
+            "msg_type" to "AUDIO_BEGIN",
+            "payload" to Json.obj(
+                "seq" to seq, "rate" to rate, "bits" to bits, "ch" to ch, "bytes" to bytes
+            )
+        ).toString()
+
+    fun audioChunk(seq: Int, b64: String): String =
+        Json.obj("msg_type" to "AUDIO_CHUNK", "payload" to Json.obj("seq" to seq, "b64" to b64)).toString()
+
+    fun audioEnd(seq: Int): String =
+        Json.obj("msg_type" to "AUDIO_END", "payload" to Json.obj("seq" to seq)).toString()
+
     fun imgEnd(seq: Int): String =
         Json.obj("msg_type" to "IMG_END", "payload" to Json.obj("seq" to seq)).toString()
 

@@ -52,6 +52,18 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     /** 习惯性配置（连接地址/默认起终点/城市/缩放/日志行数…），由「⚙ 设置」维护 */
     private val appPrefs by lazy { com.espnav.app.data.AppPrefs(applicationContext) }
 
+    /* 【M21】语音播报：TextToSpeech 合成 → 16k/16bit/单声道 → 分块下发。
+     * 延迟创建（只有用到时才初始化 TTS 引擎）；内部用 applicationContext，不会泄漏 Activity。
+     * 下发走 send()（它自己会判断连接状态）。 */
+    private val ttsSpeakerLazy: kotlin.Lazy<com.espnav.app.data.TtsSpeaker> = lazy {
+        /* ⚠ 发送必须切回主线程：send() 内部会调 log()，而 log() 直接操作 TextView。
+         * （音频的处理/重采样已经在 TtsSpeaker 的后台线程里做完，这里只是一帧帧发出。） */
+        com.espnav.app.data.TtsSpeaker(this).also { t ->
+            t.init { json -> runOnUiThread { send(json) } }
+        }
+    }
+    private val ttsSpeaker: com.espnav.app.data.TtsSpeaker get() = ttsSpeakerLazy.value
+
     private var connecting = false
     /** 主动断开标记：点「断开」/页面关闭时置位，用于跳过自动重连（否则会被立刻拉回连接） */
     private var intentionalDisconnect = false
@@ -208,6 +220,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     override fun onDestroy() {
+        /* 【M21】释放 TTS 引擎（用 isInitialized 避免"从未用过却创建一次"） */
+        if (ttsSpeakerLazy.isInitialized()) runCatching { ttsSpeaker.release() }
         mapActive = false        /* 【M8.2】先关闸：销毁过程中不让循环再碰地图 API */
         stopMock()
         intentionalDisconnect = true
@@ -959,6 +973,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             Triple(R.id.secHeadScrim, R.id.secBodyScrim, R.id.secArrowScrim),
             Triple(R.id.secHeadColor, R.id.secBodyColor, R.id.secArrowColor),
             Triple(R.id.secHeadEspMap, R.id.secBodyEspMap, R.id.secArrowEspMap),
+            Triple(R.id.secHeadVoice, R.id.secBodyVoice, R.id.secArrowVoice),   /* 【M21】语音播报 */
             Triple(R.id.secHeadFlip, R.id.secBodyFlip, R.id.secArrowFlip),
             Triple(R.id.secHeadDebug, R.id.secBodyDebug, R.id.secArrowDebug)
         )
@@ -972,6 +987,24 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 arrow.text = getString(if (show) R.string.sec_arrow_open else R.string.sec_arrow_closed)
             }
         }
+        /* 【M21】语音播报：总开关 + 语音测试按钮 */
+        val cbVoiceOn = v.findViewById<android.widget.CompoundButton>(R.id.setVoiceOn)
+        cbVoiceOn.isChecked = appPrefs.voiceOn
+        cbVoiceOn.setOnCheckedChangeListener { _, checked ->
+            appPrefs.voiceOn = checked
+            log("语音播报总开关 = " + checked)
+            if (checked && !client.isConnected) {
+                toast("语音已开启；当前未连接 ESP，连接后才能出声")
+            }
+        }
+        v.findViewById<android.view.View>(R.id.btnVoiceTest).setOnClickListener {
+            if (!appPrefs.voiceOn) { toast("请先打开「开启语音播报」"); return@setOnClickListener }
+            if (!client.isConnected) { toast("未连接 ESP，无法下发语音"); return@setOnClickListener }
+            toast("正在合成语音并下发…（听到示例即为链路通）")
+            log("语音测试：合成「前方一百米右转，请提前并道」")
+            ttsSpeaker.speak("前方一百米右转，请提前并道")
+        }
+
         val cbAutoConn = v.findViewById<android.widget.CompoundButton>(R.id.setAutoConnect)
         val cbAutoCity = v.findViewById<android.widget.CompoundButton>(R.id.setAutoCity)
         val cbEmulate = v.findViewById<android.widget.CompoundButton>(R.id.setEmulate)

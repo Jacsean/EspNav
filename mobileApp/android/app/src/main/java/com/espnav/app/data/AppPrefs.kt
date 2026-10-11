@@ -19,6 +19,11 @@ class AppPrefs(ctx: Context) {
      */
     fun isFresh(): Boolean = !sp.contains(K_HOST)
 
+    /** 【M21】语音播报总开关（默认关：需要用户主动打开，避免意外出声） */
+    var voiceOn: Boolean
+        get() = sp.getBoolean(K_VOICE_ON, false)
+        set(v) = sp.edit().putBoolean(K_VOICE_ON, v).apply()
+
     /** 设备地址（连接候选首选项） */
     var host: String
         get() = sp.getString(K_HOST, DEF_HOST) ?: DEF_HOST
@@ -405,6 +410,8 @@ class AppPrefs(ctx: Context) {
          *  日常使用时 ESP 连手机热点拿到 192.168.43.117 —— 默认值不一致时，每次重装
          *  都得先用配置文件覆盖才能连上。192.168.4.1 仍保留在「一键连接」候选里作兜底。 */
         /** 【M3.2】底图刷新间隔范围（ms）：与设置页滑杆一致 */
+        const val K_VOICE_ON = "voice_on"          /* 【M21】语音播报总开关 */
+
         const val MAP_SHOT_INT_MIN = 500
         const val MAP_SHOT_INT_MAX = 5000
 
