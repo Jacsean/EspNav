@@ -997,6 +997,38 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 toast("语音已开启；当前未连接 ESP，连接后才能出声")
             }
         }
+        /* 【M22】语音音量 0-300%：拖动即下发（ESP 立即生效并写入 NVS） */
+        val skVol = v.findViewById<android.widget.SeekBar>(R.id.seekAudioVol)
+        val tvVol = v.findViewById<android.widget.TextView>(R.id.tvAudioVol)
+        skVol.max = com.espnav.app.data.AppPrefs.AUDIO_VOL_MAX - com.espnav.app.data.AppPrefs.AUDIO_VOL_MIN
+        skVol.progress = appPrefs.audioVol - com.espnav.app.data.AppPrefs.AUDIO_VOL_MIN
+        tvVol.text = appPrefs.audioVol.toString() + "%"
+        /* 节流：拖动过程中每格都发会让 ESP 反复写 NVS（它有擦写寿命且每次要十几毫秒），
+         * 所以变化满 10% 才下发一次，松手时再补发最终值（保证最后一次一定生效）。 */
+        var lastSentVol = -1
+        skVol.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                val vol = p + com.espnav.app.data.AppPrefs.AUDIO_VOL_MIN
+                tvVol.text = vol.toString() + "%"
+                appPrefs.audioVol = vol
+                if (kotlin.math.abs(vol - lastSentVol) >= 10) {
+                    lastSentVol = vol
+                    send(OutMsg.setVolume(vol))      /* 未连接时 send 会自行提示 */
+                }
+            }
+
+            override fun onStartTrackingTouch(sb: android.widget.SeekBar?) = Unit
+            override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {
+                val vol = appPrefs.audioVol
+                if (vol != lastSentVol) {
+                    lastSentVol = vol
+                    send(OutMsg.setVolume(vol))
+                }
+                log("语音音量 = " + vol + "%")
+            }
+        })
+
         v.findViewById<android.view.View>(R.id.btnVoiceTest).setOnClickListener {
             if (!appPrefs.voiceOn) { toast("请先打开「开启语音播报」"); return@setOnClickListener }
             if (!client.isConnected) { toast("未连接 ESP，无法下发语音"); return@setOnClickListener }

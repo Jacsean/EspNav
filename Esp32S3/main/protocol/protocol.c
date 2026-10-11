@@ -11,6 +11,7 @@
 #include "render_nav.h"
 #include "map_image.h"     /* 【M3.1】IMG_BEGIN/CHUNK/END 的接收接口 */
 #include "audio_rx.h"      /* 【M13-2】AUDIO_BEGIN/CHUNK/END 的接收接口 */
+#include "audio_out.h"     /* 【M22】音量（硬件 + 软件增益） */
 
 static const char *TAG = "proto";
 static uint32_t s_err = 0;
@@ -84,6 +85,12 @@ static void apply_set_config(const char *line)
         const lcd_driver_ops_t *ops = lcd_driver_ops();
         if (ops && ops->backlight) ops->backlight((uint8_t)v);
         ESP_LOGI(TAG, "apply lcd_brightness=%d", v);
+    }
+    /* 【M22】语音音量（0-300%，立即生效；同时入 NVS 供下次开机使用） */
+    if (jl_get_int(line, "audio_vol", -1, &v) && v >= 0) {
+        config_set_audio_vol((uint16_t)v);
+        audio_out_set_volume(v);
+        ESP_LOGI(TAG, "apply audio_vol=%d", v);
     }
     if (jl_get_int(line, "dash_speed", -1, &v) && v >= 0) {
         config_set_dash_speed((uint8_t)v);          /* 渲染 tick 每帧读 config，下一帧即生效 */

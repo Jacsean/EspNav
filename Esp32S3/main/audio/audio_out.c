@@ -38,6 +38,26 @@ static void pa_enable(bool on)
     s_pa_on = on;
 }
 
+/* 【M22】软件增益：1.0 = 原样；音量 >100% 时把 PCM 样本整体放大。
+ * 用 16.16 定点保存，避免浮点（播放路径上更快）。 */
+static int32_t s_soft_gain_q16 = 1 << 16;
+
+void audio_out_set_volume(int vol_0_300)
+{
+    if (vol_0_300 < 0)   vol_0_300 = 0;
+    if (vol_0_300 > 300) vol_0_300 = 300;
+
+    /* 硬件音量最多 100%（寄存器 0x32 = 0xBF 约 0 dB） */
+    int hw = vol_0_300 > 100 ? 100 : vol_0_300;
+    es8311_set_volume(hw);
+
+    /* 软件增益：<=100% 为 1.0；>100% 时为 vol/100 */
+    float g = vol_0_300 > 100 ? (float)vol_0_300 / 100.0f : 1.0f;
+    s_soft_gain_q16 = (int32_t)(g * 65536.0f);
+    ESP_LOGI(TAG, "音量设为 %d%%（硬件 %d%% + 软件 x%d.%02d）",
+             vol_0_300, hw, (int)g, (int)((g - (int)g) * 100));
+}
+
 /* 【M13-2】播放任务：从 audio_rx 的缓冲取 PCM 写 I2S。
  * 空闲（500ms 无数据）时关掉功放 —— 既省电，也避免功放底噪一直"嘶嘶"响。 */
 static void audio_play_task(void *arg)
@@ -56,6 +76,19 @@ static void audio_play_task(void *arg)
         if (!s_pa_on) {
             pa_enable(true);
             ESP_LOGI(TAG, "开始播放，功放已打开");
+        }
+        /* 【M22】软件增益：16bit 小端 PCM 逐样本放大并做饱和裁剪（防溢出翻转成噪声）。
+         * 增益为 1.0 时整段跳过，零开销。 */
+        if (s_soft_gain_q16 != (1 << 16)) {
+            int16_t *s = (int16_t *)buf;
+            size_t cnt = n / 2;
+            for (size_t i = 0; i < cnt; i++) {
+                /* 必须用 int64 中间量：32767 * 3.0 * 65536 ≈ 6.4e9 > int32 上限（会溢出翻转成噪声） */
+                int32_t v = (int32_t)(((int64_t)s[i] * s_soft_gain_q16) >> 16);
+                if (v > 32767)  v = 32767;
+                if (v < -32768) v = -32768;
+                s[i] = (int16_t)v;
+            }
         }
         size_t w = 0;
         esp_err_t e = i2s_channel_write(s_tx, buf, n, &w, 1000);
@@ -130,11 +163,6 @@ esp_err_t audio_out_init(void)
     xTaskCreate(audio_play_task, "audio_play", 4096, NULL, 5, NULL);
     ESP_LOGI(TAG, "语音播放任务已启动（等待 App 下发 AUDIO_*）");
     return ESP_OK;
-}
-
-void audio_out_set_volume(int vol_0_100)
-{
-    es8311_set_volume(vol_0_100);
 }
 
 int audio_out_write(const void *pcm, int bytes)

@@ -19,6 +19,12 @@ class AppPrefs(ctx: Context) {
      */
     fun isFresh(): Boolean = !sp.contains(K_HOST)
 
+    /** 【M22】语音播报音量 0-300%（默认 200%：ESP 硬件 100% + 软件 2.0x）。
+     *  <=100：只用 ESP 端的 ES8311 硬件音量；>100：硬件满档，超出部分 ESP 侧做软件增益。 */
+    var audioVol: Int
+        get() = sp.getInt(K_AUDIO_VOL, 200)
+        set(v) = sp.edit().putInt(K_AUDIO_VOL, v.coerceIn(AUDIO_VOL_MIN, AUDIO_VOL_MAX)).apply()
+
     /** 【M21】语音播报总开关（默认关：需要用户主动打开，避免意外出声） */
     var voiceOn: Boolean
         get() = sp.getBoolean(K_VOICE_ON, false)
@@ -411,6 +417,9 @@ class AppPrefs(ctx: Context) {
          *  都得先用配置文件覆盖才能连上。192.168.4.1 仍保留在「一键连接」候选里作兜底。 */
         /** 【M3.2】底图刷新间隔范围（ms）：与设置页滑杆一致 */
         const val K_VOICE_ON = "voice_on"          /* 【M21】语音播报总开关 */
+        const val K_AUDIO_VOL = "audio_vol"        /* 【M22】语音音量（%），0-300 */
+        const val AUDIO_VOL_MIN = 0                /* 【M22】0 = 静音 */
+        const val AUDIO_VOL_MAX = 300              /* 【M22】上限 300%（ESP 侧超 100% 走软件增益） */
 
         const val MAP_SHOT_INT_MIN = 500
         const val MAP_SHOT_INT_MAX = 5000

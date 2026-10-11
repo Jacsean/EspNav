@@ -18,10 +18,14 @@
 esp_err_t audio_out_init(void);
 
 /** 设置音量（0-100）。 */
-void audio_out_set_volume(int vol_0_100);
 
 /** 播放一段 PCM（16bit 单声道，阻塞直到写完；内部有超时保护）。返回实际写入字节数。 */
 int audio_out_write(const void *pcm, int bytes);
 
 /** 【第 1 批自检】播放三声测试音 —— 用来验证"声卡链路是否通"。 */
 void audio_out_test_tone(void);
+
+/* 【M22】设置语音播报音量（0-300%）：
+ *   <=100 → ES8311 硬件音量跟随（音质最好）
+ *   >100  → 硬件固定 100%，超出部分由播放任务做软件增益（最高 3.0x，可能削波） */
+void audio_out_set_volume(int vol_0_300);

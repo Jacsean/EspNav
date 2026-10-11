@@ -39,6 +39,9 @@ static void audio_boot_task(void *arg)
         return;
     }
     audio_out_test_tone();                      /* 自检音：喇叭接好后能听到 3 声 */
+    /* 【M22】应用 NVS 里保存的语音音量（默认 200%）。
+     * 放在这里是因为配置已由 app_main 调 config_load_nvs() 载入。 */
+    audio_out_set_volume((int)config_get()->audio_vol);
     vTaskDelete(NULL);
 }
 

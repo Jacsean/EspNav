@@ -132,6 +132,13 @@ object OutMsg {
      * 格式固定 16kHz / 16bit / 单声道（ESP 侧 audio_rx 只接受这一种）。
      * ⚠ 注意：音频分块的 base64 字段名是 "b64"（图像用的是 "d"），别写错，否则固件取不到。
      * 每块原始字节 ≤1200（base64 ≤1600 字符 < 固件缓冲区 1800）。 */
+    /* 【M22】音量单发（也可随 setConfig 一起发，这里保留独立接口便于只调音量） */
+    fun setVolume(vol0_300: Int): String =
+        Json.obj(
+            "msg_type" to "SET_CONFIG",
+            "payload" to Json.obj("audio_vol" to vol0_300.coerceIn(0, 300))
+        ).toString()
+
     fun audioBegin(seq: Int, rate: Int, bits: Int, ch: Int, bytes: Int): String =
         Json.obj(
             "msg_type" to "AUDIO_BEGIN",

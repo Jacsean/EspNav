@@ -30,6 +30,7 @@ void config_init(void)
     s_cfg.screen_flip    = true; /* 【M2.5】默认水平镜像（分光镜 HUD 场景）*/
     s_cfg.screen_flip_y  = false;/* 【M9】默认不做垂直翻转 */
     s_cfg.ap_delay_s     = 15;   /* 【M15】上电先试连热点 15 秒，超时才开配网热点 */
+    s_cfg.audio_vol      = 200;  /* 【M22】语音音量 200%（硬件 100% + 软件 2.0x）；嫌大可调低 */
     s_cfg.img_on         = true; /* 【M7】默认允许底图；App 连接/开始导航时会同步真实开关状态 */
     strncpy(s_cfg.firmware_ver, "V1.4.0", sizeof(s_cfg.firmware_ver) - 1);
     ESP_LOGI(TAG, "config default ready");
@@ -66,6 +67,23 @@ void config_set_screen_flip_y(bool v)    { s_cfg.screen_flip_y = v; }
  * 必须存下来，下次上电才生效。 */
 #define NVS_NS      "espnav"
 #define NVS_K_APDLY "ap_delay_s"
+#define NVS_K_AVOL  "audio_vol"     /* 【M22】语音音量（%），NVS 持久化 */
+
+void config_set_audio_vol(uint16_t v)
+{
+    if (v > 300) v = 300;
+    s_cfg.audio_vol = v;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        if (nvs_set_u16(h, NVS_K_AVOL, v) == ESP_OK) {
+            nvs_commit(h);
+            ESP_LOGI(TAG, "audio_vol=%u 已存 NVS", (unsigned)v);
+        } else {
+            ESP_LOGW(TAG, "audio_vol 写入 NVS 失败");
+        }
+        nvs_close(h);
+    }
+}
 
 void config_set_ap_delay_s(uint8_t v)
 {
@@ -99,6 +117,14 @@ void config_load_nvs(void)
         ESP_LOGI(TAG, "从 NVS 载入 ap_delay_s=%u 秒", (unsigned)v);
     } else {
         ESP_LOGI(TAG, "NVS 无 ap_delay_s，使用默认 %u 秒", (unsigned)s_cfg.ap_delay_s);
+    }
+    /* 【M22】语音音量 */
+    uint16_t av = 0;
+    if (nvs_get_u16(h, NVS_K_AVOL, &av) == ESP_OK && av <= 300) {
+        s_cfg.audio_vol = av;
+        ESP_LOGI(TAG, "从 NVS 载入 audio_vol=%u%%", (unsigned)av);
+    } else {
+        ESP_LOGI(TAG, "NVS 无 audio_vol，使用默认 %u%%", (unsigned)s_cfg.audio_vol);
     }
     nvs_close(h);
 }

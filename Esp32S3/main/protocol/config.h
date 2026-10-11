@@ -31,6 +31,8 @@ typedef struct {
     bool     screen_flip_y;   /* true → 整屏垂直镜像：画面上下翻转 */
     /* ---- M15：开机联网行为（App 设置项；因用于开机阶段，需存 NVS 下次上电生效）---- */
     uint8_t  ap_delay_s;      /* 上电后先尝试连接已保存热点的时间（秒）；超时才开配网热点 */
+    uint16_t audio_vol;       /* 【M22】语音播报音量 0-300（%）：≤100 只用 ES8311 硬件音量；
+                               * >100 时硬件固定 100%，超出部分由播放任务做软件增益（最高 3.0x） */
     /* ---- M7：APK 地图底图总开关（关掉后 ESP 回到原始导航模式，不再贴最后一张图）---- */
     bool     img_on;          /* true=App 正在推底图；false=丢弃底图 → 模板路面/行程图 */
     char     firmware_ver[16];
@@ -63,6 +65,7 @@ void         config_set_screen_flip(bool v);
 void         config_set_screen_flip_y(bool v);
 /* M15：开机等待热点时间（秒，5-180）；setter 会写入 NVS，下次上电生效 */
 void         config_set_ap_delay_s(uint8_t v);
+void         config_set_audio_vol(uint16_t v);     /* 【M22】0-300，入 NVS */
 /* M15：从 NVS 载入持久化配置 —— **必须在 NVS 初始化之后调用**（即 wifi_common_init() 之后）*/
 void         config_load_nvs(void);
 #define AP_DELAY_S_MIN  5

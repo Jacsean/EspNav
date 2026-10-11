@@ -76,6 +76,8 @@
     <string name="set_voice_on">开启语音播报</string>
     <string name="set_voice_hint">用手机的语音引擎合成语音、下发到 ESP 播放（16kHz/16bit/单声道）。关闭时不下发任何音频。当前版本：仅“语音测试”按钮会发声，导航中的自动播报（转向/到达）在下一批实现。</string>
     <string name="set_voice_test">语音测试（播报一段示例）</string>
+    <string name="set_audio_vol">语音音量</string>
+    <string name="set_audio_vol_hint">0–300%（默认 200%）。100% 以内只用 ESP 的 ES8311 硬件音量；超过 100% 时硬件满档、超出部分在 ESP 侧做软件增益（最高 3 倍，过大可能削波）。调整后立即生效，并存进 ESP 的重启不丢。</string>
     <string name="sec_boot">启动与联网</string>
     <string name="sec_send">发送与画质</string>
     <string name="set_nav_zoom">相机缩放级别</string>
