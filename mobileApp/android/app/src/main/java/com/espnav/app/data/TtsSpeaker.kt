@@ -35,6 +35,11 @@ class TtsSpeaker(private val ctx: Context) {
     private var seq = 0
     private var pending: String? = null     /* TTS 尚未就绪时的待播文本 */
 
+    /** 【M23】是否正在合成/播放：让后续播报"不插队"（一帧一句，不叠加） */
+    @Volatile
+    var isSpeaking = false
+        private set
+
     fun init(onSend: (String) -> Unit) {
         send = onSend
         tts = TextToSpeech(ctx.applicationContext) { status ->
@@ -63,6 +68,7 @@ class TtsSpeaker(private val ctx: Context) {
             if (f.exists()) f.delete()
             /* 以 utteranceId 携带文本编号，onDone 时用来读文件 */
             val id = "espnav" + (++seq)
+            isSpeaking = true
             t.synthesizeToFile(text, null, f, id)
         }
     }
@@ -100,7 +106,10 @@ class TtsSpeaker(private val ctx: Context) {
                 }
                 out(com.espnav.app.protocol.OutMsg.audioEnd(mySeq))
                 f.delete()
-                }
+            }
+            /* 【M23】复位必须放在 runCatching **之外** —— 否则中途异常会让"正在播"永久卡住，
+             * 之后所有播报都被 announce() 静默吞掉（Review 时发现的坑）。 */
+            isSpeaking = false
         }.start()
     }
 

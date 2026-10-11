@@ -64,6 +64,19 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
     private val ttsSpeaker: com.espnav.app.data.TtsSpeaker get() = ttsSpeakerLazy.value
 
+    /* 【M23】导航语音播报决策（转向 100m 单档 / 到达 / 偏航 / 起步概览） */
+    private val voiceAnnouncer = com.espnav.app.data.VoiceAnnouncer()
+
+    /** 播一句（开关关掉、未连接、或上一句没播完时自动跳过） */
+    private fun announce(text: String?) {
+        val t = text ?: return
+        if (!appPrefs.voiceOn) return
+        if (!client.isConnected) return
+        if (ttsSpeaker.isSpeaking) return          /* 不插队：等上一句播完 */
+        log("语音播报：" + t)
+        ttsSpeaker.speak(t)
+    }
+
     private var connecting = false
     /** 主动断开标记：点「断开」/页面关闭时置位，用于跳过自动重连（否则会被立刻拉回连接） */
     private var intentionalDisconnect = false
@@ -639,7 +652,10 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         navSource.start()
         mockJob = lifecycleScope.launch {
             while (isActive) {
-                val f = NavStateMapper.toFrame(navSource.latest())
+                val st = navSource.latest()
+                /* 【M23】语音播报：由每帧导航状态驱动（转向/到达/偏航）；与推帧同频 */
+                runCatching { announce(voiceAnnouncer.onNavState(st)) }
+                val f = NavStateMapper.toFrame(st)
                 client.queue(OutMsg.navFrame(applyDbgMask(f)))
                 binding.pageTest.tvStage.text =
                     "${label}：剩余 ${f.turnDist} m  进度 ${f.progressPct}%  ${f.hint}"
@@ -661,6 +677,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 delay(frameMs)
             }
         }
+        /* 【M23】起步概览播报（如"开始导航，全程 4.3 公里"） */
+        runCatching { announce(voiceAnnouncer.onStart(navSource.latest())) }
         log("开始 $label（每 ${appPrefs.espFrameIntervalMs}ms 一帧 = " +
             "${"%.1f".format(1000.0 / appPrefs.espFrameIntervalMs)} fps）")
         /* 【M8.1】导航期间保持屏幕常亮（骑行时不能自动锁屏；也顺带避开了
