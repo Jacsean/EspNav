@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EspNav · HUD 叠加效果实验台</title>
+<style>
+  :root {
+    --bg: #12141a; --panel: #1b1e27; --line: #2c3140;
+    --fg: #e6e9f0; --dim: #9aa3b5; --acc: #4cc2ff; --ok: #46d39a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 13px/1.65 "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+  }
+  header {
+    padding: 14px 18px; border-bottom: 1px solid var(--line);
+    background: var(--panel); position: sticky; top: 0; z-index: 10;
+  }
+  header h1 { margin: 0 0 4px; font-size: 16px; }
+  header p { margin: 0; color: var(--dim); font-size: 12px; }
+  .wrap { padding: 16px; display: grid; gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  .card > h2 { margin: 0 0 10px; font-size: 13px; color: var(--acc); font-weight: 600; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .grow { flex: 1 1 240px; }
+  label.file {
+    display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+    border: 1px dashed var(--line); border-radius: 8px; padding: 9px 14px;
+    background: #171a22; font-size: 12px;
+  }
+  label.file:hover { border-color: var(--acc); }
+  label.file input { display: none; }
+  .thumb {
+    border: 1px solid var(--line); border-radius: 6px; background: #0d0f14;
+    max-width: 100%; image-rendering: pixelated;
+  }
+  .ctl { display: grid; grid-template-columns: 132px 1fr 58px; gap: 8px 10px; align-items: center; }
+  .ctl > span:first-child { color: var(--dim); font-size: 12px; }
+  .ctl output { text-align: right; color: var(--acc); font-variant-numeric: tabular-nums; font-size: 12px; }
+  input[type=range] { width: 100%; accent-color: var(--acc); }
+  select, button {
+    background: #171a22; color: var(--fg); border: 1px solid var(--line);
+    border-radius: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer;
+    font-family: inherit;
+  }
+  select:hover, button:hover { border-color: var(--acc); }
+  button.pri { background: #1d3a4d; border-color: #2c6b8f; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chips button { padding: 6px 11px; }
+  canvas { background: #0d0f14; border: 1px solid var(--line); border-radius: 6px; max-width: 100%; }
+  .stage { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .box { display: grid; gap: 6px; }
+  .box h3 { margin: 0; font-size: 12px; color: var(--dim); font-weight: 500; }
+  .grid4 { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .cell { display: grid; gap: 5px; }
+  .cell b { font-size: 12px; color: var(--ok); font-weight: 600; }
+  .cell small { color: var(--dim); font-size: 11px; line-height: 1.4; }
+  .hint { color: var(--dim); font-size: 11.5px; }
+  .tag { display: inline-block; background: #23303d; color: var(--acc); border-radius: 4px;
+         padding: 1px 6px; font-size: 11px; margin-right: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>EspNav · HUD 叠加效果实验台</h1>
+  <p>上传两张图（真实环境 + ESP 地图截图），在浏览器里实时试各种处理算法，并用
+     <b>加法合成</b>精确模拟分光镜叠加效果 —— 全部在本机运行，图片不会上传到任何地方。</p>
+</header>
+
+<div class="wrap">
+
+  <!-- ===================== 1. 输入 ===================== -->
+  <div class="card">
+    <h2>① 输入图片（你自己选）</h2>
+    <div class="row">
+      <label class="file">📷 真实环境照片<input type="file" id="fReal" accept="image/*"></label>
+      <label class="file">🗺️ 地图截图（ESP 上那张）<input type="file" id="fMap" accept="image/*"></label>
+      <span class="hint">两张都可选；只传一张也能看处理效果。</span>
+    </div>
+    <div class="row" style="margin-top:12px; align-items:flex-start">
+      <div class="box grow"><h3>真实环境</h3><canvas id="cvReal" width="320" height="240"></canvas></div>
+      <div class="box grow"><h3>地图截图（会被缩到 320×240，与 ESP 一致）</h3><canvas id="cvMap" width="320" height="240"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ===================== 2. 算法与参数 ===================== -->
+  <div class="card">
+    <h2>② 地图处理算法</h2>
+    <div class="row" style="margin-bottom:12px">
+      <span class="hint">算法：</span>
+      <select id="algo">
+        <option value="raw">原始（对照）</option>
+        <option value="dim">压暗 · 亮度相乘（现状做法）</option>
+        <option value="alpha">透明度混合纯黑（暗部归零 → 该像素不发光）</option>
+        <option value="sobel">轮廓 · Sobel 边缘</option>
+        <option value="dither">点阵抖动（稀疏发光）</option>
+        <option value="mono">单色化（只留一种颜色）</option>
+        <option value="hue">只留指定色相（逼近"只留路线"）</option>
+        <option value="blur">虚化（高斯模糊）</option>
+      </select>
+      <button class="pri" id="btnApply">重新计算</button>
+    </div>
+
+    <div class="ctl">
+      <span>亮度</span><input type="range" id="pBright" min="0" max="150" value="70"><output id="oBright">70%</output>
+      <span>对比度</span><input type="range" id="pContrast" min="50" max="200" value="100"><output id="oContrast">100%</output>
+      <span>饱和度</span><input type="range" id="pSat" min="0" max="150" value="45"><output id="oSat">45%</output>
+      <span>边缘阈值（Sobel）</span><input type="range" id="pEdge" min="5" max="200" value="55"><output id="oEdge">55</output>
+      <span>线宽（轮廓加粗）</span><input type="range" id="pEdgeW" min="1" max="4" value="1"><output id="oEdgeW">1</output>
+      <span>点阵密度</span><input type="range" id="pDither" min="2" max="8" value="4"><output id="oDither">1/4</output>
+      <span>模糊半径</span><input type="range" id="pBlur" min="1" max="12" value="5"><output id="oBlur">5</output>
+      <span>保留色相</span><input type="range" id="pHue" min="0" max="359" value="210"><output id="oHue">210°</output>
+      <span>色相容忍度</span><input type="range" id="pHueTol" min="10" max="180" value="60"><output id="oHueTol">60°</output>
+    </div>
+
+    <div class="chips" style="margin-top:12px">
+      <span class="hint" style="align-self:center">预设：</span>
+      <button data-preset="now">现状（压暗 70% + 去饱和）</button>
+      <button data-preset="outline">仅轮廓（黑底绿线）</button>
+      <button data-preset="route-only">只留路线色</button>
+      <button data-preset="sparse">稀疏点阵</button>
+      <button data-preset="ghost">极淡底图（暗部归零）</button>
+      <button data-preset="clear">全透明（不推底图）</button>
+    </div>
+  </div>
+
+  <!-- ===================== 3. 分光镜模拟 ===================== -->
+  <div class="card">
+    <h2>③ 分光镜叠加模拟（物理模型：结果 = 真实 × T + 屏幕 × R）</h2>
+    <div class="ctl">
+      <span>分光镜透过率 T</span><input type="range" id="pT" min="30" max="100" value="70"><output id="oT">70%</output>
+      <span>反射率 R</span><input type="range" id="pR" min="0" max="80" value="30"><output id="oR">30%</output>
+      <span>LCD 黑位漏光</span><input type="range" id="pBlack" min="0" max="60" value="12"><output id="oBlack">12%</output>
+    </div>
+    <p class="hint" style="margin:8px 0 0">
+      <span class="tag">读法</span>
+      叠加图里"真实环境还剩多少细节"才是判定标准 —— 屏幕部分越亮，真实景物被冲淡得越厉害。
+      LCD 黑位漏光是真实存在的（IPS 无法做到纯黑），所以屏幕上"理论全黑"的区域在叠加图里仍会有一层灰底。
+    </p>
+  </div>
+
+  <!-- ===================== 4. 预览 ===================== -->
+  <div class="card">
+    <h2>④ 实时预览</h2>
+    <div class="stage">
+      <div class="box"><h3>处理后（会被发给 ESP 的图）</h3><canvas id="cvOut" width="320" height="240"></canvas></div>
+      <div class="box"><h3>分光镜叠加效果（真实 × T + 屏幕 × R）</h3><canvas id="cvMix" width="320" height="240"></canvas></div>
+      <div class="box"><h3>纯真实环境（对照）</h3><canvas id="cvRealRef" width="320" height="240"></canvas></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="pri" id="btnPng">导出"处理后"的 PNG</button>
+      <span class="hint">导出的图可以直接替换到 App 的推图流程里做真机对比。</span>
+    </div>
+  </div>
+
+  <!-- ===================== 5. 方案对比 ===================== -->
+  <div class="card">
+    <h2>⑤ 方案并排对比（同一张底图 + 同一张真实照片，一次看全）</h2>
+    <div class="grid4" id="cmpGrid"></div>
+  </div>
+
+  <div class="card">
+    <h2>⑥ 说明</h2>
+    <p class="hint" style="margin:0">
+      · 所有算法都是纯前端 Canvas 实现，<b>不联网、不上传</b>。<br>
+      · 地图截图会被缩放到 <b>320×240</b> 后再处理 —— 与 ESP 实际收到的尺寸一致。<br>
+      · "分光镜叠加"用的是<b>加法合成</b>（屏幕是自发光体，与透过的真实光<b>相加</b>），
+        这是物理正确的方式；用"透明度混合"模拟会低估/高估亮部的冲淡程度。<br>
+      · 真实照片若与地图视角不一致，叠加图只用于比较"冲淡程度"，不必苛求位置对齐。
+    </p>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const W = 320, H = 240;
+const norm = c => { c.width = W; c.height = H; return c; };
+
+const cvReal = norm(document.getElementById('cvReal'));
+const cvMap  = norm(document.getElementById('cvMap'));
+const cvOut  = norm(document.getElementById('cvOut'));
+const cvMix  = norm(document.getElementById('cvMix'));
+const cvRef  = norm(document.getElementById('cvRealRef'));
+
+// 统一用 ImageData 处理，方便写算法
+const ctxReal = cvReal.getContext('2d', { willReadFrequently: true });
+const ctxMap  = cvMap.getContext('2d',  { willReadFrequently: true });
+const ctxOut  = cvOut.getContext('2d',  { willReadFrequently: true });
+const ctxMix  = cvMix.getContext('2d');
+const ctxRef  = cvRef.getContext('2d');
+
+let imgReal = null;   // ImageData of real photo
+let imgMap  = null;   // ImageData of map (scaled to 320x240)
+let imgOut  = null;   // ImageData after processing
+
+/* ---------------- 工具：画占位提示 ---------------- */
+function placeholder(ctx, text) {
+  ctx.fillStyle = '#0d0f14'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#4a5265'; ctx.font = '13px "Microsoft YaHei", sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, W / 2, H / 2);
+}
+placeholder(ctxReal, '请选择真实环境照片');
+placeholder(ctxMap,  '请选择地图截图');
+placeholder(ctxOut,  '—');
+placeholder(ctxMix,  '—');
+placeholder(ctxRef,  '—');
+
+/* ---------------- 参数读取 ---------------- */
+const $ = id => document.getElementById(id);
+function params() {
+  return {
+    algo:    $('algo').value,
+    bright:  +$('pBright').value / 100,
+    contrast:+$('pContrast').value / 100,
+    sat:     +$('pSat').value / 100,
+    edge:    +$('pEdge').value,
+    edgeW:   +$('pEdgeW').value,
+    dither:  +$('pDither').value,
+    blur:    +$('pBlur').value,
+    hue:     +$('pHue').value,
+    hueTol:  +$('pHueTol').value,
+    T:       +$('pT').value / 100,
+    R:       +$('pR').value / 100,
+    black:   +$('pBlack').value / 100,
+  };
+}
+
+/* ================= 图像算法 ================= */
+
+// 亮度/对比度/饱和度（等价于 Android 端的 ColorMatrix 三步）
+function colorAdjust(d, sat, brightness, contrast) {
+  const o = new Uint8ClampedArray(d.length);
+  for (let i = 0; i < d.length; i += 4) {
+    let r = d[i], g = d[i + 1], b = d[i + 2];
+    // 饱和度：向灰度插值
+    const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+    r = gray + (r - gray) * sat; g = gray + (g - gray) * sat; b = gray + (b - gray) * sat;
+    // 对比度：绕 128 拉伸
+    r = (r - 128) * contrast + 128; g = (g - 128) * contrast + 128; b = (b - 128) * contrast + 128;
+    // 亮度：相乘
+    r *= brightness; g *= brightness; b *= brightness;
+    o[i] = r; o[i + 1] = g; o[i + 2] = b; o[i + 3] = 255;
+  }
+  return o;
+}
+
+// 透明度混合纯黑：（1-a）系数 —— 与"亮度相乘"的区别在于暗部被压到 0（该像素不发光）
+function mixBlack(d, a) {
+  const o = new Uint8ClampedArray(d.length);
+  for (let i = 0; i < d.length; i += 4) {
+    o[i] = d[i] * a; o[i + 1] = d[i + 1] * a; o[i + 2] = d[i + 2] * a; o[i + 3] = 255;
+  }
+  return o;
+}
+
+// 灰度
+function gray(d) {
+  const o = new Uint8ClampedArray(d.length);
+  for (let i = 0; i < d.length; i += 4) {
+    const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    o[i] = o[i + 1] = o[i + 2] = g; o[i + 3] = 255;
+  }
+  return o;
+}
+
+// Sobel 边缘检测 → 黑底 + 绿线（可调阈值与线宽）
+function sobel(d, thr, lineW, color) {
+  const w = W, h = H;
+  const g = gray(d);
+  const mag = new Float32Array(w * h);
+  const at = (x, y) => g[((y * w + x) << 2)];
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const p00=at(x-1,y-1), p10=at(x,y-1), p20=at(x+1,y-1);
+      const p01=at(x-1,y),   /*p11*/       p21=at(x+1,y);
+      const p02=at(x-1,y+1), p12=at(x,y+1), p22=at(x+1,y+1);
+      const gx = (p20 + 2*p21 + p22) - (p00 + 2*p01 + p02);
+      const gy = (p02 + 2*p12 + p22) - (p00 + 2*p10 + p20);
+      mag[y * w + x] = Math.sqrt(gx*gx + gy*gy);
+    }
+  }
+  const o = new Uint8ClampedArray(d.length);   // 默认全黑（不发光）
+  for (let i = 3; i < o.length; i += 4) o[i] = 255;
+  const put = (x, y, a) => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return;
+    const i = (y * w + x) << 2;
+    o[i] = color[0]; o[i + 1] = color[1]; o[i + 2] = color[2]; o[i + 3] = 255;
+  };
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      if (mag[y * w + x] < thr) continue;
+      const e = lineW - 1;
+      for (let dy = -e; dy <= e; dy++) for (let dx = -e; dx <= e; dx++) put(x + dx, y + dy);
+    }
+  }
+  return o;
+}
+
+// 点阵抖动：只保留 1/d 的像素（按亮度概率保留），平均亮度大幅降低但形状仍在
+function dither(d, div) {
+  const o = new Uint8ClampedArray(d.length);
+  for (let i = 3; i < o.length; i += 4) o[i] = 255;      // 默认全黑
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) << 2;
+      if ((x % div !== 0) || (y % div !== 0)) continue;   // 稀疏网格
+      const lum = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255;
+      // 亮点保留概率更高（保留形状），暗点更容易被丢掉
+      if (lum < 0.18) continue;
+      o[i] = d[i]; o[i + 1] = d[i + 1]; o[i + 2] = d[i + 2];
+    }
+  }
+  // 每个采样点画成一个 div×div 的小方块，避免"点太小看不见"
+  const o2 = new Uint8ClampedArray(o.length);
+  for (let i = 3; i < o2.length; i += 4) o2[i] = 255;
+  for (let y = 0; y < H; y += div) {
+    for (let x = 0; x < W; x += div) {
+      const i = (y * W + x) << 2;
+      if (o[i] === 0 && o[i + 1] === 0 && o[i + 2] === 0) continue;
+      for (let dy = 0; dy < div; dy++) for (let dx = 0; dx < div; dx++) {
+        const yy = y + dy, xx = x + dx;
+        if (yy >= H || xx >= W) continue;
+        const j = (yy * W + xx) << 2;
+        o2[j] = o[i]; o2[j + 1] = o[i + 1]; o2[j + 2] = o[i + 2];
+      }
+    }
+  }
+  return o2;
+}
+
+// 单色化：把亮度映射到单一色相
+function mono(d, color) {
+  const o = new Uint8ClampedArray(d.length);
+  for (let i = 0; i < d.length; i += 4) {
+    const lum = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255;
+    o[i] = color[0] * lum; o[i + 1] = color[1] * lum; o[i + 2] = color[2] * lum; o[i + 3] = 255;
+  }
+  return o;
+}
+
+// 色相筛选：只保留指定色相附近的像素（近似"只留路线色"），其余归黑
+function hueFilter(d, hue, tol) {
+  const o = new Uint8ClampedArray(d.length);
+  for (let i = 3; i < o.length; i += 4) o[i] = 255;
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), c = mx - mn;
+    if (c < 0.10) continue;                       // 近灰（白/黑/灰底图）一律丢弃
+    let hgt;
+    if (mx === r) hgt = 60 * (((g - b) / c) % 6);
+    else if (mx === g) hgt = 60 * ((b - r) / c + 2);
+    else hgt = 60 * ((r - g) / c + 4);
+    if (hgt < 0) hgt += 360;
+    let dist = Math.abs(hgt - hue);
+    if (dist > 180) dist = 360 - dist;
+    if (dist > tol) continue;
+    o[i] = d[i]; o[i + 1] = d[i + 1]; o[i + 2] = d[i + 2];
+  }
+  return o;
+}
+
+// 可分离盒式模糊（近似高斯，速度快）
+function boxBlur(d, radius) {
+  if (radius < 1) return new Uint8ClampedArray(d);
+  const tmp = new Uint8ClampedArray(d.length);
+  const out = new Uint8ClampedArray(d.length);
+  // 横向
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let k = -radius; k <= radius; k++) {
+        const xx = x + k; if (xx < 0 || xx >= W) continue;
+        const i = (y * W + xx) << 2;
+        r += d[i]; g += d[i + 1]; b += d[i + 2]; n++;
+      }
+      const i = (y * W + x) << 2;
+      tmp[i] = r / n; tmp[i + 1] = g / n; tmp[i + 2] = b / n; tmp[i + 3] = 255;
+    }
+  }
+  // 纵向
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let k = -radius; k <= radius; k++) {
+        const yy = y + k; if (yy < 0 || yy >= H) continue;
+        const i = (yy * W + x) << 2;
+        r += tmp[i]; g += tmp[i + 1]; b += tmp[i + 2]; n++;
+      }
+      const i = (y * W + x) << 2;
+      out[i] = r / n; out[i + 1] = g / n; out[i + 2] = b / n; out[i + 3] = 255;
+    }
+  }
+  return out;
+}
+
+/* ================= 处理主流程 ================= */
+const GREEN = [80, 255, 120];
+
+/** 纯计算：返回处理后的像素，不碰任何 canvas（对比网格要复用，不能有副作用） */
+function computeMap(src, p) {
+  if (!src) return null;
+  let d;
+  switch (p.algo) {
+    case 'raw':
+      d = new Uint8ClampedArray(src.data);
+      break;
+    case 'dim':
+      d = colorAdjust(src.data, p.sat, p.bright, p.contrast);
+      break;
+    case 'alpha':
+      d = mixBlack(src.data, p.bright);
+      break;
+    case 'sobel':
+      d = sobel(src.data, p.edge, p.edgeW, GREEN);
+      break;
+    case 'dither':
+      d = dither(colorAdjust(src.data, p.sat, 1.0, p.contrast), p.dither);
+      break;
+    case 'mono':
+      d = mono(src.data, GREEN);
+      break;
+    case 'hue':
+      d = hueFilter(src.data, p.hue, p.hueTol);
+      break;
+    case 'blur':
+      d = boxBlur(src.data, p.blur);
+      break;
+    default:
+      d = new Uint8ClampedArray(src.data);
+  }
+  return new ImageData(d, W, H);
+}
+
+/** 计算并画到主预览 */
+function processMap(src, p) {
+  const out = computeMap(src, p);
+  if (!out) return null;
+  ctxOut.putImageData(out, 0, 0);
+  return out;
+}
+
+/* 分光镜叠加：result = real * T + screen * R + 黑位漏光 * R
+ * 其中"屏幕的黑"不是全黑（LCD 漏光），所以额外加 black * R。 */
+function composite(real, screen, p) {
+  if (!real || !screen) return null;
+  const o = new Uint8ClampedArray(real.data.length);
+  for (let i = 0; i < o.length; i += 4) {
+    for (let c = 0; c < 3; c++) {
+      const re = real.data[i + c] * p.T;
+      const sc = (screen.data[i + c] * (1 - p.black) + 255 * p.black) * p.R;
+      o[i + c] = Math.min(255, re + sc);
+    }
+    o[i + 3] = 255;
+  }
+  return new ImageData(o, W, H);
+}
+
+function render() {
+  const p = params();
+  const out = processMap(imgMap, p);
+  if (out) imgOut = out;
+
+  const mixed = composite(imgReal, imgOut, p);
+  if (mixed) ctxMix.putImageData(mixed, 0, 0);
+  else placeholder(ctxMix, '请同时选择两张图');
+
+  if (imgReal) ctxRef.putImageData(imgReal, 0, 0);
+  else placeholder(ctxRef, '请选择真实环境照片');
+}
+
+/* ================= 上传 ================= */
+function loadInto(input, ctx, setter, keep) {
+  input.addEventListener('change', e => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const url = URL.createObjectURL(f);
+    const im = new Image();
+    im.onload = () => {
+      // 缩放到 320×240（保持比例，居中裁切）—— 与 ESP 收到的尺寸一致
+      const scale = Math.max(W / im.width, H / im.height);
+      const dw = im.width * scale, dh = im.height * scale;
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+      ctx.drawImage(im, (W - dw) / 2, (H - dh) / 2, dw, dh);
+      setter(ctx.getImageData(0, 0, W, H));
+      URL.revokeObjectURL(url);
+      render();
+      buildCompare();
+    };
+    im.onerror = () => alert('这个文件读不出来，换一张试试（支持 png/jpg/webp）。');
+    im.src = url;
+  });
+}
+loadInto($('fReal'), ctxReal, d => { imgReal = d; });
+loadInto($('fMap'),  ctxMap,  d => { imgMap  = d; });
+
+/* ================= 控件事件 ================= */
+$('algo').addEventListener('change', render);
+$('btnApply').addEventListener('click', render);
+document.querySelectorAll('input[type=range]').forEach(r => {
+  r.addEventListener('input', () => {
+    // 更新数值显示
+    const map = {
+      pBright: v => v + '%', pContrast: v => v + '%', pSat: v => v + '%',
+      pEdge: v => v, pEdgeW: v => v,
+      pDither: v => '1/' + v, pBlur: v => v,
+      pHue: v => v + '°', pHueTol: v => v + '°',
+      pT: v => v + '%', pR: v => v + '%', pBlack: v => v + '%',
+    };
+    const out = r.nextElementSibling;
+    if (out && map[r.id]) out.textContent = map[r.id](r.value);
+    scheduleRender();
+  });
+});
+let rid = 0;
+function scheduleRender() {
+  cancelAnimationFrame(rid);
+  rid = requestAnimationFrame(() => { render(); });
+}
+
+/* ================= 导出 PNG ================= */
+$('btnPng').addEventListener('click', () => {
+  if (!imgOut) { alert('还没有可导出的结果，请先选地图截图。'); return; }
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  c.getContext('2d').putImageData(imgOut, 0, 0);
+  const a = document.createElement('a');
+  a.download = 'espnav_map_processed_' + $('algo').value + '.png';
+  a.href = c.toDataURL('image/png');
+  a.click();
+});
+
+/* ================= 预设 ================= */
+const PRESETS = {
+  now:       { algo: 'dim',    pBright: 70, pSat: 45, pContrast: 100 },
+  outline:   { algo: 'sobel',  pEdge: 55, pEdgeW: 1, pT: 75, pR: 25, pBlack: 8 },
+  'route-only': { algo: 'hue', pHue: 210, pHueTol: 55, pT: 80, pR: 20, pBlack: 6 },
+  sparse:    { algo: 'dither', pDither: 4, pT: 80, pR: 20, pBlack: 8 },
+  ghost:     { algo: 'alpha',  pBright: 25, pT: 88, pR: 12, pBlack: 6 },
+  clear:     { algo: 'alpha',  pBright: 0,  pT: 100, pR: 0, pBlack: 0 },
+};
+document.querySelectorAll('[data-preset]').forEach(b => {
+  b.addEventListener('click', () => {
+    const alg = PRESETS[b.dataset.preset];
+    if (!alg) return;
+    const algoName = alg.algo;                     // 先取出，再改其余滑杆
+    $('algo').value = algoName;
+    Object.keys(alg).forEach(k => { if (k !== 'algo' && $(k)) $(k).value = alg[k]; });
+    // 刷新数值显示
+    document.querySelectorAll('input[type=range]').forEach(r => r.dispatchEvent(new Event('input')));
+    render(); buildCompare();
+  });
+});
+
+/* ================= 方案并排对比 ================= */
+const CMP = [
+  { name: '现状：压暗 70% + 去饱和', algo: 'dim',    set: { pBright: 70, pSat: 45, pContrast: 100 },
+    note: '现在的做法。底图整体发光，真实环境被整体冲淡。' },
+  { name: '轮廓：Sobel 黑底绿线', algo: 'sobel',     set: { pEdge: 55, pEdgeW: 1 },
+    note: '只有边缘发光，其余像素不发光 → 真实环境几乎不被遮挡。' },
+  { name: '只留路线色（色相筛选）', algo: 'hue',     set: { pHue: 210, pHueTol: 55 },
+    note: '只保留接近路线蓝的像素，其余归黑。信息量最小、遮挡最轻。' },
+  { name: '稀疏点阵', algo: 'dither',                set: { pDither: 4 },
+    note: '只让 1/16 的像素发光，仍有形状感，平均亮度低。' },
+  { name: '极淡底图（暗部归零）', algo: 'alpha',     set: { pBright: 25 },
+    note: '与"亮度相乘"不同：暗部被压到全黑，不发光。' },
+  { name: '仅叠加层（不推底图）', algo: 'alpha',     set: { pBright: 0 },
+    note: '底图完全不发光，只有 ESP 自己画的路线/箭头/文字。' },
+];
+
+function buildCompare() {
+  const grid = $('cmpGrid');
+  grid.innerHTML = '';
+  const p0 = params();
+  CMP.forEach(item => {
+    const p = Object.assign({}, p0, item.set, { algo: item.algo });
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    const b = document.createElement('b'); b.textContent = item.name;
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    c.style.width = '100%';
+    const cx = c.getContext('2d');
+    const small = document.createElement('small'); small.textContent = item.note;
+    cell.append(b, c, small);
+    grid.append(cell);
+
+    if (!imgMap) { placeholder(cx, '请先选地图截图'); return; }
+    /* 用纯计算的 computeMap（不碰主预览 canvas），避免对比网格把主预览弄脏 */
+    const o = computeMap(imgMap, p);
+    const m = composite(imgReal, o, p);
+    if (m) cx.putImageData(m, 0, 0);
+    else cx.putImageData(o, 0, 0);
+  });
+}
+
+/* 初始化 */
+render();
+buildCompare();
+</script>
+</body>
+</html>
