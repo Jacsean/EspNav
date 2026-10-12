@@ -5,6 +5,7 @@
 #include "esp_http_server.h"
 #include "esp_wifi.h"
 #include "esp_log.h"
+#include "config.h"      /* 【M25】状态接口回报实际热点名 */
 #include "wifi_sta.h"
 
 static const char *TAG = "prov";
@@ -172,9 +173,10 @@ static esp_err_t status_get(httpd_req_t *req)
 {
     char buf[256];
     snprintf(buf, sizeof(buf),
-             "{\"sta_connected\":%s,\"ip\":\"%s\",\"rssi\":%d,\"saved\":%d,\"ap_ssid\":\"ESPNav-AP\",\"port\":8899}",
+             "{\"sta_connected\":%s,\"ip\":\"%s\",\"rssi\":%d,\"saved\":%d,\"ap_ssid\":\"%s\",\"port\":8899}",
              wifi_sta_is_connected() ? "true" : "false",
-             wifi_sta_ip_str(), wifi_sta_rssi(), wifi_sta_cred_count());
+             wifi_sta_ip_str(), wifi_sta_rssi(), wifi_sta_cred_count(),
+             (config_get() && config_get()->ap_ssid[0]) ? config_get()->ap_ssid : "ESPNav-AP");
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_send(req, buf, HTTPD_RESP_USE_STRLEN);
 }
@@ -204,5 +206,6 @@ void softap_prov_init(void)
     httpd_register_uri_handler(s_srv, &u_scan);
     httpd_register_uri_handler(s_srv, &u_status);
 
-    ESP_LOGI(TAG, "配网页就绪: 手机连 ESPNav-AP 后访问 http://192.168.4.1");
+    ESP_LOGI(TAG, "配网页就绪: 手机连 %s 后访问 http://192.168.4.1",
+             (config_get() && config_get()->ap_ssid[0]) ? config_get()->ap_ssid : "ESPNav-AP");
 }

@@ -52,6 +52,31 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     /** 习惯性配置（连接地址/默认起终点/城市/缩放/日志行数…），由「⚙ 设置」维护 */
     private val appPrefs by lazy { com.espnav.app.data.AppPrefs(applicationContext) }
 
+    /* 【M21】语音播报：TextToSpeech 合成 → 16k/16bit/单声道 → 分块下发。
+     * 延迟创建（只有用到时才初始化 TTS 引擎）；内部用 applicationContext，不会泄漏 Activity。
+     * 下发走 send()（它自己会判断连接状态）。 */
+    private val ttsSpeakerLazy: kotlin.Lazy<com.espnav.app.data.TtsSpeaker> = lazy {
+        /* ⚠ 发送必须切回主线程：send() 内部会调 log()，而 log() 直接操作 TextView。
+         * （音频的处理/重采样已经在 TtsSpeaker 的后台线程里做完，这里只是一帧帧发出。） */
+        com.espnav.app.data.TtsSpeaker(this).also { t ->
+            t.init { json -> runOnUiThread { send(json) } }
+        }
+    }
+    private val ttsSpeaker: com.espnav.app.data.TtsSpeaker get() = ttsSpeakerLazy.value
+
+    /* 【M23】导航语音播报决策（转向 100m 单档 / 到达 / 偏航 / 起步概览） */
+    private val voiceAnnouncer = com.espnav.app.data.VoiceAnnouncer()
+
+    /** 播一句（开关关掉、未连接、或上一句没播完时自动跳过） */
+    private fun announce(text: String?) {
+        val t = text ?: return
+        if (!appPrefs.voiceOn) return
+        if (!client.isConnected) return
+        if (ttsSpeaker.isSpeaking) return          /* 不插队：等上一句播完 */
+        log("语音播报：" + t)
+        ttsSpeaker.speak(t)
+    }
+
     private var connecting = false
     /** 主动断开标记：点「断开」/页面关闭时置位，用于跳过自动重连（否则会被立刻拉回连接） */
     private var intentionalDisconnect = false
@@ -208,6 +233,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     override fun onDestroy() {
+        /* 【M21】释放 TTS 引擎（用 isInitialized 避免"从未用过却创建一次"） */
+        if (ttsSpeakerLazy.isInitialized()) runCatching { ttsSpeaker.release() }
         mapActive = false        /* 【M8.2】先关闸：销毁过程中不让循环再碰地图 API */
         stopMock()
         intentionalDisconnect = true
@@ -569,6 +596,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             appPrefs.espMapBright / 100f
         com.espnav.app.data.MapShotCapture.contrast =
             appPrefs.espMapContrast / 100f
+        /* 【M16】A6：推图前同步 JPEG 质量（设置页改完立即生效） */
+        com.espnav.app.data.MapShotCapture.jpegQuality = appPrefs.espJpegQuality
         val am = aMap ?: run { log("底图截图跳过：地图未就绪"); return }
         if (!client.isConnected) { log("底图截图跳过：未连接"); return }
         log("底图截图：调用 getMapScreenShot …")
@@ -623,7 +652,12 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         navSource.start()
         mockJob = lifecycleScope.launch {
             while (isActive) {
-                val f = NavStateMapper.toFrame(navSource.latest())
+                val st = navSource.latest()
+                /* 【M23】语音播报：由每帧导航状态驱动（转向/到达/偏航）；与推帧同频 */
+                /* 【M26】把设置里的播报距离同步给策略（用户改完下一帧即生效） */
+                voiceAnnouncer.turnAnnounceM = appPrefs.voiceTurnDistM
+                runCatching { announce(voiceAnnouncer.onNavState(st)) }
+                val f = NavStateMapper.toFrame(st)
                 client.queue(OutMsg.navFrame(applyDbgMask(f)))
                 binding.pageTest.tvStage.text =
                     "${label}：剩余 ${f.turnDist} m  进度 ${f.progressPct}%  ${f.hint}"
@@ -636,15 +670,19 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 /* 【M3.2】地图底图：按设置间隔推一张（默认 3s；开关关掉就完全不发）
                  * 【M8.1】mapActive 为假（App 在后台）时不截图 */
                 mapShotTick++
-                val shotEvery = (appPrefs.espMapShotIntervalMs / FRAME_INTERVAL_MS).coerceAtLeast(1)
+                val frameMs = appPrefs.espFrameIntervalMs.toLong()      /* 【M16】A7：帧率可配 */
+                val shotEvery = (appPrefs.espMapShotIntervalMs / frameMs).coerceAtLeast(1)
                 if (appPrefs.espMapShotOn && mapActive && mapShotTick >= shotEvery) {
                     mapShotTick = 0
                     runCatching { captureAndSendMapShot() }
                 }
-                delay(FRAME_INTERVAL_MS)
+                delay(frameMs)
             }
         }
-        log("开始 $label（每 ${FRAME_INTERVAL_MS}ms 一帧）")
+        /* 【M23】起步概览播报（如"开始导航，全程 4.3 公里"） */
+        runCatching { announce(voiceAnnouncer.onStart(navSource.latest())) }
+        log("开始 $label（每 ${appPrefs.espFrameIntervalMs}ms 一帧 = " +
+            "${"%.1f".format(1000.0 / appPrefs.espFrameIntervalMs)} fps）")
         /* 【M8.1】导航期间保持屏幕常亮（骑行时不能自动锁屏；也顺带避开了
          * "锁屏 → onPause → 地图暂停 → 后台循环碰地图" 这条崩溃链） */
         if (appPrefs.keepScreenOn) {
@@ -944,15 +982,19 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             Triple(R.id.secHeadAddr, R.id.secBodyAddr, R.id.secArrowAddr),
             Triple(R.id.secHeadConn, R.id.secBodyConn, R.id.secArrowConn),
             Triple(R.id.secHeadNav, R.id.secBodyNav, R.id.secArrowNav),
+            Triple(R.id.secHeadSend, R.id.secBodySend, R.id.secArrowSend),
             Triple(R.id.secHeadOverview, R.id.secBodyOverview, R.id.secArrowOverview),
             Triple(R.id.secHeadAppMap, R.id.secBodyAppMap, R.id.secArrowAppMap),
             Triple(R.id.secHeadAppUi, R.id.secBodyAppUi, R.id.secArrowAppUi),
             Triple(R.id.secHeadPerm, R.id.secBodyPerm, R.id.secArrowPerm),
             Triple(R.id.secHeadCfg, R.id.secBodyCfg, R.id.secArrowCfg),
+            Triple(R.id.secHeadBoot, R.id.secBodyBoot, R.id.secArrowBoot),
             Triple(R.id.secHeadScreen, R.id.secBodyScreen, R.id.secArrowScreen),
             Triple(R.id.secHeadScrim, R.id.secBodyScrim, R.id.secArrowScrim),
             Triple(R.id.secHeadColor, R.id.secBodyColor, R.id.secArrowColor),
             Triple(R.id.secHeadEspMap, R.id.secBodyEspMap, R.id.secArrowEspMap),
+            Triple(R.id.secHeadVoice, R.id.secBodyVoice, R.id.secArrowVoice),   /* 【M21】语音播报 */
+            Triple(R.id.secHeadBattery, R.id.secBodyBattery, R.id.secArrowBattery),  /* 【M24】电量显示 */
             Triple(R.id.secHeadFlip, R.id.secBodyFlip, R.id.secArrowFlip),
             Triple(R.id.secHeadDebug, R.id.secBodyDebug, R.id.secArrowDebug)
         )
@@ -966,6 +1008,169 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 arrow.text = getString(if (show) R.string.sec_arrow_open else R.string.sec_arrow_closed)
             }
         }
+        /* ================= 【M25】A 组批 3：配网热点名 / 密码 =================
+         * 输入停止 800ms 后才下发（避免打字过程中每字符发一次，导致 ESP 反复写 NVS）。 */
+        val etSsid = v.findViewById<android.widget.EditText>(R.id.setApSsid)
+        val etPass = v.findViewById<android.widget.EditText>(R.id.setApPass)
+        etSsid.setText(appPrefs.apSsid)
+        etPass.setText(appPrefs.apPass)
+        var apJob: kotlinx.coroutines.Job? = null
+        fun pushApIfValid() {
+            val ssid = etSsid.text.toString().trim()
+            val pass = etPass.text.toString().trim()
+            if (ssid.isEmpty() || ssid.length > 32) {
+                log("热点名无效（须 1-32 字符），未下发")
+                return
+            }
+            if (pass.length < 8 || pass.length > 63) {
+                log("热点密码无效（须 8-63 字符），未下发")
+                return
+            }
+            send(OutMsg.setAp(ssid, pass))
+            log("已下发配网热点：SSID=$ssid（**重启 ESP 后生效**）")
+        }
+        fun scheduleAp() {
+            apJob?.cancel()
+            apJob = lifecycleScope.launch {
+                delay(800)
+                pushApIfValid()
+            }
+        }
+        fun watchAp(et: android.widget.EditText, set: (String) -> Unit) {
+            et.addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    set(s?.toString() ?: "")
+                    scheduleAp()
+                }
+            })
+        }
+        watchAp(etSsid) { appPrefs.apSsid = it }
+        watchAp(etPass) { appPrefs.apPass = it }
+
+        /* ================= 【M24】A 组批 2：电量三阈值 =================
+         * 滑杆用"绝对百分比"（不是偏移量），拖动时节流（变化满 2 才发一次，避免 ESP 反复写 NVS），
+         * 松手时补发最终值。三项一起发（协议是单条 SET_CONFIG 带三个字段）。 */
+        var lastBatSent = Triple(-1, -1, -1)
+        fun pushBattery() {
+            val t = Triple(appPrefs.batRedPct, appPrefs.batYellowPct, appPrefs.batPresentMv)
+            if (t == lastBatSent) return
+            lastBatSent = t
+            send(OutMsg.setBattery(t.first, t.second, t.third))
+        }
+        fun bindBatSeek(seekId: Int, tvId: Int, cur: Int, lo: Int, hi: Int, suffix: String, onSet: (Int) -> Unit) {
+            val sk = v.findViewById<android.widget.SeekBar>(seekId)
+            val tv = v.findViewById<android.widget.TextView>(tvId)
+            sk.max = hi - lo
+            sk.progress = (cur - lo).coerceIn(0, hi - lo)
+            tv.text = cur.toString() + suffix
+            sk.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
+                    if (!fromUser) return
+                    val x = p + lo
+                    tv.text = x.toString() + suffix
+                    onSet(x)
+                    val t = Triple(appPrefs.batRedPct, appPrefs.batYellowPct, appPrefs.batPresentMv)
+                    /* 节流：任一项变化 >= 2 才发（避免拖动一格发一次） */
+                    if (kotlin.math.abs(t.first - lastBatSent.first) >= 2 ||
+                        kotlin.math.abs(t.second - lastBatSent.second) >= 2 ||
+                        kotlin.math.abs(t.third - lastBatSent.third) >= 2) {
+                        lastBatSent = t
+                        send(OutMsg.setBattery(t.first, t.second, t.third))
+                    }
+                }
+
+                override fun onStartTrackingTouch(sb: android.widget.SeekBar?) = Unit
+                override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {
+                    pushBattery()
+                    log("电量阈值：红 $appPrefs.batRedPct% 黄 ${appPrefs.batYellowPct}% 未接<${appPrefs.batPresentMv}mV")
+                }
+            })
+        }
+        bindBatSeek(R.id.seekBatRed, R.id.tvBatRed, appPrefs.batRedPct,
+            com.espnav.app.data.AppPrefs.BAT_RED_MIN, com.espnav.app.data.AppPrefs.BAT_RED_MAX, "%",
+            { appPrefs.batRedPct = it })
+        bindBatSeek(R.id.seekBatYellow, R.id.tvBatYellow, appPrefs.batYellowPct,
+            com.espnav.app.data.AppPrefs.BAT_YELLOW_MIN, com.espnav.app.data.AppPrefs.BAT_YELLOW_MAX, "%",
+            { appPrefs.batYellowPct = it })
+        bindBatSeek(R.id.seekBatPmv, R.id.tvBatPmv, appPrefs.batPresentMv,
+            com.espnav.app.data.AppPrefs.BAT_PMV_MIN, com.espnav.app.data.AppPrefs.BAT_PMV_MAX, " mV",
+            { appPrefs.batPresentMv = it })
+
+        /* 【M21】语音播报：总开关 + 语音测试按钮 */
+        val cbVoiceOn = v.findViewById<android.widget.CompoundButton>(R.id.setVoiceOn)
+        cbVoiceOn.isChecked = appPrefs.voiceOn
+        cbVoiceOn.setOnCheckedChangeListener { _, checked ->
+            appPrefs.voiceOn = checked
+            log("语音播报总开关 = " + checked)
+            if (checked && !client.isConnected) {
+                toast("语音已开启；当前未连接 ESP，连接后才能出声")
+            }
+        }
+        /* 【M22】语音音量 0-300%：拖动即下发（ESP 立即生效并写入 NVS） */
+        val skVol = v.findViewById<android.widget.SeekBar>(R.id.seekAudioVol)
+        val tvVol = v.findViewById<android.widget.TextView>(R.id.tvAudioVol)
+        skVol.max = com.espnav.app.data.AppPrefs.AUDIO_VOL_MAX - com.espnav.app.data.AppPrefs.AUDIO_VOL_MIN
+        skVol.progress = appPrefs.audioVol - com.espnav.app.data.AppPrefs.AUDIO_VOL_MIN
+        tvVol.text = appPrefs.audioVol.toString() + "%"
+        /* 节流：拖动过程中每格都发会让 ESP 反复写 NVS（它有擦写寿命且每次要十几毫秒），
+         * 所以变化满 10% 才下发一次，松手时再补发最终值（保证最后一次一定生效）。 */
+        var lastSentVol = -1
+        skVol.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                val vol = p + com.espnav.app.data.AppPrefs.AUDIO_VOL_MIN
+                tvVol.text = vol.toString() + "%"
+                appPrefs.audioVol = vol
+                if (kotlin.math.abs(vol - lastSentVol) >= 10) {
+                    lastSentVol = vol
+                    send(OutMsg.setVolume(vol))      /* 未连接时 send 会自行提示 */
+                }
+            }
+
+            override fun onStartTrackingTouch(sb: android.widget.SeekBar?) = Unit
+            override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {
+                val vol = appPrefs.audioVol
+                if (vol != lastSentVol) {
+                    lastSentVol = vol
+                    send(OutMsg.setVolume(vol))
+                }
+                log("语音音量 = " + vol + "%")
+            }
+        })
+
+        /* 【M26】转向播报距离 30-300 米：纯 App 侧策略，改完立即生效（无需下发/重启） */
+        val skDist = v.findViewById<android.widget.SeekBar>(R.id.seekVoiceDist)
+        val tvDist = v.findViewById<android.widget.TextView>(R.id.tvVoiceDist)
+        skDist.max = com.espnav.app.data.AppPrefs.VOICE_TURN_DIST_MAX -
+            com.espnav.app.data.AppPrefs.VOICE_TURN_DIST_MIN
+        skDist.progress = appPrefs.voiceTurnDistM - com.espnav.app.data.AppPrefs.VOICE_TURN_DIST_MIN
+        tvDist.text = appPrefs.voiceTurnDistM.toString() + " m"
+        skDist.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                val d = p + com.espnav.app.data.AppPrefs.VOICE_TURN_DIST_MIN
+                tvDist.text = d.toString() + " m"
+                appPrefs.voiceTurnDistM = d
+                /* 立即同步给策略对象（下一帧播报就用新值） */
+                voiceAnnouncer.turnAnnounceM = d
+            }
+
+            override fun onStartTrackingTouch(sb: android.widget.SeekBar?) = Unit
+            override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {
+                log("转向播报距离 = " + appPrefs.voiceTurnDistM + " m")
+            }
+        })
+
+        v.findViewById<android.view.View>(R.id.btnVoiceTest).setOnClickListener {
+            if (!appPrefs.voiceOn) { toast("请先打开「开启语音播报」"); return@setOnClickListener }
+            if (!client.isConnected) { toast("未连接 ESP，无法下发语音"); return@setOnClickListener }
+            toast("正在合成语音并下发…（听到示例即为链路通）")
+            log("语音测试：合成「前方一百米右转，请提前并道」")
+            ttsSpeaker.speak("前方一百米右转，请提前并道")
+        }
+
         val cbAutoConn = v.findViewById<android.widget.CompoundButton>(R.id.setAutoConnect)
         val cbAutoCity = v.findViewById<android.widget.CompoundButton>(R.id.setAutoCity)
         val cbEmulate = v.findViewById<android.widget.CompoundButton>(R.id.setEmulate)
@@ -1105,6 +1310,68 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
         /* 【M7】底图亮度 30–150%（默认 70；原来硬编码 45% 偏暗）+ 对比度 50–150%（默认 100）。
          * 滑杆 progress 是偏移量：亮度 = 30 + p（max 120），对比度 = 50 + p（max 100）。 */
+        /* 【M15】开机等待热点时间（5-180 秒）：改动即写 AppPrefs 并下发；
+         * 固件会把它存进 NVS —— **下次上电才生效**（该值用于开机阶段）。 */
+        val skApDelay = v.findViewById<android.widget.SeekBar>(R.id.seekApDelay)
+        val tvApDelay = v.findViewById<android.widget.TextView>(R.id.tvApDelay)
+        skApDelay.max = com.espnav.app.data.AppPrefs.AP_DELAY_MAX - com.espnav.app.data.AppPrefs.AP_DELAY_MIN
+        skApDelay.progress = appPrefs.espApDelayS - com.espnav.app.data.AppPrefs.AP_DELAY_MIN
+        fun refreshApDelayLabel() {
+            tvApDelay.text = appPrefs.espApDelayS.toString() + " s"
+        }
+        refreshApDelayLabel()
+        skApDelay.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                appPrefs.espApDelayS = com.espnav.app.data.AppPrefs.AP_DELAY_MIN + p
+                refreshApDelayLabel()
+                if (client.isConnected) send(OutMsg.setConfig(apDelayS = appPrefs.espApDelayS))
+                log("开机等待热点 = ${appPrefs.espApDelayS} s（已保存到设备，需重启 ESP 后生效）")
+            }
+
+            override fun onStartTrackingTouch(sb: android.widget.SeekBar?) = Unit
+
+            /* 【M15.1】松手时提示一次：拖动过程中不弹，避免刷屏 */
+            override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {
+                toast("已保存到设备：开机等待热点 " + appPrefs.espApDelayS + " 秒 —— 需重启 ESP 后生效")
+            }
+        })
+
+        /* ================= 【M16】批 1：4 个纯 APK 设置项 =================
+         * A6 JPEG 质量、A7 发送帧率、A8 相机 zoom、A9 相机 tilt。
+         * 都不下发固件，改动立即生效（帧率/相机在下一帧/下次相机更新时生效）。 */
+        fun bindPercentSeek(seekId: Int, tvId: Int, cur: Int, lo: Int, hi: Int,
+                            suffix: String, onSet: (Int) -> Unit) {
+            val sk = v.findViewById<android.widget.SeekBar>(seekId)
+            val tv = v.findViewById<android.widget.TextView>(tvId)
+            sk.max = hi - lo
+            sk.progress = (cur - lo).coerceIn(0, hi - lo)
+            fun show() { tv.text = (sk.progress + lo).toString() + suffix }
+            show()
+            sk.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
+                    if (!fromUser) return
+                    onSet(p + lo)
+                    show()
+                }
+
+                override fun onStartTrackingTouch(sb: android.widget.SeekBar?) = Unit
+                override fun onStopTrackingTouch(sb: android.widget.SeekBar?) = Unit
+            })
+        }
+        bindPercentSeek(R.id.seekNavZoom, R.id.tvNavZoom, appPrefs.navZoom,
+            com.espnav.app.data.AppPrefs.NAV_ZOOM_MIN, com.espnav.app.data.AppPrefs.NAV_ZOOM_MAX, "",
+            { appPrefs.navZoom = it })
+        bindPercentSeek(R.id.seekNavTilt, R.id.tvNavTilt, appPrefs.navTilt,
+            com.espnav.app.data.AppPrefs.NAV_TILT_MIN, com.espnav.app.data.AppPrefs.NAV_TILT_MAX, "°",
+            { appPrefs.navTilt = it })
+        bindPercentSeek(R.id.seekFrameMs, R.id.tvFrameMs, appPrefs.espFrameIntervalMs,
+            com.espnav.app.data.AppPrefs.FRAME_MS_MIN, com.espnav.app.data.AppPrefs.FRAME_MS_MAX, " ms",
+            { appPrefs.espFrameIntervalMs = it })
+        bindPercentSeek(R.id.seekJpegQ, R.id.tvJpegQ, appPrefs.espJpegQuality,
+            com.espnav.app.data.AppPrefs.JPEG_Q_MIN, com.espnav.app.data.AppPrefs.JPEG_Q_MAX, "",
+            { appPrefs.espJpegQuality = it })
+
         /* 【M8.1】导航期间屏幕常亮（立即生效：正在导航时改动会马上生效） */
         val cbKeepScreenOn = v.findViewById<android.widget.CompoundButton>(R.id.setKeepScreenOn)
         cbKeepScreenOn.isChecked = appPrefs.keepScreenOn
@@ -1416,6 +1683,25 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     /** 刷新“起点/终点是否已选”的显眼状态行 */
+    /* ================= 【M19】退到后台就**静默导出**设置到公共目录 =================
+     * 为什么需要它：Android 卸载 App 会连 /data/data/<包>/ 一起删掉，而设置（SharedPreferences）
+     * 就存在那里 —— 这就是"卸载后设置全没了"的根因。公共目录（/sdcard/Download/EspNav/）不会被删，
+     * 所以退到后台时自动写一份 JSON，重装后即可恢复。
+     * 效果：你**不需要用 adb 脚本**，直接"复制 APK 到手机 → 安装 → 启动"就能保住设置。
+     * ========================================================================= */
+    override fun onStop() {
+        super.onStop()
+        runCatching {
+            if (!com.espnav.app.data.ConfigFile.hasPermission()) {
+                log("提示：缺少「所有文件访问」权限，本次未能自动备份设置（可在设置页授予）")
+                return@runCatching
+            }
+            if (!com.espnav.app.data.ConfigFile.save(appPrefs.exportToJson())) {
+                log("提示：自动备份设置失败（写入被拒）")
+            }
+        }
+    }
+
     // ---------------- 独立配置文件（/sdcard/Download/EspNav/espnav_config.json） ----------------
 
     /** 启动时检测外部配置文件：存在且与当前不同 → 询问是否覆盖 */
@@ -1426,6 +1712,17 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             return
         }
         val json = com.espnav.app.data.ConfigFile.load() ?: return
+
+        /* 【M19】全新安装（重装/首次装机，SharedPreferences 为空）→ **直接自动恢复**，不弹窗。
+         * 因为卸载一定会清空内部存储，这里弹窗只是多一次点击，反而容易误点"不覆盖"而丢设置。 */
+        if (appPrefs.isFresh()) {
+            val n = appPrefs.importFromJson(json)
+            applyPrefsToUi()
+            log("检测到全新安装：已自动恢复 " + n + " 项设置（来源：" +
+                com.espnav.app.data.ConfigFile.pathText() + "）")
+            return
+        }
+
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle(R.string.cfg_found_title)
             .setMessage(com.espnav.app.data.ConfigFile.pathText() + "\n\n是否用它覆盖当前设置？")
@@ -2028,7 +2325,10 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             runCatching {
                 am.moveCamera(
                     com.amap.api.maps.CameraUpdateFactory.newCameraPosition(
-                        com.amap.api.maps.model.CameraPosition(cur, 17f, head.toFloat(), 45f)
+                        /* 【M16】A8/A9：缩放与俯角可在设置页调整 */
+                        com.amap.api.maps.model.CameraPosition(
+                            cur, appPrefs.navZoom.toFloat(), head.toFloat(), appPrefs.navTilt.toFloat()
+                        )
                     )
                 )
             }

@@ -29,6 +29,18 @@ typedef struct {
     bool     screen_flip;     /* true → 整屏水平镜像：分光镜观察时画面左右翻转，需预先镜像 */
     /* ---- M9：垂直翻转（与水平翻转并列，可独立/同时开启）---- */
     bool     screen_flip_y;   /* true → 整屏垂直镜像：画面上下翻转 */
+    /* ---- M15：开机联网行为（App 设置项；因用于开机阶段，需存 NVS 下次上电生效）---- */
+    uint8_t  ap_delay_s;      /* 上电后先尝试连接已保存热点的时间（秒）；超时才开配网热点 */
+    /* 【M25】A 组批 3：配网热点名与密码（App 可配，入 NVS，**重启后生效**） */
+    char     ap_ssid[33];     /* WiFi SSID 最长 32 字符 + NUL */
+    char     ap_pass[64];     /* WPA2 密码 8-63 字符 + NUL */
+
+    /* 【M24】A 组批 2：电量显示阈值（App 可配，入 NVS） */
+    uint8_t  bat_red_pct;     /* 电量 <= 此值显示红色（默认 15） */
+    uint8_t  bat_yellow_pct;  /* 电量 <= 此值显示黄色（默认 40；恒 >= bat_red_pct） */
+    uint16_t bat_present_mv;  /* 低于此电压视为"未接电池"，不画电量图标（默认 2500 mV） */
+    uint16_t audio_vol;       /* 【M22】语音播报音量 0-300（%）：≤100 只用 ES8311 硬件音量；
+                               * >100 时硬件固定 100%，超出部分由播放任务做软件增益（最高 3.0x） */
     /* ---- M7：APK 地图底图总开关（关掉后 ESP 回到原始导航模式，不再贴最后一张图）---- */
     bool     img_on;          /* true=App 正在推底图；false=丢弃底图 → 模板路面/行程图 */
     char     firmware_ver[16];
@@ -59,5 +71,20 @@ void         config_set_col_hint(uint16_t v);
 void         config_set_screen_flip(bool v);
 /* M9：整屏垂直镜像（上下翻转） */
 void         config_set_screen_flip_y(bool v);
+/* M15：开机等待热点时间（秒，5-180）；setter 会写入 NVS，下次上电生效 */
+void         config_set_ap_delay_s(uint8_t v);
+void         config_set_audio_vol(uint16_t v);     /* 【M22】0-300，入 NVS */
+/* 【M25】配网热点（入 NVS；**下次上电生效** —— 运行期热改会重启 WiFi 并 RST 掉 TCP） */
+void         config_set_ap_ssid(const char *s);
+void         config_set_ap_pass(const char *s);
+
+/* 【M24】电量阈值（入 NVS，重启保持） */
+void         config_set_bat_red_pct(uint8_t v);
+void         config_set_bat_yellow_pct(uint8_t v);
+void         config_set_bat_present_mv(uint16_t v);
+/* M15：从 NVS 载入持久化配置 —— **必须在 NVS 初始化之后调用**（即 wifi_common_init() 之后）*/
+void         config_load_nvs(void);
+#define AP_DELAY_S_MIN  5
+#define AP_DELAY_S_MAX  180
 /* M7：APK 地图底图总开关（App 关闭「推送地图底图」时下发 false） */
 void         config_set_img_on(bool v);

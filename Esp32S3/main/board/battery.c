@@ -10,6 +10,7 @@
 #include <stdlib.h>            /* abs()：显示平滑的迟滞判断 */
 
 #include "esp_log.h"
+#include "config.h"            /* 【M24】"未接电池"判据改由 App 配置 */
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
@@ -131,4 +132,10 @@ void battery_poll(void)
 
 int  battery_mv(void)      { return s_mv; }
 int  battery_pct(void)     { return s_pct; }
-bool battery_present(void) { return s_mv >= BAT_PRESENT_MV; }
+bool battery_present(void)
+{
+    /* 【M24】判据来自配置（默认 2500 mV）。config 未就绪时退回编译期默认值。 */
+    const espnav_config_t *c = config_get();
+    int thr = (c && c->bat_present_mv > 0) ? (int)c->bat_present_mv : BAT_PRESENT_MV;
+    return s_mv >= thr;
+}

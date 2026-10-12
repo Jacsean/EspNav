@@ -72,6 +72,32 @@
     <string name="set_group_map">地图</string>
     <string name="set_hint_zoom">默认缩放级别 10~19（16 较近，11 约 20 公里）</string>
     <string name="label_sampler">采样方式</string>
+    <string name="sec_battery">电量显示</string>
+    <string name="set_bat_red">低电量红色阈值</string>
+    <string name="set_bat_yellow">中电量黄色阈值</string>
+    <string name="set_bat_pmv">未接电池判据</string>
+    <string name="set_bat_hint">电量图标/文字的颜色：低于「红色阈值」显示红，低于「黄色阈值」显示黄。ESP 端会保证黄阈值不小于红阈值。「未接电池判据」是电压门限（mV）——实测电压低于它就不画电量图标（避免没接电池时乱显示）。改完立即生效并存进 ESP，重启不丢。</string>
+    <string name="sec_voice">语音播报</string>
+    <string name="set_voice_on">开启语音播报</string>
+    <string name="set_voice_hint">用手机的语音引擎合成语音、下发到 ESP 播放（16kHz/16bit/单声道）。关闭时不下发任何音频。当前版本：仅“语音测试”按钮会发声，导航中的自动播报（转向/到达）在下一批实现。</string>
+    <string name="set_voice_dist">转向播报距离</string>
+    <string name="set_voice_dist_hint">进入该距离内播报一次转向（如"前方 100 米，右转"），同一路口只播一次。数值越大提醒越早；调太小会临到路口才说。原为固定 100 米，现在可调，改完立即生效（不用重启/重连）。</string>
+    <string name="set_voice_test">语音测试（播报一段示例）</string>
+    <string name="set_audio_vol">语音音量</string>
+    <string name="set_audio_vol_hint">0–300%（默认 200%）。100% 以内只用 ESP 的 ES8311 硬件音量；超过 100% 时硬件满档、超出部分在 ESP 侧做软件增益（最高 3 倍，过大可能削波）。调整后立即生效，并存进 ESP 的重启不丢。</string>
+    <string name="sec_boot">启动与联网</string>
+    <string name="sec_send">发送与画质</string>
+    <string name="set_nav_zoom">相机缩放级别</string>
+    <string name="set_nav_tilt">相机俯角（0=平视）</string>
+    <string name="set_frame_ms">发送帧率</string>
+    <string name="set_frame_ms_hint">越小越流畅，但 App 与 ESP 的负载、耗电也越高（默认 200ms = 5 帧/秒）。</string>
+    <string name="set_jpeg_q">底图 JPEG 质量</string>
+    <string name="set_jpeg_q_hint">质量越高越清晰，但每一帧的字节数、传输时间与 ESP 解码耗时也越大（默认 70）。</string>
+    <string name="set_ap_ssid">配网热点名称（SSID）</string>
+    <string name="set_ap_pass">配网热点密码</string>
+    <string name="set_ap_hint_new">配网热点的名字与密码（1-32 字符 / 8-63 字符）。改完会下发并存进 ESP，但**必须重启（重新上电 / 复位）ESP 后生效** —— 运行中改会重启 WiFi 并断开当前连接。提醒：默认名 ESPNav-AP、默认密码 espnav1234；改名后要连新名字才能进配网页（http://192.168.4.1）。</string>
+    <string name="set_ap_delay">开机等待热点（重启 ESP 后生效）</string>
+    <string name="set_ap_delay_hint">开机后先连接已保存的热点；超过该时间仍连不上，才启动配网热点 ESPNav-AP。\n注意：该值保存在设备里，需重启（重新上电 / 复位）ESP 后生效，不是即时生效。</string>
     <string name="set_group_overview">行程图</string>
     <string name="set_overview_vw">Visvalingam 高保真（长弧线优先保留）</string>
     <string name="set_overview_dp">Douglas-Peucker 误差有界（实现简单）</string>

@@ -49,6 +49,9 @@ data class NavState(
     val headingDeg: Int = 0,
     val speedKmh: Int = 0,
 
+    /** 【M23】偏航重算次数（每次高德重算成功 +1）；语音据此播"已偏离路线，正在重新规划" */
+    val recalcCount: Int = 0,
+
     /** 显式指定路况模板（模拟器用；高德接入时留空由 turnType 推断） */
     val roadTypeHint: RoadType? = null,
 

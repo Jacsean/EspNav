@@ -1,4 +1,5 @@
 #include "map_image.h"
+#include "b64.h"           /* 【M13-2】base64 解码已提取为公共实现 */
 #include "lcd_fb.h"
 #include <string.h>
 #include "esp_log.h"
@@ -37,34 +38,6 @@ static uint16_t *s_dst = NULL;              /* 【M3.4】解码输出目标（ap
 static int      s_in_pos = 0;
 static int      s_in_len = 0;
 
-/* ---------- base64 ---------- */
-static int b64_val(char c)
-{
-    if (c >= 'A' && c <= 'Z') return c - 'A';
-    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
-    if (c >= '0' && c <= '9') return c - '0' + 52;
-    if (c == '+') return 62;
-    if (c == '/') return 63;
-    return -1;                      /* '=' 或非法字符 */
-}
-
-/* 解码到 out（最多 outmax 字节），返回写入字节数 */
-static int b64_decode(const char *s, uint8_t *out, int outmax)
-{
-    int n = 0, acc = 0, bits = 0;
-    for (; *s; s++) {
-        if (*s == '=') break;
-        int v = b64_val(*s);
-        if (v < 0) continue;        /* 跳过换行/空白等 */
-        acc = (acc << 6) | v;
-        bits += 6;
-        if (bits >= 8) {
-            bits -= 8;
-            if (n < outmax) out[n++] = (uint8_t)((acc >> bits) & 0xFF);
-        }
-    }
-    return n;
-}
 
 /* ---------- 底图缓冲分配（优先 PSRAM，回退内部 SRAM） ---------- */
 static uint16_t *img_alloc(const char *what)

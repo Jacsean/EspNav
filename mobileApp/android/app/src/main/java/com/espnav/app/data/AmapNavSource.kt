@@ -245,6 +245,9 @@ class AmapNavSource(
 
     // ---------------- 高德回调 -> NavState ----------------
 
+    /** 【M23】算路成功次数（含起步那次）。偏航重算会让它 +1 → 语音据此播"正在重新规划" */
+    private var recalcCount = 0
+
     override fun onCalculateRouteSuccess(result: AMapCalcRouteResult?) {
         try {
             val path = navi?.naviPath
@@ -259,7 +262,8 @@ class AmapNavSource(
                 /* 行程图采样：按几何重要性取点（VW/DP 由设置决定），替代原先的等间隔降采样 ——
                  * 等间隔会在长直段浪费点数，并可能整段跳过某个拐弯（用户实测"拐弯不准"）。 */
                 pathCoords = PolylineSampler.sampleGeo(pathAllCoords, samplerMode, MAX_PATH_PTS)
-                state = state.copy(totalDistMeters = len)
+                recalcCount++
+                state = state.copy(totalDistMeters = len, recalcCount = recalcCount)
                 log("路径点 " + raw.size + " -> 采样 " + pathCoords.size +
                     "；全程 " + len + " 米，预计 " + sec + " 秒")
             }

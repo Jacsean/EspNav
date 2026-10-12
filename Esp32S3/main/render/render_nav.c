@@ -743,8 +743,9 @@ static void draw_battery(void)
     const espnav_config_t *bcfg = config_get();
     if (bcfg->scrim_on) fb_dim_rect(bx - 4, by - 3, right, by + bh + 3, bcfg->scrim_clock);
 
-    uint16_t col = (pct <= 15) ? RGB565_RED
-                 : (pct <= 40) ? RGB565_YELLOW : s_col_main;
+    /* 【M24】A 组批 2：颜色阈值改由 App 配置（默认 15% / 40%，与原写死值一致） */
+    uint16_t col = (pct <= (int)bcfg->bat_red_pct)    ? RGB565_RED
+                 : (pct <= (int)bcfg->bat_yellow_pct) ? RGB565_YELLOW : s_col_main;
 
     fb_fill_rect(bx, by, bx + bw - 1, by + bh - 1, RGB565_WHITE);          /* 外壳 */
     fb_fill_rect(bx + 1, by + 1, bx + bw - 2, by + bh - 2, RGB565_BLACK);  /* 内腔 */
@@ -985,8 +986,8 @@ void render_nav_boot(int stage, const char *sub)
     fb_line(FB_W - 9, FB_H - 9, FB_W - 9, FB_H - 23, PATH_GREEN);
 
     /* 标题（3 倍放大并上移，避免与网格/副标题叠压）+ 副标题 */
-    w = font_text_width("EspNav v1.4.0") * 3;
-    font_draw_text_scaled((FB_W - w) / 2, 40, "EspNav v1.4.0", PATH_GREEN, 3);
+    w = font_text_width("EspNav v1.5.0") * 3;
+    font_draw_text_scaled((FB_W - w) / 2, 40, "EspNav v1.5.0", PATH_GREEN, 3);
     w = font_text_width("可穿戴导航屏·骑行版");
     font_draw_text((FB_W - w) / 2, 92, "可穿戴导航屏·骑行版", 0x7BEF);
 

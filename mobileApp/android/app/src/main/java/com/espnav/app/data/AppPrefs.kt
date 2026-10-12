@@ -12,6 +12,59 @@ class AppPrefs(ctx: Context) {
 
     private val sp = ctx.getSharedPreferences(NAME, Context.MODE_PRIVATE)
 
+    /**
+     * 【M19】是否"全新安装"（SharedPreferences 里什么都没有）。
+     * 卸载 App 会删掉 /data/data/<包>/ 下的 SharedPreferences，所以重装后这里是 true；
+     * 此时若公共目录存在 espnav_config.json，应当**自动恢复**而不必弹窗询问。
+     */
+    fun isFresh(): Boolean = !sp.contains(K_HOST)
+
+    /* ================= 【M25】A 组批 3：配网热点名 / 密码 =================
+     * 下发到 ESP 后**存 NVS、重启 ESP 才生效**（运行期热改 AP 会重启 WiFi 并 RST 掉 TCP）。
+     * 校验与 ESP 端一致：SSID 1-32 字符；密码 8-63 字符。 */
+    var apSsid: String
+        get() = sp.getString(K_AP_SSID, "ESPNav-AP") ?: "ESPNav-AP"
+        set(v) = sp.edit().putString(K_AP_SSID, v.take(32)).apply()
+
+    var apPass: String
+        get() = sp.getString(K_AP_PASS, "espnav1234") ?: "espnav1234"
+        set(v) = sp.edit().putString(K_AP_PASS, v.take(63)).apply()
+
+    /* ================= 【M24】A 组批 2：电量显示阈值 ================= */
+    /** 电量 <= 此值显示红色 */
+    var batRedPct: Int
+        get() = sp.getInt(K_BAT_RED, 15)
+        set(v) = sp.edit().putInt(K_BAT_RED, v.coerceIn(BAT_RED_MIN, BAT_RED_MAX)).apply()
+
+    /** 电量 <= 此值显示黄色（ESP 侧保证 >= 红色阈值） */
+    var batYellowPct: Int
+        get() = sp.getInt(K_BAT_YELLOW, 40)
+        set(v) = sp.edit().putInt(K_BAT_YELLOW, v.coerceIn(BAT_YELLOW_MIN, BAT_YELLOW_MAX)).apply()
+
+    /** 低于此电压视为"未接电池"（不显示电量图标） */
+    var batPresentMv: Int
+        get() = sp.getInt(K_BAT_PMV, 2500)
+        set(v) = sp.edit().putInt(K_BAT_PMV, v.coerceIn(BAT_PMV_MIN, BAT_PMV_MAX)).apply()
+
+    /** 【M22】语音播报音量 0-300%（默认 200%：ESP 硬件 100% + 软件 2.0x）。
+     *  <=100：只用 ESP 端的 ES8311 硬件音量；>100：硬件满档，超出部分 ESP 侧做软件增益。 */
+    var audioVol: Int
+        get() = sp.getInt(K_AUDIO_VOL, 200)
+        set(v) = sp.edit().putInt(K_AUDIO_VOL, v.coerceIn(AUDIO_VOL_MIN, AUDIO_VOL_MAX)).apply()
+
+    /** 【M26】转向播报距离（米，30-300，默认 100）：进入该范围播"前方 X 米，右转"。
+     *  纯 App 侧判断，改完立即生效。 */
+    var voiceTurnDistM: Int
+        get() = sp.getInt(K_VOICE_TURN_DIST, 100)
+        set(v) = sp.edit().putInt(
+            K_VOICE_TURN_DIST, v.coerceIn(VOICE_TURN_DIST_MIN, VOICE_TURN_DIST_MAX)
+        ).apply()
+
+    /** 【M21】语音播报总开关（默认关：需要用户主动打开，避免意外出声） */
+    var voiceOn: Boolean
+        get() = sp.getBoolean(K_VOICE_ON, false)
+        set(v) = sp.edit().putBoolean(K_VOICE_ON, v).apply()
+
     /** 设备地址（连接候选首选项） */
     var host: String
         get() = sp.getString(K_HOST, DEF_HOST) ?: DEF_HOST
@@ -173,6 +226,37 @@ class AppPrefs(ctx: Context) {
         get() = sp.getBoolean("keep_screen_on", true)
         set(v) = sp.edit().putBoolean("keep_screen_on", v).apply()
 
+    /* ---- 【M15】开机等待热点时间（秒）----
+     * 通电后先尝试连接已保存热点，超过这个时间仍连不上，才启动配网热点 ESPNav-AP。
+     * ⚠️ 该值用于**开机阶段**，因此下发后固件会存 NVS，**下次上电才生效**。 */
+    var espApDelayS: Int
+        get() = sp.getInt(K_AP_DELAY, 15).coerceIn(AP_DELAY_MIN, AP_DELAY_MAX)
+        set(v) = sp.edit().putInt(K_AP_DELAY, v.coerceIn(AP_DELAY_MIN, AP_DELAY_MAX)).apply()
+
+    /* ================= 【M16】A 组：可配置项（批 1，纯 APK）=================
+     * A6 底图 JPEG 质量 / A7 发送帧率 / A8 相机 zoom / A9 相机 tilt
+     * 这四项都只影响 App 自己的行为，**不需要下发给固件**，改动立即生效。 */
+
+    /** A6 底图 JPEG 质量（40-95，默认 70）。画质 ⇄ 流量/CPU 的权衡。 */
+    var espJpegQuality: Int
+        get() = sp.getInt(K_JPEG_Q, 70).coerceIn(JPEG_Q_MIN, JPEG_Q_MAX)
+        set(v) = sp.edit().putInt(K_JPEG_Q, v.coerceIn(JPEG_Q_MIN, JPEG_Q_MAX)).apply()
+
+    /** A7 发送帧率（毫秒/帧，50-500，默认 200）。直接决定 ESP 画面流畅度。 */
+    var espFrameIntervalMs: Int
+        get() = sp.getInt(K_FRAME_MS, 200).coerceIn(FRAME_MS_MIN, FRAME_MS_MAX)
+        set(v) = sp.edit().putInt(K_FRAME_MS, v.coerceIn(FRAME_MS_MIN, FRAME_MS_MAX)).apply()
+
+    /** A8 导航相机缩放级别（3-20，默认 17）。越大看得越近。 */
+    var navZoom: Int
+        get() = sp.getInt(K_NAV_ZOOM, 17).coerceIn(NAV_ZOOM_MIN, NAV_ZOOM_MAX)
+        set(v) = sp.edit().putInt(K_NAV_ZOOM, v.coerceIn(NAV_ZOOM_MIN, NAV_ZOOM_MAX)).apply()
+
+    /** A9 导航相机俯角（0-67 度，默认 45）。0=平视，越大越俯视。 */
+    var navTilt: Int
+        get() = sp.getInt(K_NAV_TILT, 45).coerceIn(NAV_TILT_MIN, NAV_TILT_MAX)
+        set(v) = sp.edit().putInt(K_NAV_TILT, v.coerceIn(NAV_TILT_MIN, NAV_TILT_MAX)).apply()
+
     /** 【M2.5】屏幕内容水平翻转（分光镜 HUD）：默认开。
      *  分光镜（半透半反镜）让人眼看到的是左右镜像画面，所以 ESP 端送屏前要预先水平镜像。
      *  用字面 key（暂不进配置文件导出项），后续若要纳入配置再补常量与导出。 */
@@ -304,6 +388,11 @@ class AppPrefs(ctx: Context) {
     companion object {
         private const val NAME = "espnav_prefs"
         /* 【M7】底图显示效果（字面 key，与 screen_flip 同样的处理方式：暂不进配置文件导出） */
+        private const val K_AP_DELAY = "esp_ap_delay_s"
+        private const val K_JPEG_Q = "esp_jpeg_quality"
+        private const val K_FRAME_MS = "esp_frame_interval_ms"
+        private const val K_NAV_ZOOM = "nav_zoom"
+        private const val K_NAV_TILT = "nav_tilt"
         private const val K_EMAP_BRIGHT = "esp_map_bright"
         private const val K_EMAP_CONTRAST = "esp_map_contrast"
         private const val K_HOST = "host"
@@ -362,8 +451,47 @@ class AppPrefs(ctx: Context) {
          *  日常使用时 ESP 连手机热点拿到 192.168.43.117 —— 默认值不一致时，每次重装
          *  都得先用配置文件覆盖才能连上。192.168.4.1 仍保留在「一键连接」候选里作兜底。 */
         /** 【M3.2】底图刷新间隔范围（ms）：与设置页滑杆一致 */
+        const val K_VOICE_ON = "voice_on"          /* 【M21】语音播报总开关 */
+        const val K_AUDIO_VOL = "audio_vol"        /* 【M22】语音音量（%），0-300 */
+        const val AUDIO_VOL_MIN = 0                /* 【M22】0 = 静音 */
+        const val AUDIO_VOL_MAX = 300              /* 【M22】上限 300%（ESP 侧超 100% 走软件增益） */
+
+        /* 【M26】转向播报距离（米） */
+        const val K_VOICE_TURN_DIST = "voice_turn_dist"
+        const val VOICE_TURN_DIST_MIN = 30
+        const val VOICE_TURN_DIST_MAX = 300
+
+        /* 【M25】A 组批 3：配网热点（校验规则与 ESP 端一致） */
+        const val K_AP_SSID = "ap_ssid_cfg"
+        const val K_AP_PASS = "ap_pass_cfg"
+
+        /* 【M24】A 组批 2：电量阈值范围（按用户确认，做可调） */
+        const val K_BAT_RED = "bat_red_pct"
+        const val K_BAT_YELLOW = "bat_yellow_pct"
+        const val K_BAT_PMV = "bat_present_mv"
+        const val BAT_RED_MIN = 5
+        const val BAT_RED_MAX = 50
+        const val BAT_YELLOW_MIN = 20
+        const val BAT_YELLOW_MAX = 100
+        const val BAT_PMV_MIN = 1000
+        const val BAT_PMV_MAX = 3000
+
         const val MAP_SHOT_INT_MIN = 500
         const val MAP_SHOT_INT_MAX = 5000
+
+        /* 【M16】批 1 的范围 */
+        const val JPEG_Q_MIN = 40
+        const val JPEG_Q_MAX = 95
+        const val FRAME_MS_MIN = 50
+        const val FRAME_MS_MAX = 500
+        const val NAV_ZOOM_MIN = 3
+        const val NAV_ZOOM_MAX = 20
+        const val NAV_TILT_MIN = 0
+        const val NAV_TILT_MAX = 67
+
+        /* 【M15】开机等待热点时间范围（秒） */
+        const val AP_DELAY_MIN = 5
+        const val AP_DELAY_MAX = 180
 
         /* 【M7】底图亮度/对比度范围（百分比） */
         const val MAP_BRIGHT_MIN = 30

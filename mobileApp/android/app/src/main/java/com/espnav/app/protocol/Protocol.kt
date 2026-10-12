@@ -127,6 +127,50 @@ object OutMsg {
     fun imgChunk(seq: Int, b64: String): String =
         Json.obj("msg_type" to "IMG_CHUNK", "payload" to Json.obj("seq" to seq, "d" to b64)).toString()
 
+    /* ================= 【M21】语音下发（TTS → PCM）=================
+     * AUDIO_BEGIN(seq,rate,bits,ch,bytes) → N×AUDIO_CHUNK(seq,b64) → AUDIO_END(seq)
+     * 格式固定 16kHz / 16bit / 单声道（ESP 侧 audio_rx 只接受这一种）。
+     * ⚠ 注意：音频分块的 base64 字段名是 "b64"（图像用的是 "d"），别写错，否则固件取不到。
+     * 每块原始字节 ≤1200（base64 ≤1600 字符 < 固件缓冲区 1800）。 */
+    /* 【M25】A 组批 3：配网热点名 / 密码（存 ESP 的 NVS，**重启 ESP 后生效**） */
+    fun setAp(ssid: String, pass: String): String =
+        Json.obj(
+            "msg_type" to "SET_CONFIG",
+            "payload" to Json.obj("ap_ssid" to ssid, "ap_pass" to pass)
+        ).toString()
+
+    /* 【M24】A 组批 2：电量阈值单发（红阈值 / 黄阈值 / 未接电池判据） */
+    fun setBattery(redPct: Int, yellowPct: Int, presentMv: Int): String =
+        Json.obj(
+            "msg_type" to "SET_CONFIG",
+            "payload" to Json.obj(
+                "bat_red_pct" to redPct.coerceIn(0, 100),
+                "bat_yellow_pct" to yellowPct.coerceIn(0, 100),
+                "bat_present_mv" to presentMv.coerceIn(500, 4000)
+            )
+        ).toString()
+
+    /* 【M22】音量单发（也可随 setConfig 一起发，这里保留独立接口便于只调音量） */
+    fun setVolume(vol0_300: Int): String =
+        Json.obj(
+            "msg_type" to "SET_CONFIG",
+            "payload" to Json.obj("audio_vol" to vol0_300.coerceIn(0, 300))
+        ).toString()
+
+    fun audioBegin(seq: Int, rate: Int, bits: Int, ch: Int, bytes: Int): String =
+        Json.obj(
+            "msg_type" to "AUDIO_BEGIN",
+            "payload" to Json.obj(
+                "seq" to seq, "rate" to rate, "bits" to bits, "ch" to ch, "bytes" to bytes
+            )
+        ).toString()
+
+    fun audioChunk(seq: Int, b64: String): String =
+        Json.obj("msg_type" to "AUDIO_CHUNK", "payload" to Json.obj("seq" to seq, "b64" to b64)).toString()
+
+    fun audioEnd(seq: Int): String =
+        Json.obj("msg_type" to "AUDIO_END", "payload" to Json.obj("seq" to seq)).toString()
+
     fun imgEnd(seq: Int): String =
         Json.obj("msg_type" to "IMG_END", "payload" to Json.obj("seq" to seq)).toString()
 
@@ -161,7 +205,9 @@ object OutMsg {
         colCar: Int? = null,
         colHint: Int? = null,
         /* 【M7】APK 地图底图总开关：false = 固件丢弃底图、回到原始导航模式 */
-        imgOn: Boolean? = null
+        imgOn: Boolean? = null,
+        /* 【M15】开机等待热点时间（秒）；固件存 NVS，下次上电生效 */
+        apDelayS: Int? = null
     ): String {
         val p = JSONObject()
         brightness?.let { p.put("lcd_brightness", it) }
@@ -184,6 +230,7 @@ object OutMsg {
         colCar?.let { p.put("col_car", it) }
         colHint?.let { p.put("col_hint", it) }
         imgOn?.let { p.put("img_on", it) }
+        apDelayS?.let { p.put("ap_delay_s", it) }
         return Json.obj("msg_type" to "SET_CONFIG", "payload" to p).toString()
     }
 }

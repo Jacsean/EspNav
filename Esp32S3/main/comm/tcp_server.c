@@ -39,8 +39,15 @@ static void on_line(const char *line, size_t len, void *ctx)
 static void client_task(void *arg)
 {
     int sock = (int)(intptr_t)arg;
-    frame_parser_t fp;
-    frame_parser_init(&fp);
+    frame_parser_t fp = { 0 };
+    frame_parser_init(&fp);              /* 【M16.4】内部动态分配 16KB 行缓冲（优先 PSRAM） */
+    if (!fp.buf) {
+        ESP_LOGE(TAG, "帧缓冲分配失败，关闭本连接");
+        s_conns--;
+        close(sock);
+        vTaskDelete(NULL);
+        return;
+    }
     uint8_t buf[512];
 
     for (;;) {
@@ -50,6 +57,7 @@ static void client_task(void *arg)
         frame_parser_feed(&fp, buf, (size_t)r, on_line, &sock);
     }
 
+    frame_parser_deinit(&fp);            /* 【M16.4】释放行缓冲 */
     ESP_LOGI(TAG, "client %d disconnected (剩余 %d)", sock, (int)s_conns - 1);
     if (s_active == sock) s_active = -1;     /* 只有活跃连接断开才算链路中断 */
     s_conns--;

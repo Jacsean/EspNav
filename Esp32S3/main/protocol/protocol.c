@@ -10,6 +10,8 @@
 #include "lcd_driver.h"
 #include "render_nav.h"
 #include "map_image.h"     /* 【M3.1】IMG_BEGIN/CHUNK/END 的接收接口 */
+#include "audio_rx.h"      /* 【M13-2】AUDIO_BEGIN/CHUNK/END 的接收接口 */
+#include "audio_out.h"     /* 【M22】音量（硬件 + 软件增益） */
 
 static const char *TAG = "proto";
 static uint32_t s_err = 0;
@@ -49,7 +51,7 @@ static void send_dev_status(proto_send_fn send, void *ctx)
              "\"popup_timeout\":%u,"
              "\"scrim_on\":%s,\"scrim_compass\":%u,\"scrim_text\":%u,"
              "\"scrim_route\":%u,\"scrim_clock\":%u,\"grid_bright\":%u,\"map_area\":%u,"
-             "\"img_on\":%s,\"screen_flip_y\":%s,"
+             "\"img_on\":%s,\"screen_flip_y\":%s,\"ap_delay_s\":%u,"
              "\"vbat\":%d,\"batt\":%d,"
              "\"firmware_ver\":\"%s\",\"err\":%lu}}\n",
              (unsigned)c->lcd_brightness, (unsigned)c->dash_speed,
@@ -59,6 +61,7 @@ static void send_dev_status(proto_send_fn send, void *ctx)
              (unsigned)c->scrim_route, (unsigned)c->scrim_clock,
              (unsigned)c->grid_bright, (unsigned)c->map_area,
              c->img_on ? "true" : "false", c->screen_flip_y ? "true" : "false",
+             (unsigned)c->ap_delay_s,
              (int)battery_mv(), battery_pct(),
              c->firmware_ver, (unsigned long)s_err);
     if (send) send(buf, ctx);
@@ -82,6 +85,31 @@ static void apply_set_config(const char *line)
         const lcd_driver_ops_t *ops = lcd_driver_ops();
         if (ops && ops->backlight) ops->backlight((uint8_t)v);
         ESP_LOGI(TAG, "apply lcd_brightness=%d", v);
+    }
+    /* 【M25】A 组批 3：配网热点名/密码（只入 NVS，**重启后生效**；绝不能热改 WiFi） */
+    {
+        char sv[64];
+        if (jl_get_str(line, "ap_ssid", sv, sizeof(sv))) config_set_ap_ssid(sv);
+        if (jl_get_str(line, "ap_pass", sv, sizeof(sv))) config_set_ap_pass(sv);
+    }
+    /* 【M24】A 组批 2：电量阈值（立即生效 + 入 NVS） */
+    if (jl_get_int(line, "bat_red_pct", -1, &v) && v >= 0) {
+        config_set_bat_red_pct((uint8_t)v);
+        ESP_LOGI(TAG, "apply bat_red_pct=%d", v);
+    }
+    if (jl_get_int(line, "bat_yellow_pct", -1, &v) && v >= 0) {
+        config_set_bat_yellow_pct((uint8_t)v);
+        ESP_LOGI(TAG, "apply bat_yellow_pct=%d", v);
+    }
+    if (jl_get_int(line, "bat_present_mv", -1, &v) && v >= 0) {
+        config_set_bat_present_mv((uint16_t)v);
+        ESP_LOGI(TAG, "apply bat_present_mv=%d", v);
+    }
+    /* 【M22】语音音量（0-300%，立即生效；同时入 NVS 供下次开机使用） */
+    if (jl_get_int(line, "audio_vol", -1, &v) && v >= 0) {
+        config_set_audio_vol((uint16_t)v);
+        audio_out_set_volume(v);
+        ESP_LOGI(TAG, "apply audio_vol=%d", v);
     }
     if (jl_get_int(line, "dash_speed", -1, &v) && v >= 0) {
         config_set_dash_speed((uint8_t)v);          /* 渲染 tick 每帧读 config，下一帧即生效 */
@@ -160,6 +188,11 @@ static void apply_set_config(const char *line)
         config_set_screen_flip_y(on);
         lcd_ili9341_set_flip_y(on);              /* 直接作用于驱动，下次刷屏即生效 */
         ESP_LOGI(TAG, "apply screen_flip_y=%d", (int)on);
+    }
+    /* ---- 【M15】开机等待热点时间：写入 NVS，**下次上电生效** ---- */
+    if (jl_get_int(line, "ap_delay_s", -1, &v) && v >= 0) {
+        config_set_ap_delay_s((uint8_t)v);
+        ESP_LOGI(TAG, "apply ap_delay_s=%d（存 NVS，下次上电生效）", v);
     }
     /* ---- 【M7】APK 地图底图总开关：false = 丢弃底图回原始导航模式 ----
      * 只改配置；渲染侧（draw_frame，仅显示任务碰帧缓冲）看到 false 时自行 map_image_clear()，
@@ -243,6 +276,33 @@ void protocol_handle(const char *line, int len, proto_send_fn send, void *ctx)
     }
     /* ---- 【M3.1】地图截图通道：接收侧只累积 base64 字节 + 置标志，
      * 不碰 framebuffer（解码/贴图由显示任务在 draw_frame 里做，见 fault_log F5 线程约定）---- */
+    /* ---- 【M13-2】语音下发通道：AUDIO_BEGIN / AUDIO_CHUNK / AUDIO_END ----
+     * 约定：16kHz / 16bit / 单声道 PCM；base64 分块（每块原始 ≤1200 字节）。
+     * 接收侧只解码 + 写入播放缓冲，播放由 audio_out.c 的播放任务完成
+     * （与 IMG_* 同样的线程约定：TCP 任务不碰 I2S 之外的共享资源）。 */
+    if (!strcmp(mt, "AUDIO_BEGIN")) {
+        int seq = 0, rate = 16000, bits = 16, ch = 1, bytes = 0;
+        jl_get_int(line, "seq", 0, &seq);
+        jl_get_int(line, "rate", 16000, &rate);
+        jl_get_int(line, "bits", 16, &bits);
+        jl_get_int(line, "ch", 1, &ch);
+        jl_get_int(line, "bytes", 0, &bytes);
+        audio_rx_begin(seq, rate, bits, ch, bytes);
+        return;
+    }
+    if (!strcmp(mt, "AUDIO_CHUNK")) {
+        int seq = 0;
+        char b64[1800];
+        jl_get_int(line, "seq", 0, &seq);
+        if (jl_get_str(line, "b64", b64, sizeof(b64))) audio_rx_chunk(seq, b64);
+        return;
+    }
+    if (!strcmp(mt, "AUDIO_END")) {
+        int seq = 0;
+        jl_get_int(line, "seq", 0, &seq);
+        audio_rx_end(seq);
+        return;
+    }
     if (!strcmp(mt, "IMG_BEGIN")) {
         int seq = 0, w = 0, h = 0, x = 0, y = 0, bytes = 0;
         jl_get_int(line, "seq", 0, &seq);

@@ -8,6 +8,7 @@
 #include "comm/wifi_sta.h"
 #include "comm/tcp_server.h"
 #include "protocol/protocol.h"
+#include "config.h"      /* 【M25】屏幕显示实际配网热点名 */
 
 static const char *TAG = "display_task";
 
@@ -28,9 +29,15 @@ static void display_task(void *arg)
 
         /* 唯一判据：5 秒内有没有收到报文（具名常量，禁止魔法数字比较） */
         if (protocol_link_stage() == LINK_STAGE_WAIT_APP) {
-            char sub[32];
+            /* 【M25】放宽到 64：要装下"热点 " + 最长 32 字符的 SSID，否则 -Werror=format-truncation 会拦下编译 */
+            char sub[64];
             if (wifi_sta_is_connected()) snprintf(sub, sizeof(sub), "IP %s", wifi_sta_ip_str());
-            else                         snprintf(sub, sizeof(sub), "热点 ESPNav-AP");
+            else {
+                /* 【M25】显示实际配置的热点名（App 可改，存 NVS） */
+                const espnav_config_t *ac = config_get();
+                snprintf(sub, sizeof(sub), "热点 %s",
+                         (ac && ac->ap_ssid[0]) ? ac->ap_ssid : "ESPNav-AP");
+            }
             render_nav_boot(2, sub);                    /* 主行：等待手机App连接 */
             continue;
         }

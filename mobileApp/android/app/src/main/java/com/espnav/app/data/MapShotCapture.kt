@@ -28,7 +28,8 @@ object MapShotCapture {
     const val OUT_H = 240
 
     private const val CHUNK_RAW = 1200       /* 每块原始字节数 */
-    private const val JPEG_QUALITY = 70      /* 320×240 地图截图约 12–25KB */
+    /** 【M16】JPEG 质量（App 设置页可调，40-95，默认 70）。320×240 地图截图约 12–25KB。 */
+    @Volatile var jpegQuality = 70
 
     /** 显示参数：亮度/对比度由 App 设置页调节（【M7】用户反馈 ESP 上底图偏暗）。
      *  brightness 相乘系数（0.70 = 70%，原硬编码 0.45 偏暗）；saturation 保持 45% 的"暗地图"观感；
@@ -93,7 +94,7 @@ object MapShotCapture {
 
         /* ③ JPEG 编码 */
         val baos = ByteArrayOutputStream()
-        out.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, baos)
+        out.compress(Bitmap.CompressFormat.JPEG, jpegQuality, baos)
         out.recycle()
         baos.toByteArray()
     }.getOrNull()

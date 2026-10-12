@@ -1,6 +1,7 @@
 #include "config.h"
 #include <string.h>
 #include "esp_log.h"
+#include "nvs.h"            /* 【M15】ap_delay_s 的持久化 */
 
 static const char *TAG = "config";
 static espnav_config_t s_cfg;
@@ -28,8 +29,17 @@ void config_init(void)
     s_cfg.col_hint       = 0;
     s_cfg.screen_flip    = true; /* 【M2.5】默认水平镜像（分光镜 HUD 场景）*/
     s_cfg.screen_flip_y  = false;/* 【M9】默认不做垂直翻转 */
+    s_cfg.ap_delay_s     = 15;   /* 【M15】上电先试连热点 15 秒，超时才开配网热点 */
+    s_cfg.audio_vol      = 200;  /* 【M22】语音音量 200%（硬件 100% + 软件 2.0x）；嫌大可调低 */
+    /* 【M25】A 组批 3：配网热点（默认与原写死值一致，保证行为不变） */
+    strncpy(s_cfg.ap_ssid, "ESPNav-AP", sizeof(s_cfg.ap_ssid) - 1);
+    strncpy(s_cfg.ap_pass, "espnav1234", sizeof(s_cfg.ap_pass) - 1);
+    /* 【M24】A 组批 2：电量阈值（与原写死值一致，保证行为不变） */
+    s_cfg.bat_red_pct    = 15;
+    s_cfg.bat_yellow_pct = 40;
+    s_cfg.bat_present_mv = 2500;
     s_cfg.img_on         = true; /* 【M7】默认允许底图；App 连接/开始导航时会同步真实开关状态 */
-    strncpy(s_cfg.firmware_ver, "V1.4.0", sizeof(s_cfg.firmware_ver) - 1);
+    strncpy(s_cfg.firmware_ver, "V1.5.0", sizeof(s_cfg.firmware_ver) - 1);
     ESP_LOGI(TAG, "config default ready");
 }
 
@@ -57,5 +67,188 @@ void config_set_col_hint(uint16_t v)     { s_cfg.col_hint = v; }
 void config_set_screen_flip(bool v)      { s_cfg.screen_flip = v; }
 /* ---- 【M9】整屏垂直镜像 ---- */
 void config_set_screen_flip_y(bool v)    { s_cfg.screen_flip_y = v; }
+
+/* ---- 【M15】开机等待热点时间（持久化到 NVS）----
+ * 为什么要落 NVS：这个值用在**开机阶段**（决定等多久才开配网热点），
+ * 而 App 下发它时必须"已经连上" —— 所以本次运行改不了本次开机，
+ * 必须存下来，下次上电才生效。 */
+#define NVS_NS      "espnav"
+#define NVS_K_APDLY "ap_delay_s"
+#define NVS_K_AVOL  "audio_vol"     /* 【M22】语音音量（%），NVS 持久化 */
+#define NVS_K_BATR  "bat_red"       /* 【M24】电量红色阈值（%） */
+#define NVS_K_BATY  "bat_yellow"    /* 【M24】电量黄色阈值（%） */
+#define NVS_K_BATP  "bat_pmv"       /* 【M24】未接电池判据（mV） */
+#define NVS_K_APSSID "ap_ssid"      /* 【M25】配网热点名 */
+#define NVS_K_APPASS "ap_pass"      /* 【M25】配网热点密码 */
+
+/* 【M25】配网热点名/密码。校验：SSID 1-32 字符；密码 8-63 字符（WPA2 要求）。
+ * 只写 NVS，**不当场重启 WiFi**（热改会 RST 掉所有 TCP —— fault_log F25）。 */
+void config_set_ap_ssid(const char *s)
+{
+    if (!s) return;
+    size_t n = strlen(s);
+    if (n == 0 || n > 32) {
+        ESP_LOGW(TAG, "ap_ssid 长度非法（%u），忽略（须 1-32 字符）", (unsigned)n);
+        return;
+    }
+    strncpy(s_cfg.ap_ssid, s, sizeof(s_cfg.ap_ssid) - 1);
+    s_cfg.ap_ssid[sizeof(s_cfg.ap_ssid) - 1] = 0;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_str(h, NVS_K_APSSID, s_cfg.ap_ssid);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    ESP_LOGI(TAG, "ap_ssid=%s 已存 NVS（重启后生效）", s_cfg.ap_ssid);
+}
+
+void config_set_ap_pass(const char *s)
+{
+    if (!s) return;
+    size_t n = strlen(s);
+    if (n < 8 || n > 63) {
+        ESP_LOGW(TAG, "ap_pass 长度非法（%u），忽略（须 8-63 字符）", (unsigned)n);
+        return;
+    }
+    strncpy(s_cfg.ap_pass, s, sizeof(s_cfg.ap_pass) - 1);
+    s_cfg.ap_pass[sizeof(s_cfg.ap_pass) - 1] = 0;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_str(h, NVS_K_APPASS, s_cfg.ap_pass);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    ESP_LOGI(TAG, "ap_pass 已存 NVS（长度 %u，重启后生效）", (unsigned)n);
+}
+
+/* 【M24】电量阈值。黄色恒 >= 红色，避免"红黄颠倒"导致颜色判断失去意义。 */
+void config_set_bat_red_pct(uint8_t v)
+{
+    if (v > 100) v = 100;
+    s_cfg.bat_red_pct = v;
+    if (s_cfg.bat_yellow_pct < v) s_cfg.bat_yellow_pct = v;   /* 红升则黄跟随 */
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u8(h, NVS_K_BATR, s_cfg.bat_red_pct);
+        nvs_set_u8(h, NVS_K_BATY, s_cfg.bat_yellow_pct);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    ESP_LOGI(TAG, "bat_red_pct=%u（yellow 跟随为 %u）", (unsigned)s_cfg.bat_red_pct,
+             (unsigned)s_cfg.bat_yellow_pct);
+}
+
+void config_set_bat_yellow_pct(uint8_t v)
+{
+    if (v > 100) v = 100;
+    if (v < s_cfg.bat_red_pct) v = s_cfg.bat_red_pct;          /* 不得低于红色阈值 */
+    s_cfg.bat_yellow_pct = v;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u8(h, NVS_K_BATY, v);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    ESP_LOGI(TAG, "bat_yellow_pct=%u", (unsigned)v);
+}
+
+void config_set_bat_present_mv(uint16_t v)
+{
+    if (v < 500)  v = 500;
+    if (v > 4000) v = 4000;
+    s_cfg.bat_present_mv = v;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u16(h, NVS_K_BATP, v);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    ESP_LOGI(TAG, "bat_present_mv=%u", (unsigned)v);
+}
+
+void config_set_audio_vol(uint16_t v)
+{
+    if (v > 300) v = 300;
+    s_cfg.audio_vol = v;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        if (nvs_set_u16(h, NVS_K_AVOL, v) == ESP_OK) {
+            nvs_commit(h);
+            ESP_LOGI(TAG, "audio_vol=%u 已存 NVS", (unsigned)v);
+        } else {
+            ESP_LOGW(TAG, "audio_vol 写入 NVS 失败");
+        }
+        nvs_close(h);
+    }
+}
+
+void config_set_ap_delay_s(uint8_t v)
+{
+    if (v < AP_DELAY_S_MIN) v = AP_DELAY_S_MIN;
+    if (v > AP_DELAY_S_MAX) v = AP_DELAY_S_MAX;
+    s_cfg.ap_delay_s = v;
+
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u8(h, NVS_K_APDLY, v);
+        nvs_commit(h);
+        nvs_close(h);
+        ESP_LOGI(TAG, "ap_delay_s=%u 已存 NVS（下次上电生效）", (unsigned)v);
+    } else {
+        ESP_LOGW(TAG, "ap_delay_s 写入 NVS 失败");
+    }
+}
+
+void config_load_nvs(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READONLY, &h) != ESP_OK) {
+        ESP_LOGI(TAG, "NVS 无 espnav 配置，使用默认 ap_delay_s=%u", (unsigned)s_cfg.ap_delay_s);
+        return;
+    }
+    uint8_t v = 0;
+    if (nvs_get_u8(h, NVS_K_APDLY, &v) == ESP_OK) {
+        if (v < AP_DELAY_S_MIN) v = AP_DELAY_S_MIN;
+        if (v > AP_DELAY_S_MAX) v = AP_DELAY_S_MAX;
+        s_cfg.ap_delay_s = v;
+        ESP_LOGI(TAG, "从 NVS 载入 ap_delay_s=%u 秒", (unsigned)v);
+    } else {
+        ESP_LOGI(TAG, "NVS 无 ap_delay_s，使用默认 %u 秒", (unsigned)s_cfg.ap_delay_s);
+    }
+    /* 【M25】配网热点名/密码（读不到就保持默认） */
+    size_t slen = sizeof(s_cfg.ap_ssid);
+    if (nvs_get_str(h, NVS_K_APSSID, s_cfg.ap_ssid, &slen) == ESP_OK) {
+        ESP_LOGI(TAG, "从 NVS 载入 ap_ssid=%s", s_cfg.ap_ssid);
+    } else {
+        ESP_LOGI(TAG, "NVS 无 ap_ssid，使用默认 %s", s_cfg.ap_ssid);
+    }
+    slen = sizeof(s_cfg.ap_pass);
+    if (nvs_get_str(h, NVS_K_APPASS, s_cfg.ap_pass, &slen) == ESP_OK) {
+        ESP_LOGI(TAG, "从 NVS 载入 ap_pass（长度 %u）", (unsigned)strlen(s_cfg.ap_pass));
+    } else {
+        ESP_LOGI(TAG, "NVS 无 ap_pass，使用默认");
+    }
+
+    /* 【M24】电量阈值（读不到就保持默认） */
+    uint8_t  br = 0, by = 0;
+    uint16_t bp = 0;
+    if (nvs_get_u8(h, NVS_K_BATR, &br) == ESP_OK && br <= 100) s_cfg.bat_red_pct = br;
+    if (nvs_get_u8(h, NVS_K_BATY, &by) == ESP_OK && by <= 100) s_cfg.bat_yellow_pct = by;
+    if (s_cfg.bat_yellow_pct < s_cfg.bat_red_pct) s_cfg.bat_yellow_pct = s_cfg.bat_red_pct;
+    if (nvs_get_u16(h, NVS_K_BATP, &bp) == ESP_OK && bp >= 500 && bp <= 4000) s_cfg.bat_present_mv = bp;
+    ESP_LOGI(TAG, "电量阈值：红<=%u%% 黄<=%u%% 未接电池<%u mV",
+             (unsigned)s_cfg.bat_red_pct, (unsigned)s_cfg.bat_yellow_pct,
+             (unsigned)s_cfg.bat_present_mv);
+
+    /* 【M22】语音音量 */
+    uint16_t av = 0;
+    if (nvs_get_u16(h, NVS_K_AVOL, &av) == ESP_OK && av <= 300) {
+        s_cfg.audio_vol = av;
+        ESP_LOGI(TAG, "从 NVS 载入 audio_vol=%u%%", (unsigned)av);
+    } else {
+        ESP_LOGI(TAG, "NVS 无 audio_vol，使用默认 %u%%", (unsigned)s_cfg.audio_vol);
+    }
+    nvs_close(h);
+}
 /* ---- 【M7】APK 地图底图总开关 ---- */
 void config_set_img_on(bool v)           { s_cfg.img_on = v; }
