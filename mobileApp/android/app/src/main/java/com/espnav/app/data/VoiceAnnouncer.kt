@@ -14,11 +14,19 @@ package com.espnav.app.data
 class VoiceAnnouncer {
 
     companion object {
-        /** 进入多少米内播报转向（单档） */
-        const val TURN_ANNOUNCE_M = 100
-        /** 超过多少米视为已离开该路口（复位，允许再次播报） */
-        const val TURN_RESET_M = 150
+        /** 【M26】转向播报距离的默认值（米）。实际值由 App 设置驱动（见 [turnAnnounceM]）。 */
+        const val TURN_ANNOUNCE_M_DEF = 100
+        /** 复位阈值相对播报距离的余量：距离 + 该值 = "已离开此路口"的门限 */
+        const val TURN_RESET_GAP_M = 50
     }
+
+    /** 【M26】转向播报距离（米，可配 30-300）：进入该范围内播"前方 X 米，右转"。
+     *  由 MainActivity 在每次调用前从设置同步过来（改完立即生效，无需重连/重启）。 */
+    var turnAnnounceM: Int = TURN_ANNOUNCE_M_DEF
+
+    /** 复位阈值：必须比播报距离大，否则"离开路口"永远判定不到 → 连续同类转向只播一次。
+     *  所以这里取 [turnAnnounceM] + 余量（固定差值，避免用户把它调得比播报距离还小）。 */
+    private val turnResetM: Int get() = turnAnnounceM + TURN_RESET_GAP_M
 
     private var announcedTurn: TurnType? = null   /* 本次路口是否已播过（按转向类型去重） */
     private var arrivedDone = false               /* 到达只播一次 */
@@ -57,11 +65,11 @@ class VoiceAnnouncer {
 
         /* ---- 转向：单档 100 米，同一路口只播一次 ---- */
         val d = s.turnDistMeters
-        if (d > TURN_RESET_M) {
+        if (d > turnResetM) {
             announcedTurn = null                  /* 已离开上一个路口 */
             return null
         }
-        if (d > TURN_ANNOUNCE_M || d <= 0) return null
+        if (d > turnAnnounceM || d <= 0) return null
         if (s.turnType == TurnType.STRAIGHT || s.turnType == TurnType.UNKNOWN) return null
         if (announcedTurn == s.turnType) return null
         announcedTurn = s.turnType

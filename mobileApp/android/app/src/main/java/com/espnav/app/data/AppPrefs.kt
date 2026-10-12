@@ -52,6 +52,14 @@ class AppPrefs(ctx: Context) {
         get() = sp.getInt(K_AUDIO_VOL, 200)
         set(v) = sp.edit().putInt(K_AUDIO_VOL, v.coerceIn(AUDIO_VOL_MIN, AUDIO_VOL_MAX)).apply()
 
+    /** 【M26】转向播报距离（米，30-300，默认 100）：进入该范围播"前方 X 米，右转"。
+     *  纯 App 侧判断，改完立即生效。 */
+    var voiceTurnDistM: Int
+        get() = sp.getInt(K_VOICE_TURN_DIST, 100)
+        set(v) = sp.edit().putInt(
+            K_VOICE_TURN_DIST, v.coerceIn(VOICE_TURN_DIST_MIN, VOICE_TURN_DIST_MAX)
+        ).apply()
+
     /** 【M21】语音播报总开关（默认关：需要用户主动打开，避免意外出声） */
     var voiceOn: Boolean
         get() = sp.getBoolean(K_VOICE_ON, false)
@@ -447,6 +455,11 @@ class AppPrefs(ctx: Context) {
         const val K_AUDIO_VOL = "audio_vol"        /* 【M22】语音音量（%），0-300 */
         const val AUDIO_VOL_MIN = 0                /* 【M22】0 = 静音 */
         const val AUDIO_VOL_MAX = 300              /* 【M22】上限 300%（ESP 侧超 100% 走软件增益） */
+
+        /* 【M26】转向播报距离（米） */
+        const val K_VOICE_TURN_DIST = "voice_turn_dist"
+        const val VOICE_TURN_DIST_MIN = 30
+        const val VOICE_TURN_DIST_MAX = 300
 
         /* 【M25】A 组批 3：配网热点（校验规则与 ESP 端一致） */
         const val K_AP_SSID = "ap_ssid_cfg"

@@ -654,6 +654,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
             while (isActive) {
                 val st = navSource.latest()
                 /* 【M23】语音播报：由每帧导航状态驱动（转向/到达/偏航）；与推帧同频 */
+                /* 【M26】把设置里的播报距离同步给策略（用户改完下一帧即生效） */
+                voiceAnnouncer.turnAnnounceM = appPrefs.voiceTurnDistM
                 runCatching { announce(voiceAnnouncer.onNavState(st)) }
                 val f = NavStateMapper.toFrame(st)
                 client.queue(OutMsg.navFrame(applyDbgMask(f)))
@@ -1135,6 +1137,29 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                     send(OutMsg.setVolume(vol))
                 }
                 log("语音音量 = " + vol + "%")
+            }
+        })
+
+        /* 【M26】转向播报距离 30-300 米：纯 App 侧策略，改完立即生效（无需下发/重启） */
+        val skDist = v.findViewById<android.widget.SeekBar>(R.id.seekVoiceDist)
+        val tvDist = v.findViewById<android.widget.TextView>(R.id.tvVoiceDist)
+        skDist.max = com.espnav.app.data.AppPrefs.VOICE_TURN_DIST_MAX -
+            com.espnav.app.data.AppPrefs.VOICE_TURN_DIST_MIN
+        skDist.progress = appPrefs.voiceTurnDistM - com.espnav.app.data.AppPrefs.VOICE_TURN_DIST_MIN
+        tvDist.text = appPrefs.voiceTurnDistM.toString() + " m"
+        skDist.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                val d = p + com.espnav.app.data.AppPrefs.VOICE_TURN_DIST_MIN
+                tvDist.text = d.toString() + " m"
+                appPrefs.voiceTurnDistM = d
+                /* 立即同步给策略对象（下一帧播报就用新值） */
+                voiceAnnouncer.turnAnnounceM = d
+            }
+
+            override fun onStartTrackingTouch(sb: android.widget.SeekBar?) = Unit
+            override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {
+                log("转向播报距离 = " + appPrefs.voiceTurnDistM + " m")
             }
         })
 
