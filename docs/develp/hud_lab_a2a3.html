@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EspNav · A2 轮廓 / A3 点阵 对比台</title>
+<style>
+  :root { --bg:#101219; --panel:#191c25; --line:#2b3140; --fg:#e7eaf2;
+          --dim:#98a1b3; --acc:#4cc2ff; --ok:#46d39a; --warn:#ffb44c; --bad:#ff6b6b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:13px/1.6 "Microsoft YaHei","Segoe UI",system-ui,sans-serif; }
+  header { padding:13px 18px; border-bottom:1px solid var(--line); background:var(--panel); }
+  header h1 { margin:0 0 3px; font-size:16px; }
+  header p { margin:0; color:var(--dim); font-size:12px; }
+  .wrap { padding:14px; display:grid; gap:14px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:13px; }
+  .card > h2 { margin:0 0 9px; font-size:13px; color:var(--acc); font-weight:600; }
+  .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+  label.file { display:inline-flex; gap:8px; align-items:center; cursor:pointer;
+    border:1px dashed var(--line); border-radius:8px; padding:9px 14px; background:#151821; font-size:12px; }
+  label.file:hover { border-color:var(--acc); }
+  label.file input { display:none; }
+  canvas { background:#0b0d12; border:1px solid var(--line); border-radius:6px; max-width:100%; }
+  .ctl { display:grid; grid-template-columns:150px 1fr 62px; gap:7px 10px; align-items:center; }
+  .ctl > span:first-child { color:var(--dim); font-size:12px; }
+  .ctl output { text-align:right; color:var(--acc); font-variant-numeric:tabular-nums; font-size:12px; }
+  input[type=range] { width:100%; accent-color:var(--acc); }
+  select,button { background:#151821; color:var(--fg); border:1px solid var(--line);
+    border-radius:6px; padding:6px 10px; font-size:12px; cursor:pointer; font-family:inherit; }
+  select:hover,button:hover { border-color:var(--acc); }
+  button.pri { background:#1d3a4d; border-color:#2c6b8f; }
+  .grid { display:grid; gap:11px; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); }
+  .cell { border:1px solid var(--line); border-radius:8px; padding:9px; background:#141720;
+          display:grid; gap:7px; cursor:pointer; }
+  .cell:hover { border-color:var(--acc); }
+  .cell.sel { border-color:var(--ok); box-shadow:0 0 0 1px var(--ok) inset; }
+  .cell b { font-size:12px; color:var(--fg); }
+  .cell small { color:var(--dim); font-size:11px; }
+  table { border-collapse:collapse; width:100%; font-size:12px; }
+  th,td { border:1px solid var(--line); padding:5px 8px; text-align:right; }
+  th { background:#151821; color:var(--acc); font-weight:600; text-align:center; }
+  td:first-child, th:first-child { text-align:left; }
+  .good { color:var(--ok); } .mid { color:var(--warn); } .bad { color:var(--bad); }
+  .hint { color:var(--dim); font-size:11.5px; }
+  .stage { display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); }
+  .tag { display:inline-block; background:#23303d; color:var(--acc); border-radius:4px;
+         padding:1px 6px; font-size:11px; margin-right:4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>EspNav · A2 轮廓 / A3 点阵 对比台</h1>
+  <p>你提供两张图（地图截图 + 真实环境照片），页面算出多组参数的方案并给出<b>定量指标</b>：
+     <b>发光像素占比</b>（遮挡面积）· <b>平均发光量</b>（washout 强度）· <b>真实环境细节可见度</b>（最终判定：真实信号的相对幅度 ÷ 屏幕叠加的干扰基线）。全部本机运行。</p>
+</header>
+
+<div class="wrap">
+
+  <!-- ① 输入 -->
+  <div class="card">
+    <h2>① 输入</h2>
+    <div class="row">
+      <label class="file">🗺️ 地图截图<input type="file" id="fMap" accept="image/*"></label>
+      <label class="file">📷 真实环境照片<input type="file" id="fReal" accept="image/*"></label>
+      <span class="hint">没选真实照片时，只算屏幕侧指标（发光占比/平均发光）；选了才能算"细节可见度"。</span>
+    </div>
+    <div class="row" style="margin-top:11px; align-items:flex-start">
+      <div><div class="hint">地图（缩到 320×240）</div><canvas id="cvMap" width="320" height="240"></canvas></div>
+      <div><div class="hint">真实环境</div><canvas id="cvReal" width="320" height="240"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ② 公共参数 -->
+  <div class="card">
+    <h2>② 公共参数（所有方案共用）</h2>
+    <div class="ctl">
+      <span>预处理·亮度</span><input type="range" id="pBright" min="20" max="150" value="100"><output id="oBright">100%</output>
+      <span>预处理·对比度</span><input type="range" id="pContrast" min="50" max="250" value="100"><output id="oContrast">100%</output>
+      <span>预处理·反相</span><input type="range" id="pInvert" min="0" max="1" value="0"><output id="oInvert">关</output>
+      <span>线条/点阵颜色</span>
+      <select id="pColor">
+        <option value="g">绿（80,255,120）</option>
+        <option value="m">品红（255,80,200）</option>
+        <option value="c">青（80,230,255）</option>
+        <option value="w">白（255,255,255）</option>
+        <option value="o">橙（255,170,60）</option>
+      </select><output>—</output>
+      <span>分光镜透过率 T</span><input type="range" id="pT" min="40" max="100" value="70"><output id="oT">70%</output>
+      <span>反射率 R</span><input type="range" id="pR" min="0" max="80" value="30"><output id="oR">30%</output>
+      <span>LCD 黑位漏光</span><input type="range" id="pBlack" min="0" max="50" value="12"><output id="oBlack">12%</output>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="pri" id="btnRun">重新计算全部方案</button>
+      <span class="hint">改完参数点这里（或直接拖滑杆，自动重算）。</span>
+    </div>
+  </div>
+
+  <!-- ③ 指标总表 -->
+  <div class="card">
+    <h2>③ 指标总表<span class="hint" style="font-weight:400">　（可见度越高＝真实环境越看得清；发光占比/平均发光量越低越好）</span></h2>
+    <div id="tblWrap"><span class="hint">先选地图截图。</span></div>
+    <p class="hint" style="margin:9px 0 0">
+      <span class="tag">基准</span>
+      · <b>现状（压暗 70%）</b>：当前固件的做法，用来对比"改了之后好多少"<br>
+      · <b>纯真实（屏幕全黑）</b>：遮挡的物理下限（理论 100% 可见度）<br>
+      · <span class="tag">读法</span>「可见度」是核心：<b>1.0 = 完全没影响</b>。它已归一化掉分光镜透过率带来的整体变暗（人眼会适应，不该算作冲淡），只反映"屏幕发光把基线抬高了多少"。
+    </p>
+  </div>
+
+  <!-- ④ A2 -->
+  <div class="card">
+    <h2>④ A2 · Sobel 轮廓（黑底 + 细线，只有边缘发光）</h2>
+    <div class="grid" id="gridA2"></div>
+    <p class="hint" style="margin:9px 0 0">
+      <b>阈值</b>越高线越少；<b>去密 minGap</b> 会把相邻线条合并成稀疏线（地图里最密的往往是路网，去密对减少发光面积很有效）。
+    </p>
+  </div>
+
+  <!-- ⑤ A3 -->
+  <div class="card">
+    <h2>⑤ A3 · 稀疏点阵（只让 1 间距² 的像素发光）</h2>
+    <div class="grid" id="gridA3"></div>
+    <p class="hint" style="margin:9px 0 0">
+      <b>间距</b>越大越稀疏（4 = 1/16 像素发光）；<b>亮度下限</b>会把"没有信息的点"直接丢掉，进一步减少发光。
+    </p>
+  </div>
+
+  <!-- ⑥ 放大与导出 -->
+  <div class="card">
+    <h2>⑥ 选中方案（点上面任一方案卡可选中）</h2>
+    <div class="stage">
+      <div><div class="hint">处理器结果（要发给 ESP 的图）</div><canvas id="cvOut" width="320" height="240"></canvas></div>
+      <div><div class="hint">分光镜叠加效果（真实×T + 屏幕×R）</div><canvas id="cvMix" width="320" height="240"></canvas></div>
+      <div><div class="hint">纯真实环境（对照）</div><canvas id="cvRef" width="320" height="240"></canvas></div>
+    </div>
+    <div class="row" style="margin-top:11px">
+      <button class="pri" id="btnPng">导出选中方案的 PNG</button>
+      <span class="hint" id="selInfo">未选中</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>⑦ 说明</h2>
+    <p class="hint" style="margin:0">
+      · 算法在 <b>hud_algo.js</b> 里（独立文件、纯函数、无 DOM 依赖），本页只是调用它 —— 你以后想直接把这个算法搬到手机端也方便。<br>
+      · 叠加用<b>加法合成</b>（屏幕是自发光体），比用 alpha 混合更贴近真实分光镜。<br>· 「细节可见度」= (原真实图平均亮度 × T) ÷ 混合图平均亮度。<b>刻意不用"对比度"</b>：屏幕图案自带结构，用总对比度会把它误算成"更清晰"（实测会出现"发光越多分数越高"的错误结论）。<br>
+      · 地图截图会缩放到 <b>320×240</b>，与 ESP 实际收到的尺寸一致。<br>
+      · 导出的 PNG 可以拿去替换 App 推图流程里的底图，做真机对比。
+    </p>
+  </div>
+</div>
+
+<script src="hud_algo.js"></script>
+<script>
+'use strict';
+const A = window.HudAlgo;
+const W = A.W, H = A.H;
+const $ = id => document.getElementById(id);
+const norm = c => { c.width = W; c.height = H; return c; };
+
+const cvMap = norm($('cvMap')), cvReal = norm($('cvReal'));
+const cvOut = norm($('cvOut')), cvMix = norm($('cvMix')), cvRef = norm($('cvRef'));
+const cxMap = cvMap.getContext('2d', { willReadFrequently:true });
+const cxReal = cvReal.getContext('2d', { willReadFrequently:true });
+const cxOut = cvOut.getContext('2d');
+const cxMix = cvMix.getContext('2d');
+const cxRef = cvRef.getContext('2d');
+
+let imgMap = null, imgReal = null;
+let selected = null;                 // 当前选中方案（含 .img / .name）
+
+const COLORS = {
+  g: [80,255,120], m: [255,80,200], c: [80,230,255], w: [255,255,255], o: [255,170,60]
+};
+
+function ph(ctx, text) {
+  ctx.fillStyle = '#0b0d12'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = '#48505f'; ctx.font = '13px "Microsoft YaHei",sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, W/2, H/2);
+}
+ph(cxMap,'请选择地图截图'); ph(cxReal,'请选择真实环境照片');
+ph(cxOut,'—'); ph(cxMix,'—'); ph(cxRef,'—');
+
+/* ---------- 上传 ---------- */
+function hook(input, ctx, set) {
+  input.addEventListener('change', e => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    const url = URL.createObjectURL(f), im = new Image();
+    im.onload = () => {
+      const k = Math.max(W / im.width, H / im.height);
+      const dw = im.width * k, dh = im.height * k;
+      ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H);
+      ctx.drawImage(im, (W-dw)/2, (H-dh)/2, dw, dh);
+      set(ctx.getImageData(0,0,W,H));
+      URL.revokeObjectURL(url);
+      run();
+    };
+    im.onerror = () => alert('这个文件读不出来，换一张（png/jpg/webp）。');
+    im.src = url;
+  });
+}
+hook($('fMap'),  cxMap,  d => { imgMap = d; });
+hook($('fReal'), cxReal, d => { imgReal = d; cxRef && cxRef.putImageData(d,0,0); });
+
+/* ---------- 参数 ---------- */
+function P() {
+  return {
+    bright:  +$('pBright').value / 100,
+    contrast:+$('pContrast').value / 100,
+    invert:  +$('pInvert').value === 1,
+    color:   COLORS[$('pColor').value],
+    T:       +$('pT').value / 100,
+    R:       +$('pR').value / 100,
+    black:   +$('pBlack').value / 100,
+  };
+}
+document.querySelectorAll('input[type=range]').forEach(r => {
+  r.addEventListener('input', () => {
+    const map = { pBright:v=>v+'%', pContrast:v=>v+'%', pInvert:v=>v=='1'?'开':'关',
+                  pT:v=>v+'%', pR:v=>v+'%', pBlack:v=>v+'%' };
+    const o = r.nextElementSibling;
+    if (o && map[r.id]) o.textContent = map[r.id](r.value);
+    schedule();
+  });
+});
+$('pColor').addEventListener('change', run);
+let rid = 0;
+function schedule(){ cancelAnimationFrame(rid); rid = requestAnimationFrame(run); }
+
+/* ---------- 方案生成 ---------- */
+function schemesA2(p) {
+  const list = [];
+  [50, 90, 150].forEach(thr => {
+    [0, 3].forEach(gap => {
+      list.push({
+        name: 'A2 阈值 ' + thr + (gap ? ' · 去密 ' + gap : ''),
+        make: () => A.sobelEdges(imgMap, {
+          thr: thr, lineW: 1, minGap: gap, bgBright: 0, color: p.color,
+          pre: { bright: p.bright, contrast: p.contrast, invert: p.invert },
+        }),
+      });
+    });
+  });
+  return list;
+}
+function schemesA3(p) {
+  const list = [];
+  [3, 4, 6, 8].forEach(gap => {
+    [40, 80].forEach(minLum => {
+      list.push({
+        name: 'A3 间距 ' + gap + ' · 亮度下限 ' + minLum,
+        make: () => A.dotGrid(imgMap, {
+          gap: gap, minLum: minLum, dotSize: Math.min(2, gap), color: p.color,
+          bgBright: 0, pre: { bright: p.bright, contrast: p.contrast, invert: p.invert },
+        }),
+      });
+    });
+  });
+  return list;
+}
+
+/* ---------- 主流程 ---------- */
+function run() {
+  if (!imgMap) { $('tblWrap').innerHTML = '<span class="hint">先选地图截图。</span>'; return; }
+  const p = P();
+
+  /* 基准方案 */
+  const baseline = [
+    /* 现状 = 整图压暗（亮度相乘 + 去饱和），**不是**点阵 —— 之前误用 dotGrid 包装会把它画成 1/4 点阵，指标全错 */
+    { name: '现状（压暗 70% + 去饱和）', make: () =>
+        A.wrapImage(A.preprocess(imgMap.data, { bright: 0.70, contrast: 1.0, sat: 0.45 })) },
+    /* 纯真实 = 屏幕完全不发光（遮挡的物理下限） */
+    { name: '纯真实（屏幕全黑）', make: () =>
+        A.wrapImage(new Uint8ClampedArray(A.W * A.H * 4).fill(0).map((v, i) => (i % 4 === 3 ? 255 : 0))) },
+  ];
+
+  const all = baseline.concat(schemesA2(p), schemesA3(p));
+
+  /* 计算 + 指标 */
+  const rows = [];
+  all.forEach(s => {
+    const img = s.make();
+    const st = A.screenStats(img);
+    const mixed = imgReal ? A.compositeAdd(imgReal, img, { T:p.T, R:p.R, black:p.black }) : null;
+    const keep = (imgReal && mixed) ? A.visibility(imgReal, mixed, p.T) : null;
+    rows.push({ name: s.name, img: img, mixed: mixed, lit: st.litRatio, lum: st.meanLum, keep: keep });
+  });
+
+  renderTable(rows);
+  renderGrid($('gridA2'), rows.slice(2, 2 + 6));       // A2：6 个
+  renderGrid($('gridA3'), rows.slice(8, 8 + 8));       // A3：8 个
+}
+
+function fmtPct(v){ return (v*100).toFixed(1) + '%'; }
+function cls(v, lo, hi){ return v <= lo ? 'good' : (v <= hi ? 'mid' : 'bad'); }
+
+function renderTable(rows) {
+  let html = '<table><tr><th>方案</th><th>发光像素占比</th><th>平均发光量</th>'
+           + '<th>真实环境细节可见度</th><th>说明</th></tr>';
+  rows.forEach(r => {
+    const keepTxt = r.keep == null ? '—' : fmtPct(r.keep);
+    const keepCls = r.keep == null ? '' : (r.keep >= 0.9 ? 'good' : r.keep >= 0.7 ? 'mid' : 'bad');
+    let note = '';
+    if (r.name.indexOf('现状') === 0) note = '当前固件做法（对照基准）';
+    else if (r.name.indexOf('纯真实') === 0) note = '物理下限（不推底图）';
+    else if (r.name.indexOf('A2') === 0) note = '轮廓：只有边缘发光';
+    else note = '点阵：1/间距² 像素发光';
+    html += '<tr><td>' + r.name + '</td>'
+         + '<td class="' + cls(r.lit, 0.05, 0.2) + '">' + fmtPct(r.lit) + '</td>'
+         + '<td class="' + cls(r.lum, 6, 25) + '">' + r.lum.toFixed(1) + '</td>'
+         + '<td class="' + keepCls + '">' + keepTxt + '</td>'
+         + '<td style="text-align:left">' + note + '</td></tr>';
+  });
+  html += '</table>';
+  $('tblWrap').innerHTML = html;
+}
+
+function renderGrid(grid, rows) {
+  grid.innerHTML = '';
+  rows.forEach(r => {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    const b = document.createElement('b'); b.textContent = r.name;
+    const c = document.createElement('canvas'); c.width = W; c.height = H; c.style.width = '100%';
+    const cx = c.getContext('2d');
+    cx.putImageData(r.mixed || r.img, 0, 0);
+    const s1 = document.createElement('small');
+    s1.textContent = '发光占比 ' + fmtPct(r.lit) + ' · 平均发光 ' + r.lum.toFixed(1)
+                   + (r.keep != null ? ' · 可见度 ' + fmtPct(r.keep) : '');
+    cell.append(b, c, s1);
+    cell.addEventListener('click', () => select(r, cell, grid));
+    grid.append(cell);
+  });
+}
+
+function select(r, cell, grid) {
+  document.querySelectorAll('.cell.sel').forEach(e => e.classList.remove('sel'));
+  cell.classList.add('sel');
+  selected = r;
+  cxOut.putImageData(r.img, 0, 0);
+  if (r.mixed) cxMix.putImageData(r.mixed, 0, 0);
+  else { ph(cxMix, '请同时选真实照片'); }
+  if (imgReal) cxRef.putImageData(imgReal, 0, 0);
+  $('selInfo').textContent = '已选中：' + r.name
+    + '（发光占比 ' + fmtPct(r.lit) + '，平均发光 ' + r.lum.toFixed(1)
+    + (r.keep != null ? '，可见度 ' + fmtPct(r.keep) : '') + '）';
+}
+
+/* ---------- 导出 ---------- */
+$('btnPng').addEventListener('click', () => {
+  if (!selected) { alert('先点一个方案卡选中它。'); return; }
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  c.getContext('2d').putImageData(selected.img, 0, 0);
+  const a = document.createElement('a');
+  a.download = 'espnav_A2A3_' + selected.name.replace(/[^\w\u4e00-\u9fa5]+/g, '_') + '.png';
+  a.href = c.toDataURL('image/png');
+  a.click();
+});
+
+$('btnRun').addEventListener('click', run);
+run();
+</script>
+</body>
+</html>
