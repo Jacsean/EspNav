@@ -1006,6 +1006,47 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 arrow.text = getString(if (show) R.string.sec_arrow_open else R.string.sec_arrow_closed)
             }
         }
+        /* ================= 【M25】A 组批 3：配网热点名 / 密码 =================
+         * 输入停止 800ms 后才下发（避免打字过程中每字符发一次，导致 ESP 反复写 NVS）。 */
+        val etSsid = v.findViewById<android.widget.EditText>(R.id.setApSsid)
+        val etPass = v.findViewById<android.widget.EditText>(R.id.setApPass)
+        etSsid.setText(appPrefs.apSsid)
+        etPass.setText(appPrefs.apPass)
+        var apJob: kotlinx.coroutines.Job? = null
+        fun pushApIfValid() {
+            val ssid = etSsid.text.toString().trim()
+            val pass = etPass.text.toString().trim()
+            if (ssid.isEmpty() || ssid.length > 32) {
+                log("热点名无效（须 1-32 字符），未下发")
+                return
+            }
+            if (pass.length < 8 || pass.length > 63) {
+                log("热点密码无效（须 8-63 字符），未下发")
+                return
+            }
+            send(OutMsg.setAp(ssid, pass))
+            log("已下发配网热点：SSID=$ssid（**重启 ESP 后生效**）")
+        }
+        fun scheduleAp() {
+            apJob?.cancel()
+            apJob = lifecycleScope.launch {
+                delay(800)
+                pushApIfValid()
+            }
+        }
+        fun watchAp(et: android.widget.EditText, set: (String) -> Unit) {
+            et.addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    set(s?.toString() ?: "")
+                    scheduleAp()
+                }
+            })
+        }
+        watchAp(etSsid) { appPrefs.apSsid = it }
+        watchAp(etPass) { appPrefs.apPass = it }
+
         /* ================= 【M24】A 组批 2：电量三阈值 =================
          * 滑杆用"绝对百分比"（不是偏移量），拖动时节流（变化满 2 才发一次，避免 ESP 反复写 NVS），
          * 松手时补发最终值。三项一起发（协议是单条 SET_CONFIG 带三个字段）。 */

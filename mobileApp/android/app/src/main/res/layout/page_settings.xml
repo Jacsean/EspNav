@@ -1096,6 +1096,41 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:textSize="12sp"
+                            android:text="@string/set_ap_hint_new" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:textSize="13sp"
+                            android:text="@string/set_ap_ssid" />
+
+                        <EditText
+                            android:id="@+id/setApSsid"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:hint="@string/set_ap_ssid"
+                            android:importantForAutofill="no"
+                            android:inputType="text" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textSize="13sp"
+                            android:text="@string/set_ap_pass" />
+
+                        <EditText
+                            android:id="@+id/setApPass"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:hint="@string/set_ap_pass"
+                            android:importantForAutofill="no"
+                            android:inputType="text" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textSize="12sp"
                             android:text="@string/set_ap_delay_hint" />
 
                         <LinearLayout

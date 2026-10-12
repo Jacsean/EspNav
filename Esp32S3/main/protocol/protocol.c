@@ -86,6 +86,12 @@ static void apply_set_config(const char *line)
         if (ops && ops->backlight) ops->backlight((uint8_t)v);
         ESP_LOGI(TAG, "apply lcd_brightness=%d", v);
     }
+    /* 【M25】A 组批 3：配网热点名/密码（只入 NVS，**重启后生效**；绝不能热改 WiFi） */
+    {
+        char sv[64];
+        if (jl_get_str(line, "ap_ssid", sv, sizeof(sv))) config_set_ap_ssid(sv);
+        if (jl_get_str(line, "ap_pass", sv, sizeof(sv))) config_set_ap_pass(sv);
+    }
     /* 【M24】A 组批 2：电量阈值（立即生效 + 入 NVS） */
     if (jl_get_int(line, "bat_red_pct", -1, &v) && v >= 0) {
         config_set_bat_red_pct((uint8_t)v);

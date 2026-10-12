@@ -31,6 +31,9 @@ void config_init(void)
     s_cfg.screen_flip_y  = false;/* 【M9】默认不做垂直翻转 */
     s_cfg.ap_delay_s     = 15;   /* 【M15】上电先试连热点 15 秒，超时才开配网热点 */
     s_cfg.audio_vol      = 200;  /* 【M22】语音音量 200%（硬件 100% + 软件 2.0x）；嫌大可调低 */
+    /* 【M25】A 组批 3：配网热点（默认与原写死值一致，保证行为不变） */
+    strncpy(s_cfg.ap_ssid, "ESPNav-AP", sizeof(s_cfg.ap_ssid) - 1);
+    strncpy(s_cfg.ap_pass, "espnav1234", sizeof(s_cfg.ap_pass) - 1);
     /* 【M24】A 组批 2：电量阈值（与原写死值一致，保证行为不变） */
     s_cfg.bat_red_pct    = 15;
     s_cfg.bat_yellow_pct = 40;
@@ -75,6 +78,48 @@ void config_set_screen_flip_y(bool v)    { s_cfg.screen_flip_y = v; }
 #define NVS_K_BATR  "bat_red"       /* 【M24】电量红色阈值（%） */
 #define NVS_K_BATY  "bat_yellow"    /* 【M24】电量黄色阈值（%） */
 #define NVS_K_BATP  "bat_pmv"       /* 【M24】未接电池判据（mV） */
+#define NVS_K_APSSID "ap_ssid"      /* 【M25】配网热点名 */
+#define NVS_K_APPASS "ap_pass"      /* 【M25】配网热点密码 */
+
+/* 【M25】配网热点名/密码。校验：SSID 1-32 字符；密码 8-63 字符（WPA2 要求）。
+ * 只写 NVS，**不当场重启 WiFi**（热改会 RST 掉所有 TCP —— fault_log F25）。 */
+void config_set_ap_ssid(const char *s)
+{
+    if (!s) return;
+    size_t n = strlen(s);
+    if (n == 0 || n > 32) {
+        ESP_LOGW(TAG, "ap_ssid 长度非法（%u），忽略（须 1-32 字符）", (unsigned)n);
+        return;
+    }
+    strncpy(s_cfg.ap_ssid, s, sizeof(s_cfg.ap_ssid) - 1);
+    s_cfg.ap_ssid[sizeof(s_cfg.ap_ssid) - 1] = 0;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_str(h, NVS_K_APSSID, s_cfg.ap_ssid);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    ESP_LOGI(TAG, "ap_ssid=%s 已存 NVS（重启后生效）", s_cfg.ap_ssid);
+}
+
+void config_set_ap_pass(const char *s)
+{
+    if (!s) return;
+    size_t n = strlen(s);
+    if (n < 8 || n > 63) {
+        ESP_LOGW(TAG, "ap_pass 长度非法（%u），忽略（须 8-63 字符）", (unsigned)n);
+        return;
+    }
+    strncpy(s_cfg.ap_pass, s, sizeof(s_cfg.ap_pass) - 1);
+    s_cfg.ap_pass[sizeof(s_cfg.ap_pass) - 1] = 0;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_str(h, NVS_K_APPASS, s_cfg.ap_pass);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    ESP_LOGI(TAG, "ap_pass 已存 NVS（长度 %u，重启后生效）", (unsigned)n);
+}
 
 /* 【M24】电量阈值。黄色恒 >= 红色，避免"红黄颠倒"导致颜色判断失去意义。 */
 void config_set_bat_red_pct(uint8_t v)
@@ -170,6 +215,20 @@ void config_load_nvs(void)
     } else {
         ESP_LOGI(TAG, "NVS 无 ap_delay_s，使用默认 %u 秒", (unsigned)s_cfg.ap_delay_s);
     }
+    /* 【M25】配网热点名/密码（读不到就保持默认） */
+    size_t slen = sizeof(s_cfg.ap_ssid);
+    if (nvs_get_str(h, NVS_K_APSSID, s_cfg.ap_ssid, &slen) == ESP_OK) {
+        ESP_LOGI(TAG, "从 NVS 载入 ap_ssid=%s", s_cfg.ap_ssid);
+    } else {
+        ESP_LOGI(TAG, "NVS 无 ap_ssid，使用默认 %s", s_cfg.ap_ssid);
+    }
+    slen = sizeof(s_cfg.ap_pass);
+    if (nvs_get_str(h, NVS_K_APPASS, s_cfg.ap_pass, &slen) == ESP_OK) {
+        ESP_LOGI(TAG, "从 NVS 载入 ap_pass（长度 %u）", (unsigned)strlen(s_cfg.ap_pass));
+    } else {
+        ESP_LOGI(TAG, "NVS 无 ap_pass，使用默认");
+    }
+
     /* 【M24】电量阈值（读不到就保持默认） */
     uint8_t  br = 0, by = 0;
     uint16_t bp = 0;

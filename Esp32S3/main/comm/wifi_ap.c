@@ -9,11 +9,26 @@
 #include "nvs_flash.h"
 #include "esp_mac.h"
 #include "esp_log.h"
+#include "config.h"      /* 【M25】配网热点名/密码改为读配置 */
 
 static const char *TAG = "wifi_ap";
 
-#define AP_SSID     "ESPNav-AP"
-#define AP_PASS     "espnav1234"
+/* 【M25】A 组批 3：SSID / 密码改为读配置（App 可改，存 NVS，重启后生效）。
+ * 这两个宏只作"配置不可用时的兜底默认"。 */
+#define AP_SSID_DEF  "ESPNav-AP"
+#define AP_PASS_DEF  "espnav1234"
+
+/* 【M25】当前生效的热点名/密码：优先取配置（app_main 已 config_load_nvs 载入），空则用默认 */
+static const char *ap_ssid_now(void)
+{
+    const espnav_config_t *c = config_get();
+    return (c && c->ap_ssid[0]) ? c->ap_ssid : AP_SSID_DEF;
+}
+static const char *ap_pass_now(void)
+{
+    const espnav_config_t *c = config_get();
+    return (c && c->ap_pass[0]) ? c->ap_pass : AP_PASS_DEF;
+}
 #define AP_CHANNEL  1
 #define AP_MAX_STA  2
 
@@ -22,7 +37,8 @@ static void wifi_ap_event(void *arg, esp_event_base_t base, int32_t id, void *da
     (void)arg;
     if (base != WIFI_EVENT) return;
     if (id == WIFI_EVENT_AP_START) {
-        ESP_LOGI(TAG, "AP_START: 热点就绪 -> SSID=%s  密码=%s  网关=192.168.4.1", AP_SSID, AP_PASS);
+        ESP_LOGI(TAG, "AP_START: 热点就绪 -> SSID=%s  密码=%s  网关=192.168.4.1",
+                 ap_ssid_now(), ap_pass_now());
     } else if (id == WIFI_EVENT_AP_STACONNECTED) {
         wifi_event_ap_staconnected_t *e = (wifi_event_ap_staconnected_t *)data;
         ESP_LOGI(TAG, "客户端已连接: " MACSTR, MAC2STR(e->mac));
@@ -75,9 +91,9 @@ void wifi_ap_start(void)
     WIFI_TRY(esp_wifi_set_mode(WIFI_MODE_APSTA));
 
     wifi_config_t wc = { 0 };
-    snprintf((char *)wc.ap.ssid, sizeof(wc.ap.ssid), "%s", AP_SSID);
-    wc.ap.ssid_len = (uint8_t)strlen(AP_SSID);
-    snprintf((char *)wc.ap.password, sizeof(wc.ap.password), "%s", AP_PASS);
+    snprintf((char *)wc.ap.ssid, sizeof(wc.ap.ssid), "%s", ap_ssid_now());
+    wc.ap.ssid_len = (uint8_t)strlen(ap_ssid_now());
+    snprintf((char *)wc.ap.password, sizeof(wc.ap.password), "%s", ap_pass_now());
     wc.ap.channel = AP_CHANNEL;
     wc.ap.max_connection = AP_MAX_STA;
     wc.ap.authmode = WIFI_AUTH_WPA2_PSK;
@@ -88,6 +104,6 @@ void wifi_ap_start(void)
     uint8_t mac[6] = { 0 };
     esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
     ESP_LOGI(TAG, "softAP 已启动: SSID=%s PASS=%s channel=%d 网关=192.168.4.1",
-             AP_SSID, AP_PASS, AP_CHANNEL);
+             ap_ssid_now(), ap_pass_now(), AP_CHANNEL);
     ESP_LOGI(TAG, "softAP MAC=" MACSTR " （搜不到时把完整日志发我）", MAC2STR(mac));
 }

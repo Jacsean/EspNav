@@ -132,6 +132,13 @@ object OutMsg {
      * 格式固定 16kHz / 16bit / 单声道（ESP 侧 audio_rx 只接受这一种）。
      * ⚠ 注意：音频分块的 base64 字段名是 "b64"（图像用的是 "d"），别写错，否则固件取不到。
      * 每块原始字节 ≤1200（base64 ≤1600 字符 < 固件缓冲区 1800）。 */
+    /* 【M25】A 组批 3：配网热点名 / 密码（存 ESP 的 NVS，**重启 ESP 后生效**） */
+    fun setAp(ssid: String, pass: String): String =
+        Json.obj(
+            "msg_type" to "SET_CONFIG",
+            "payload" to Json.obj("ap_ssid" to ssid, "ap_pass" to pass)
+        ).toString()
+
     /* 【M24】A 组批 2：电量阈值单发（红阈值 / 黄阈值 / 未接电池判据） */
     fun setBattery(redPct: Int, yellowPct: Int, presentMv: Int): String =
         Json.obj(

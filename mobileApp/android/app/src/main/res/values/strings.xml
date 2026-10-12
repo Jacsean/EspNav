@@ -91,6 +91,9 @@
     <string name="set_frame_ms_hint">越小越流畅，但 App 与 ESP 的负载、耗电也越高（默认 200ms = 5 帧/秒）。</string>
     <string name="set_jpeg_q">底图 JPEG 质量</string>
     <string name="set_jpeg_q_hint">质量越高越清晰，但每一帧的字节数、传输时间与 ESP 解码耗时也越大（默认 70）。</string>
+    <string name="set_ap_ssid">配网热点名称（SSID）</string>
+    <string name="set_ap_pass">配网热点密码</string>
+    <string name="set_ap_hint_new">配网热点的名字与密码（1-32 字符 / 8-63 字符）。改完会下发并存进 ESP，但**必须重启（重新上电 / 复位）ESP 后生效** —— 运行中改会重启 WiFi 并断开当前连接。提醒：默认名 ESPNav-AP、默认密码 espnav1234；改名后要连新名字才能进配网页（http://192.168.4.1）。</string>
     <string name="set_ap_delay">开机等待热点（重启 ESP 后生效）</string>
     <string name="set_ap_delay_hint">开机后先连接已保存的热点；超过该时间仍连不上，才启动配网热点 ESPNav-AP。\n注意：该值保存在设备里，需重启（重新上电 / 复位）ESP 后生效，不是即时生效。</string>
     <string name="set_group_overview">行程图</string>

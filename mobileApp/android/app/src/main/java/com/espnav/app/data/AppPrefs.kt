@@ -19,6 +19,17 @@ class AppPrefs(ctx: Context) {
      */
     fun isFresh(): Boolean = !sp.contains(K_HOST)
 
+    /* ================= 【M25】A 组批 3：配网热点名 / 密码 =================
+     * 下发到 ESP 后**存 NVS、重启 ESP 才生效**（运行期热改 AP 会重启 WiFi 并 RST 掉 TCP）。
+     * 校验与 ESP 端一致：SSID 1-32 字符；密码 8-63 字符。 */
+    var apSsid: String
+        get() = sp.getString(K_AP_SSID, "ESPNav-AP") ?: "ESPNav-AP"
+        set(v) = sp.edit().putString(K_AP_SSID, v.take(32)).apply()
+
+    var apPass: String
+        get() = sp.getString(K_AP_PASS, "espnav1234") ?: "espnav1234"
+        set(v) = sp.edit().putString(K_AP_PASS, v.take(63)).apply()
+
     /* ================= 【M24】A 组批 2：电量显示阈值 ================= */
     /** 电量 <= 此值显示红色 */
     var batRedPct: Int
@@ -436,6 +447,10 @@ class AppPrefs(ctx: Context) {
         const val K_AUDIO_VOL = "audio_vol"        /* 【M22】语音音量（%），0-300 */
         const val AUDIO_VOL_MIN = 0                /* 【M22】0 = 静音 */
         const val AUDIO_VOL_MAX = 300              /* 【M22】上限 300%（ESP 侧超 100% 走软件增益） */
+
+        /* 【M25】A 组批 3：配网热点（校验规则与 ESP 端一致） */
+        const val K_AP_SSID = "ap_ssid_cfg"
+        const val K_AP_PASS = "ap_pass_cfg"
 
         /* 【M24】A 组批 2：电量阈值范围（按用户确认，做可调） */
         const val K_BAT_RED = "bat_red_pct"
