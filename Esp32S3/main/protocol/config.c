@@ -39,7 +39,7 @@ void config_init(void)
     s_cfg.bat_yellow_pct = 40;
     s_cfg.bat_present_mv = 2500;
     s_cfg.img_on         = true; /* 【M7】默认允许底图；App 连接/开始导航时会同步真实开关状态 */
-    strncpy(s_cfg.firmware_ver, "V1.5.0", sizeof(s_cfg.firmware_ver) - 1);
+    strncpy(s_cfg.firmware_ver, "V1.6.0", sizeof(s_cfg.firmware_ver) - 1);
     ESP_LOGI(TAG, "config default ready");
 }
 
