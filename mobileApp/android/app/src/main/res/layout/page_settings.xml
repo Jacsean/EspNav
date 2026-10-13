@@ -589,33 +589,6 @@
                             android:hint="@string/set_hint_zoom"
                             android:importantForAutofill="no"
                             android:inputType="numberDecimal" />
-
-                        <!-- 【M27】线稿地图（高德自定义地图样式）：地图轮廓化、文字保持正常 -->
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="10dp"
-                            android:gravity="center_vertical"
-                            android:orientation="horizontal">
-
-                            <TextView
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:text="@string/set_map_sketch"
-                                android:textSize="13sp" />
-
-                            <Spinner
-                                android:id="@+id/spMapSketch"
-                                android:layout_width="150dp"
-                                android:layout_height="wrap_content" />
-                        </LinearLayout>
-
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:textSize="11sp"
-                            android:text="@string/set_map_sketch_hint" />
                     </LinearLayout>
                 </LinearLayout>
 
