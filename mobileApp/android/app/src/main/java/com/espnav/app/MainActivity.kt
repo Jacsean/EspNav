@@ -1601,6 +1601,25 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 applyPrefsToUi()
                 log(getString(R.string.set_saved))
         }
+        /* 【M27】线稿地图（APK Tab）：切换后立即重设样式 */
+        val spSketch = v.findViewById<android.widget.Spinner>(R.id.spMapSketch)
+        val sketchNames = resources.getStringArray(R.array.map_sketch_names)
+        spSketch.adapter = android.widget.ArrayAdapter(
+            this, android.R.layout.simple_spinner_item, sketchNames
+        ).also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+        spSketch.setSelection(appPrefs.mapSketch.coerceIn(0, 1), false)
+        spSketch.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long
+            ) {
+                appPrefs.mapSketch = position
+                aMap?.let { applySketchStyle(it, position == 1) }    /* 立即生效 */
+                log("地图样式（截图用）= " + sketchNames[position] + "（已应用）")
+            }
+
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+        }
+
         /* 【M6】底图地图样式：改动立即生效（地图已创建时直接切） */
         val spMapStyle = v.findViewById<android.widget.Spinner>(R.id.spMapStyle)
         val mapStyleNames = resources.getStringArray(R.array.map_style_names)
@@ -1622,6 +1641,47 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
         v.findViewById<android.widget.Button>(R.id.btnSettingsSave)
             .setOnClickListener { runCatching { saveAll() } }
+    }
+
+    /* ================= 【M27】线稿地图（高德自定义地图样式）=================
+     * 目的：让"底图图形"线稿化，而"地图文字"保持正常 —— 这样截图的文字不会被轮廓处理破坏。
+     * 实现：高德 6.6.0+ 的 CustomMapStyleOptions + AMap.setCustomMapStyle（样式文件放 assets）。
+     * 注意：本项目未用 AMapNaviView，所以不会被"导航模式重置自定义样式"影响。
+     * ================================================================= */
+    private fun readAsset(name: String): ByteArray? = runCatching {
+        assets.open(name).use { it.readBytes() }
+    }.getOrNull()
+
+    /** 构造自定义样式参数；assets 缺文件时返回 null（由调用方给出明确提示，不静默失败） */
+    private fun buildSketchOptions(): com.amap.api.maps.model.CustomMapStyleOptions? {
+        val data = readAsset("style.data")
+        if (data == null) {
+            log("线稿地图：assets/style.data 不存在 —— 请到 geohub.amap.com/mapstyle 配置样式并导出，" +
+                "把 style.data / style_extra.data 放进 app/src/main/assets/，本次按默认样式显示")
+            return null
+        }
+        return runCatching {
+            val opt = com.amap.api.maps.model.CustomMapStyleOptions()
+            opt.setEnable(true)
+            opt.setStyleData(data)                              /* 二进制更快加载 */
+            readAsset("style_extra.data")?.let { opt.setStyleExtraData(it) }
+            opt
+        }.onFailure { log("线稿地图：构造样式参数失败 " + it.message) }.getOrNull()
+    }
+
+    /** 应用/关闭线稿样式（必须在 onMapLoaded 之后调用） */
+    private fun applySketchStyle(am: com.amap.api.maps.AMap, on: Boolean) {
+        runCatching {
+            if (!on) {
+                val off = com.amap.api.maps.model.CustomMapStyleOptions()
+                off.setEnable(false)
+                am.setCustomMapStyle(off)
+                return@runCatching
+            }
+            val opt = buildSketchOptions() ?: return@runCatching
+            am.setCustomMapStyle(opt)
+            log("线稿地图：自定义样式已应用（文字保持正常）")
+        }.onFailure { log("线稿地图：应用失败 " + it.message) }
     }
 
     /** 【M6】地图样式序号 -> AMap 常量 */
@@ -1982,6 +2042,9 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                         3 -> com.amap.api.maps.AMap.MAP_TYPE_NAVI_NIGHT
                         else -> com.amap.api.maps.AMap.MAP_TYPE_NORMAL
                     }
+                    /* 【M27】线稿地图：**放在 mapType 之后**（切换底图类型可能重置自定义样式，
+                     * 所以自定义样式必须最后应用）；且必须在 onMapLoaded 之后（高德要求）。 */
+                    applySketchStyle(am, appPrefs.mapSketch == 1)
                     log("地图样式 = " + mapStyleName(appPrefs.mapStyle))
                     log("地图样式已应用：关路况/关建筑/关室内图（加载完成后）")
                 }

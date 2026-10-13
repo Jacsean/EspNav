@@ -194,6 +194,14 @@ class AppPrefs(ctx: Context) {
         get() = sp.getInt(K_MAPSTYLE, 0)
         set(v) = sp.edit().putInt(K_MAPSTYLE, v.coerceIn(0, 3)).apply()
 
+    /* ---- 【M27】线稿地图（自定义地图样式）----
+     * 0 = 默认（不启用自定义样式）；1 = 线稿地图（应用 assets/style.data）。
+     * 与上面的 mapStyle 独立：mapStyle 选的是高德内置底图类型，本项是叠加在其上的自定义样式。
+     * 样式文件来自高德自定义地图平台（geohub.amap.com），导出后放 app/src/main/assets/。 */
+    var mapSketch: Int
+        get() = sp.getInt(K_MAP_SKETCH, 0)
+        set(v) = sp.edit().putInt(K_MAP_SKETCH, v.coerceIn(0, 1)).apply()
+
     /* ---- 【M3.2】地图底图：导航中按间隔推送截图（App 侧定时） ---- */
 
     /** 是否推送地图底图（关掉后不再发 IMG_*，ESP 保持当前画面） */
@@ -457,6 +465,8 @@ class AppPrefs(ctx: Context) {
         const val AUDIO_VOL_MAX = 300              /* 【M22】上限 300%（ESP 侧超 100% 走软件增益） */
 
         /* 【M26】转向播报距离（米） */
+        const val K_MAP_SKETCH = "map_sketch"     /* 【M27】0=默认 1=线稿地图（自定义样式） */
+
         const val K_VOICE_TURN_DIST = "voice_turn_dist"
         const val VOICE_TURN_DIST_MIN = 30
         const val VOICE_TURN_DIST_MAX = 300

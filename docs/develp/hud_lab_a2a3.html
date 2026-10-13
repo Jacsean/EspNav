@@ -109,6 +109,19 @@
     </p>
   </div>
 
+  <!-- ⑥ 放大与导出 -->
+  <div class="card">
+    <h2>⑥ 选中方案（点上面任一方案卡可选中）</h2>
+    <div class="stage">
+      <div><div class="hint">处理器结果（要发给 ESP 的图）</div><canvas id="cvOut" width="320" height="240"></canvas></div>
+      <div><div class="hint">分光镜叠加效果（真实×T + 屏幕×R）</div><canvas id="cvMix" width="320" height="240"></canvas></div>
+      <div><div class="hint">纯真实环境（对照）</div><canvas id="cvRef" width="320" height="240"></canvas></div>
+    </div>
+    <div class="row" style="margin-top:11px">
+      <button class="pri" id="btnPng">导出选中方案的 PNG</button>
+      <span class="hint" id="selInfo">未选中</span>
+    </div>
+  </div>
   <!-- ④ A2 -->
   <div class="card">
     <h2>④ A2 · Sobel 轮廓（黑底 + 细线，只有边缘发光）</h2>
@@ -127,19 +140,6 @@
     </p>
   </div>
 
-  <!-- ⑥ 放大与导出 -->
-  <div class="card">
-    <h2>⑥ 选中方案（点上面任一方案卡可选中）</h2>
-    <div class="stage">
-      <div><div class="hint">处理器结果（要发给 ESP 的图）</div><canvas id="cvOut" width="320" height="240"></canvas></div>
-      <div><div class="hint">分光镜叠加效果（真实×T + 屏幕×R）</div><canvas id="cvMix" width="320" height="240"></canvas></div>
-      <div><div class="hint">纯真实环境（对照）</div><canvas id="cvRef" width="320" height="240"></canvas></div>
-    </div>
-    <div class="row" style="margin-top:11px">
-      <button class="pri" id="btnPng">导出选中方案的 PNG</button>
-      <span class="hint" id="selInfo">未选中</span>
-    </div>
-  </div>
 
   <div class="card">
     <h2>⑦ 说明</h2>

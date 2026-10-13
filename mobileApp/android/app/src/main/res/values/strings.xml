@@ -143,6 +143,12 @@
     <string name="set_screen_flip">屏幕内容水平翻转（分光镜 HUD 用，默认开）</string>
     <string name="tab_test">测试</string>
     <string name="set_map_style">地图样式（改动立即生效，可直接看 ESP 底图对比）</string>
+    <string name="set_map_sketch">地图样式（截图用）</string>
+    <string-array name="map_sketch_names">
+        <item>默认</item>
+        <item>线稿地图</item>
+    </string-array>
+    <string name="set_map_sketch_hint">「线稿地图」用高德自定义地图样式，把底图**图形**简化成线稿风格（道路留线条、弱化色块），而**地图文字保持正常**——这样截图里的文字不会被轮廓处理破坏。需先把 geohub 导出的 style.data / style_extra.data 放进 app/src/main/assets/；缺文件时会提示并回退默认样式。</string>
     <string-array name="map_style_names">
         <item>普通（黄白全彩）</item>
         <item>导航地图（全蓝）</item>
