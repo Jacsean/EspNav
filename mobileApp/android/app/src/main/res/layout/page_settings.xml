@@ -589,6 +589,46 @@
                             android:hint="@string/set_hint_zoom"
                             android:importantForAutofill="no"
                             android:inputType="numberDecimal" />
+
+                        <!-- 【M30】路线配色：夜景底图（深色）下蓝色不好辨识，可换成黄/橙/青等 -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/set_route_walked_color"
+                                android:textSize="13sp" />
+
+                            <Spinner
+                                android:id="@+id/spRouteWalkedColor"
+                                android:layout_width="150dp"
+                                android:layout_height="wrap_content" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/set_route_remain_color"
+                                android:textSize="13sp" />
+
+                            <Spinner
+                                android:id="@+id/spRouteRemainColor"
+                                android:layout_width="150dp"
+                                android:layout_height="wrap_content" />
+                        </LinearLayout>
                     </LinearLayout>
                 </LinearLayout>
 

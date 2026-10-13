@@ -1622,6 +1622,32 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 applyPrefsToUi()
                 log(getString(R.string.set_saved))
         }
+        /* 【M30】路线配色（下拉色板）：改完立即生效 —— polyline 每帧重建，取色即可 */
+        val routeColorNames = resources.getStringArray(R.array.route_color_names)
+        val roleMap = listOf(
+            R.id.spRouteWalkedColor to { i: Int -> appPrefs.routeWalkedColorIdx = i },
+            R.id.spRouteRemainColor to { i: Int -> appPrefs.routeRemainColorIdx = i },
+        )
+        roleMap.forEach { (id, setter) ->
+            val sp = v.findViewById<android.widget.Spinner>(id)
+            val cur = if (id == R.id.spRouteWalkedColor) appPrefs.routeWalkedColorIdx
+                      else appPrefs.routeRemainColorIdx
+            sp.adapter = android.widget.ArrayAdapter(
+                this, android.R.layout.simple_spinner_item, colorNames
+            ).also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+            sp.setSelection(cur.coerceIn(0, com.espnav.app.data.AppPrefs.ROUTE_COLOR_COUNT - 1), false)
+            sp.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(
+                    parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id2: Long
+                ) {
+                    setter(position)
+                    log("路线配色 = " + routeColorNames[position] + "（已应用，下一帧生效）")
+                }
+
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+            }
+        }
+
         /* 【M6】底图地图样式：改动立即生效（地图已创建时直接切） */
         val spMapStyle = v.findViewById<android.widget.Spinner>(R.id.spMapStyle)
         val mapStyleNames = resources.getStringArray(R.array.map_style_names)
@@ -2317,13 +2343,19 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 if (walked.size >= 2) {
                     navWalkedLine = am.addPolyline(
                         com.amap.api.maps.model.PolylineOptions().addAll(walked)
-                            .width(16f).color(0xFF9E9E9E.toInt()).zIndex(1f)
+                            /* 【M30】颜色来自设置（默认灰，与原值一致） */
+                            .width(16f)
+                            .color(com.espnav.app.data.AppPrefs.routeColorAt(appPrefs.routeWalkedColorIdx))
+                            .zIndex(1f)
                     )
                 }
                 if (remain.size >= 2) {
                     navRemainLine = am.addPolyline(
                         com.amap.api.maps.model.PolylineOptions().addAll(remain)
-                            .width(16f).color(0xFF1E88E5.toInt()).zIndex(2f)
+                            /* 【M30】颜色来自设置（默认蓝，与原值一致） */
+                            .width(16f)
+                            .color(com.espnav.app.data.AppPrefs.routeColorAt(appPrefs.routeRemainColorIdx))
+                            .zIndex(2f)
                     )
                 }
             }

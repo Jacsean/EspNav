@@ -194,6 +194,17 @@ class AppPrefs(ctx: Context) {
         get() = sp.getInt(K_MAPSTYLE, 0)
         set(v) = sp.edit().putInt(K_MAPSTYLE, v.coerceIn(0, 3)).apply()
 
+    /* ---- 【M30】路线配色（下拉色板索引，0 起）----
+     * 影响手机导航画面上自己画的路线：已走路段 / 剩余路线。
+     * 默认索引 = 原写死配色（已走灰、剩余蓝），不改设置时行为与之前完全一致。 */
+    var routeWalkedColorIdx: Int
+        get() = sp.getInt(K_ROUTE_WALKED_C, 0)
+        set(v) = sp.edit().putInt(K_ROUTE_WALKED_C, v.coerceIn(0, ROUTE_COLOR_COUNT - 1)).apply()
+
+    var routeRemainColorIdx: Int
+        get() = sp.getInt(K_ROUTE_REMAIN_C, 1)
+        set(v) = sp.edit().putInt(K_ROUTE_REMAIN_C, v.coerceIn(0, ROUTE_COLOR_COUNT - 1)).apply()
+
     /* ---- 【M3.2】地图底图：导航中按间隔推送截图（App 侧定时） ---- */
 
     /** 是否推送地图底图（关掉后不再发 IMG_*，ESP 保持当前画面） */
@@ -457,7 +468,31 @@ class AppPrefs(ctx: Context) {
         const val AUDIO_VOL_MAX = 300              /* 【M22】上限 300%（ESP 侧超 100% 走软件增益） */
 
         /* 【M26】转向播报距离（米） */
-        const val K_VOICE_TURN_DIST = "voice_turn_dist"
+        const val K_MAP_SKETCH = "map_sketch"     /* 【M27】0=默认 1=线稿地图（自定义样式） */
+
+        /* 【M30】路线配色：色板（ARGB）与索引键。与 strings 的 route_color_names 顺序一致。 */
+        const val K_VOICE_TURN_DIST = "voice_turn_dist"   /* 【M26】转向播报距离（米） */
+        const val K_ROUTE_WALKED_C = "route_walked_color"
+        const val K_ROUTE_REMAIN_C = "route_remain_color"
+
+        /** 色板：与 res/values/strings.xml 的 route_color_names 一一对应 */
+        val ROUTE_COLOR_PALETTE = intArrayOf(
+            0xFF9E9E9E.toInt(),   // 0 灰
+            0xFF1E88E5.toInt(),   // 1 蓝
+            0xFFFFEB3B.toInt(),   // 2 黄
+            0xFFFF9800.toInt(),   // 3 橙
+            0xFF00E5FF.toInt(),   // 4 青
+            0xFFFF40E0.toInt(),   // 5 品红
+            0xFF00E676.toInt(),   // 6 亮绿
+            0xFFFFFFFF.toInt(),   // 7 白
+            0xFFFF5252.toInt(),   // 8 红
+            0xFF00A152.toInt()    // 9 深绿
+        )
+        val ROUTE_COLOR_COUNT = ROUTE_COLOR_PALETTE.size
+
+        /** 索引 -> 颜色（越界自动夹取） */
+        fun routeColorAt(idx: Int): Int =
+            ROUTE_COLOR_PALETTE[idx.coerceIn(0, ROUTE_COLOR_COUNT - 1)]
         const val VOICE_TURN_DIST_MIN = 30
         const val VOICE_TURN_DIST_MAX = 300
 

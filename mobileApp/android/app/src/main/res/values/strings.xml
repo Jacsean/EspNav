@@ -142,6 +142,20 @@
     <string name="set_saved">设置已保存</string>
     <string name="set_screen_flip">屏幕内容水平翻转（分光镜 HUD 用，默认开）</string>
     <string name="tab_test">测试</string>
+    <string name="set_route_walked_color">路线颜色 · 已走路段</string>
+    <string name="set_route_remain_color">路线颜色 · 剩余路线</string>
+    <string-array name="route_color_names">
+        <item>灰（默认·已走）</item>
+        <item>蓝（默认·剩余）</item>
+        <item>黄</item>
+        <item>橙</item>
+        <item>青</item>
+        <item>品红</item>
+        <item>亮绿</item>
+        <item>白</item>
+        <item>红</item>
+        <item>深绿</item>
+    </string-array>
     <string name="set_map_style">地图样式（改动立即生效，可直接看 ESP 底图对比）</string>
     <string-array name="map_style_names">
         <item>普通（黄白全彩）</item>
