@@ -1634,8 +1634,18 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
                 parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long
             ) {
                 appPrefs.mapSketch = position
-                aMap?.let { applySketchStyle(it, position == 1) }    /* 立即生效 */
-                log("地图样式（截图用）= " + sketchNames[position] + "（已应用）")
+                if (position == 0) {
+                    aMap?.let { applySketchStyle(it, false) }
+                    log("地图样式（截图用）= 默认（已恢复）")
+                } else if (readAsset("style.data") == null) {
+                    /* 没有样式文件时直接说明，避免"设置完没反应"的困惑 */
+                    toast("线稿地图需要样式文件：把 geohub 导出的 style.data 放进 assets/（" +
+                          "详见 assets/README-map-sketch.md）。本次按默认样式显示。")
+                    log("地图样式（截图用）= 线稿地图，但缺 assets/style.data，未生效")
+                } else {
+                    aMap?.let { applySketchStyle(it, true) }
+                    log("地图样式（截图用）= 线稿地图（已应用）")
+                }
             }
 
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
@@ -1677,6 +1687,8 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     private fun buildSketchOptions(): com.amap.api.maps.model.CustomMapStyleOptions? {
         val data = readAsset("style.data")
         if (data == null) {
+            /* 用户看不到"测试"页的日志，所以这里必须弹 Toast，否则表现为"设置完没反应" */
+            toast("线稿地图未生效：缺少 assets/style.data（详见 assets/README-map-sketch.md）")
             log("线稿地图：assets/style.data 不存在 —— 请到 geohub.amap.com/mapstyle 配置样式并导出，" +
                 "把 style.data / style_extra.data 放进 app/src/main/assets/，本次按默认样式显示")
             return null
