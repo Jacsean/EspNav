@@ -17,6 +17,19 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content" />
 
+    <!-- 【M28】版本信息行：一眼确认"装的是哪个版本"（APK 版本 + 连上后显示固件版本） -->
+    <TextView
+        android:id="@+id/tvVersions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="3dp"
+        android:paddingBottom="5dp"
+        android:textSize="11sp"
+        android:textColor="#8A93A5"
+        android:text="" />
+
     <!-- ============ 内容区：三个 Tab 各一个 ScrollView（独立滚动） ============ -->
     <FrameLayout
         android:layout_width="match_parent"

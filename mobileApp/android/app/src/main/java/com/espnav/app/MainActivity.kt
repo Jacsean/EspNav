@@ -310,6 +310,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
     }
 
     override fun onDisconnected(reason: String) {
+        runCatching { refreshVersions(null) }        /* 【M28】断开后固件版本失效 */
         clockJob?.cancel()
         clockJob = null
         stopMock()
@@ -324,7 +325,27 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
         log("断开：$reason")
     }
 
+    /* ================= 【M28】版本信息行 =================
+     * 显示 "APK vX.Y.Z · 固件 VX.Y.Z"。固件版本来自 ESP 的 HELLO_ACK（未连接时提示未连接）。
+     * 目的：以后打开设置页一眼就能确认"是不是装的新包"，不必再靠猜小节。 */
+    @Suppress("DEPRECATION")
+    private fun refreshVersions(firmware: String? = null) {
+        val apk = runCatching {
+            packageManager.getPackageInfo(packageName, 0).versionName
+        }.getOrDefault("?")
+        val fw = if (!firmware.isNullOrEmpty()) firmware else null
+        binding.pageSettings.tvVersions.text =
+            "APK v" + apk + (if (fw != null) " · 固件 " + fw else " · 固件未连接")
+    }
+
     override fun onLine(line: String) {
+        /* 【M28】握手应答里带固件版本 → 显示到设置页版本行 */
+        runCatching {
+            if (com.espnav.app.protocol.InMsg.msgType(line) == "HELLO_ACK") {
+                val p = org.json.JSONObject(line).optJSONObject("payload")
+                refreshVersions(p?.optString("firmware_ver"))
+            }
+        }
         log("← " + InMsg.describe(line))
     }
 
@@ -1702,6 +1723,7 @@ class MainActivity : AppCompatActivity(), EspNavClient.Listener {
 
     /** 把配置回填到界面控件 */
     private fun applyPrefsToUi() {
+        runCatching { refreshVersions(null) }        /* 【M28】至少显示 APK 版本 */
         binding.etHost.setText(appPrefs.host)
         binding.etPort.setText(appPrefs.port.toString())
         binding.etFrom.setText(appPrefs.fromAddress)
